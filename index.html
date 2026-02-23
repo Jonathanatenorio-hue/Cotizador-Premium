@@ -561,6 +561,12 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
         <div class="card-title">Sales Academy</div>
         <div class="card-desc">Entrenamiento con IA y roleplay</div>
       </div>
+
+      <div class="home-card clickable" id="cardMetas" onclick="openMetas()">
+        <div class="card-icon">🎯</div>
+        <div class="card-title">Metas</div>
+        <div class="card-desc">Avance de ventas vs meta mensual</div>
+      </div>
     </div>
   </div>
 </div>
@@ -1012,6 +1018,45 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
 </div>
 
 <!-- ===== VIEW: SALES ACADEMY (TRAINING) ===== -->
+<!-- ===== VIEW: METAS ===== -->
+<div class="view" id="viewMetas">
+  <div class="container">
+    <div id="metasAdmin" style="display:none">
+      <div class="section" style="padding:14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div><div style="font-size:14px;font-weight:700">📊 Cargar ventas del mes</div><div style="font-size:10px;color:var(--text-3)">Sube el Excel global con todas las ventas</div></div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="file" id="metasFileInput" accept=".xlsx,.xls" style="font-size:11px;width:200px" onchange="metasParseExcel()">
+            <span id="metasUploadStatus" style="font-size:10px;color:var(--text-3)"></span>
+          </div>
+        </div>
+      </div>
+      <div class="section" style="padding:14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:14px;font-weight:700">🎯 Configurar metas mensuales</div>
+          <div style="display:flex;gap:4px;align-items:center">
+            <select class="field" id="metasMesConfig" onchange="metasLoadConfig()" style="width:auto;font-size:11px;padding:5px 8px"></select>
+            <button class="btn btn-primary" style="font-size:10px;padding:5px 10px" onclick="metasSaveAll()">💾 Guardar</button>
+          </div>
+        </div>
+        <div id="metasConfigTable"></div>
+      </div>
+    </div>
+    <div class="section" style="padding:10px 14px;margin-bottom:10px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <select class="field" id="metasFilterOp" onchange="metasFilterChanged()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todas las operaciones</option><option value="PUE">Puebla</option><option value="CDMX">CDMX / Sub Yelitza</option></select>
+        <select class="field" id="metasFilterCentro" onchange="metasFilterChanged()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todos los centros</option></select>
+        <select class="field" id="metasFilterSup" onchange="metasRender()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todos los supervisores</option></select>
+        <select class="field" id="metasFilterMes" onchange="metasRender()" style="width:auto;font-size:12px;padding:6px 8px"></select>
+      </div>
+    </div>
+    <div id="metasKPIs" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px"></div>
+    <div id="metasOpsView" style="margin-bottom:12px"></div>
+    <div id="metasSupView" style="margin-bottom:12px"></div>
+    <div id="metasAgentView"></div>
+  </div>
+</div>
+
 <div class="view" id="viewTraining">
   <div class="container">
     <!-- Tabs -->
@@ -1648,7 +1693,7 @@ function showView(name, title) {
 
   const titles = {
     home: '', config: 'Mi Perfil', cotizar: 'Nueva Cotización',
-    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy',
+    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas',
   };
   headerTitle.textContent = title || titles[name] || '';
 
@@ -5577,6 +5622,366 @@ document.getElementById('waPlanAnterior').addEventListener('change', function() 
   var b = waFindBest(r, plan.gb);
   if (b) document.getElementById('waHint').innerHTML = '💡 Sugerencia: <b>'+b.name+'</b> ($'+b.renta+'/mes, '+b.gb+' GB) — '+(b.saving>0?'ahorra $'+b.saving+'/mes':b.saving===0?'mismo precio':'solo $'+Math.abs(b.saving)+' más');
 });
+
+// ============================================================
+// METAS DE VENTAS — Sales Goals Module
+// ============================================================
+var METAS_CENTROS = {
+  'CC2': {name:'Antequera (CC2)', op:'PUE'},
+  'JV': {name:'Juárez (JV)', op:'PUE'},
+  'CDMX': {name:'Sub Yelitza (CDMX)', op:'CDMX'}
+};
+var metasVentas = [], metasMetas = [];
+
+async function openMetas() {
+  showView('metas', 'Metas de Ventas');
+  if (!supabase) return;
+  var rol = currentUser ? currentUser.rol : 'agente';
+  // Show admin panel for admin and coordinadores
+  document.getElementById('metasAdmin').style.display = (rol === 'admin' || rol === 'coordinador') ? '' : 'none';
+  // Populate month selectors
+  var now = new Date();
+  var mesOpts = '';
+  for (var mi = 2; mi >= -2; mi--) {
+    var d = new Date(now.getFullYear(), now.getMonth() - mi, 1);
+    var mv = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    var ml = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][d.getMonth()] + ' ' + d.getFullYear();
+    mesOpts += '<option value="'+mv+'"'+(mi===0?' selected':'')+'>'+ml+'</option>';
+  }
+  document.getElementById('metasFilterMes').innerHTML = mesOpts;
+  if (document.getElementById('metasMesConfig')) document.getElementById('metasMesConfig').innerHTML = mesOpts;
+  // Load data
+  await metasLoadData();
+  if (rol === 'admin' || rol === 'coordinador') await metasLoadConfig();
+  metasFilterChanged();
+}
+
+async function metasLoadData() {
+  var mes = document.getElementById('metasFilterMes').value;
+  try {
+    var vr = await supabase.from('ventas_global').select('*').eq('mes', mes);
+    metasVentas = vr.data || [];
+    var mr = await supabase.from('metas').select('*').eq('mes', mes);
+    metasMetas = mr.data || [];
+  } catch(e) { metasVentas = []; metasMetas = []; }
+}
+
+function metasGetMeta(tipo, nombre) {
+  var m = metasMetas.find(function(x){return x.tipo===tipo && x.nombre===nombre});
+  return m ? m.meta : 0;
+}
+
+function metasFilterChanged() {
+  var opVal = document.getElementById('metasFilterOp').value;
+  var centroSel = document.getElementById('metasFilterCentro');
+  var supSel = document.getElementById('metasFilterSup');
+  // Populate centros
+  centroSel.innerHTML = '<option value="all">Todos los centros</option>';
+  Object.keys(METAS_CENTROS).forEach(function(k) {
+    if (opVal !== 'all' && METAS_CENTROS[k].op !== opVal) return;
+    centroSel.innerHTML += '<option value="'+k+'">'+METAS_CENTROS[k].name+'</option>';
+  });
+  // Populate supervisors
+  var centroVal = centroSel.value;
+  var sups = {};
+  metasVentas.forEach(function(v) {
+    if (opVal !== 'all' && METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op !== opVal) return;
+    if (centroVal !== 'all' && v.centro_key !== centroVal) return;
+    if (v.supervisor) sups[v.supervisor] = true;
+  });
+  supSel.innerHTML = '<option value="all">Todos los supervisores</option>';
+  Object.keys(sups).sort().forEach(function(s) { supSel.innerHTML += '<option value="'+s+'">'+s+'</option>'; });
+  metasRender();
+}
+
+async function metasRender() {
+  var mes = document.getElementById('metasFilterMes').value;
+  if (metasVentas.length === 0 || !metasMetas.length || metasMetas[0].mes !== mes) await metasLoadData();
+  var opVal = document.getElementById('metasFilterOp').value;
+  var centroVal = document.getElementById('metasFilterCentro').value;
+  var supVal = document.getElementById('metasFilterSup').value;
+
+  // Filter ventas
+  var fv = metasVentas.filter(function(v) {
+    if (opVal !== 'all' && METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op !== opVal) return false;
+    if (centroVal !== 'all' && v.centro_key !== centroVal) return false;
+    if (supVal !== 'all' && v.supervisor !== supVal) return false;
+    return true;
+  });
+  var totalVentas = fv.length;
+
+  // Calculate meta for current filter
+  var totalMeta = 0;
+  if (supVal !== 'all') { totalMeta = metasGetMeta('supervisor', supVal); }
+  else if (centroVal !== 'all') { totalMeta = metasGetMeta('centro', centroVal); }
+  else if (opVal !== 'all') { totalMeta = metasGetMeta('operacion', opVal); }
+  else {
+    totalMeta = metasGetMeta('operacion','PUE') + metasGetMeta('operacion','CDMX');
+  }
+  var pct = totalMeta > 0 ? Math.round(totalVentas/totalMeta*100) : 0;
+  var pctColor = pct >= 100 ? '#10B981' : pct >= 70 ? '#F59E0B' : '#DC3545';
+
+  // Days projection
+  var now = new Date();
+  var mesDate = new Date(mes+'-01');
+  var daysInMonth = new Date(mesDate.getFullYear(), mesDate.getMonth()+1, 0).getDate();
+  var daysPassed = (now.getFullYear()===mesDate.getFullYear() && now.getMonth()===mesDate.getMonth()) ? now.getDate() : daysInMonth;
+  var projected = daysPassed > 0 ? Math.round(totalVentas / daysPassed * daysInMonth) : totalVentas;
+  var projPct = totalMeta > 0 ? Math.round(projected/totalMeta*100) : 0;
+
+  // KPIs
+  document.getElementById('metasKPIs').innerHTML =
+    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:28px;font-weight:900;color:var(--att-blue)">'+totalVentas+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Ventas</div></div>'+
+    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:28px;font-weight:900;color:var(--text-2)">'+totalMeta+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Meta</div></div>'+
+    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:28px;font-weight:900;color:'+pctColor+'">'+pct+'%</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Cumplimiento</div></div>'+
+    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:28px;font-weight:900;color:#8B5CF6">'+projected+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Proyección</div></div>'+
+    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:28px;font-weight:900;color:'+(projPct>=100?'#10B981':'#F59E0B')+'">'+projPct+'%</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Proy. vs meta</div></div>';
+
+  // Operations view
+  var opsH = '<div class="section" style="padding:14px"><div style="font-size:13px;font-weight:700;margin-bottom:10px">Operaciones</div>';
+  ['PUE','CDMX'].forEach(function(op) {
+    if (opVal !== 'all' && opVal !== op) return;
+    var opVentas = metasVentas.filter(function(v){return METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op===op}).length;
+    var opMeta = metasGetMeta('operacion', op);
+    var opPct = opMeta>0 ? Math.round(opVentas/opMeta*100) : 0;
+    var opColor = opPct>=100?'#10B981':opPct>=70?'#F59E0B':'#DC3545';
+    var opName = op==='PUE'?'Puebla':'CDMX / Sub Yelitza';
+    opsH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px;background:var(--bg-main);border-radius:8px">';
+    opsH += '<div style="min-width:100px"><div style="font-size:12px;font-weight:700">'+opName+'</div><div style="font-size:10px;color:var(--text-3)">'+opVentas+' / '+opMeta+'</div></div>';
+    opsH += '<div style="flex:1"><div style="height:10px;border-radius:5px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(opPct,100)+'%;background:'+opColor+';border-radius:5px;transition:width 0.5s"></div></div></div>';
+    opsH += '<div style="font-size:14px;font-weight:800;color:'+opColor+';min-width:45px;text-align:right">'+opPct+'%</div></div>';
+    // Centros within operation
+    Object.keys(METAS_CENTROS).forEach(function(ck) {
+      if (METAS_CENTROS[ck].op !== op) return;
+      if (centroVal !== 'all' && centroVal !== ck) return;
+      var cv = metasVentas.filter(function(v){return v.centro_key===ck}).length;
+      var cm = metasGetMeta('centro', ck);
+      var cp = cm>0?Math.round(cv/cm*100):0;
+      var cc = cp>=100?'#10B981':cp>=70?'#F59E0B':'#DC3545';
+      opsH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;padding:5px 8px 5px 24px">';
+      opsH += '<div style="min-width:100px;font-size:11px;font-weight:600">'+METAS_CENTROS[ck].name+'</div>';
+      opsH += '<div style="flex:1"><div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+cc+';border-radius:3px"></div></div></div>';
+      opsH += '<div style="font-size:11px;font-weight:700;color:'+cc+';min-width:65px;text-align:right">'+cv+'/'+cm+' ('+cp+'%)</div></div>';
+    });
+  });
+  opsH += '</div>';
+  document.getElementById('metasOpsView').innerHTML = opsH;
+
+  // Supervisor breakdown
+  var supData = {};
+  fv.forEach(function(v) { if (!v.supervisor) return; if (!supData[v.supervisor]) supData[v.supervisor]={count:0,centro:v.centro_key}; supData[v.supervisor].count++; });
+  var supKeys = Object.keys(supData).sort(function(a,b){return supData[b].count-supData[a].count});
+  var supH = '<div class="section" style="padding:14px"><div style="font-size:13px;font-weight:700;margin-bottom:10px">Por supervisor</div>';
+  if (supKeys.length === 0) { supH += '<div style="text-align:center;padding:15px;color:var(--text-3);font-size:12px">Sin datos</div>'; }
+  else {
+    supKeys.forEach(function(s) {
+      var sv = supData[s].count, sm = metasGetMeta('supervisor',s);
+      var sp = sm>0?Math.round(sv/sm*100):0;
+      var sc = sp>=100?'#10B981':sp>=70?'#F59E0B':'#DC3545';
+      supH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:6px 8px;background:var(--bg-main);border-radius:6px">';
+      supH += '<div style="min-width:180px"><div style="font-size:11px;font-weight:600">'+s+'</div><div style="font-size:9px;color:var(--text-3)">'+METAS_CENTROS[supData[s].centro].name+'</div></div>';
+      supH += '<div style="flex:1"><div style="height:8px;border-radius:4px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(sp,100)+'%;background:'+sc+';border-radius:4px"></div></div></div>';
+      supH += '<div style="font-size:12px;font-weight:700;color:'+sc+';min-width:70px;text-align:right">'+sv+'/'+sm+' ('+sp+'%)</div></div>';
+    });
+  }
+  supH += '</div>';
+  document.getElementById('metasSupView').innerHTML = supH;
+
+  // Agent breakdown
+  var agData = {};
+  fv.forEach(function(v) { if (!v.ejecutivo) return; if (!agData[v.ejecutivo]) agData[v.ejecutivo]={count:0,sup:v.supervisor}; agData[v.ejecutivo].count++; });
+  var agKeys = Object.keys(agData).sort(function(a,b){return agData[b].count-agData[a].count});
+  var agH = '<div class="section" style="padding:14px"><div style="font-size:13px;font-weight:700;margin-bottom:10px">Por agente</div>';
+  if (agKeys.length === 0) { agH += '<div style="text-align:center;padding:15px;color:var(--text-3);font-size:12px">Sin datos</div>'; }
+  else {
+    agH += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:separate;border-spacing:0 3px"><thead><tr>';
+    ['#','Agente','Supervisor','Ventas','Meta','%','Barra'].forEach(function(h){agH+='<th style="padding:4px 6px;text-align:left;font-size:9px;color:var(--text-3);text-transform:uppercase">'+h+'</th>'});
+    agH += '</tr></thead><tbody>';
+    agKeys.forEach(function(ag,idx) {
+      var av = agData[ag].count, am = metasGetMeta('agente',ag);
+      var ap = am>0?Math.round(av/am*100):0;
+      var ac = ap>=100?'#10B981':ap>=70?'#F59E0B':'#DC3545';
+      var medal = idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':'';
+      agH += '<tr><td style="padding:5px 6px;background:white;border-radius:6px 0 0 6px;font-size:12px;text-align:center">'+medal+(medal?'':String(idx+1))+'</td>';
+      agH += '<td style="padding:5px 6px;background:white;font-size:11px;font-weight:600">'+ag+'</td>';
+      agH += '<td style="padding:5px 6px;background:white;font-size:10px;color:var(--text-3)">'+agData[ag].sup+'</td>';
+      agH += '<td style="padding:5px 6px;background:white;font-size:12px;font-weight:700;color:var(--att-blue)">'+av+'</td>';
+      agH += '<td style="padding:5px 6px;background:white;font-size:11px">'+am+'</td>';
+      agH += '<td style="padding:5px 6px;background:white;font-size:12px;font-weight:700;color:'+ac+'">'+ap+'%</td>';
+      agH += '<td style="padding:5px 6px;background:white;border-radius:0 6px 6px 0;min-width:80px"><div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(ap,100)+'%;background:'+ac+';border-radius:3px"></div></div></td></tr>';
+    });
+    agH += '</tbody></table></div>';
+  }
+  agH += '</div>';
+  document.getElementById('metasAgentView').innerHTML = agH;
+}
+
+// Excel Parser - Auto-detects Puebla vs CDMX format
+async function metasParseExcel() {
+  var file = document.getElementById('metasFileInput').files[0];
+  if (!file) return;
+  var status = document.getElementById('metasUploadStatus');
+  status.textContent = 'Procesando...'; status.style.color = 'var(--att-blue)';
+  var reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, {type:'array',cellDates:true});
+      // Find the detail sheet (largest one or first with relevant headers)
+      var ws = null, fmt = '';
+      for (var si = 0; si < wb.SheetNames.length; si++) {
+        var tws = wb.Sheets[wb.SheetNames[si]];
+        var r1 = XLSX.utils.sheet_to_json(tws, {header:1})[0] || [];
+        var h0 = String(r1[0]||'').toUpperCase();
+        if (h0 === 'FOLIO') { ws = tws; fmt = 'puebla'; break; }
+        if (h0 === 'FECHA DE VENTA') { ws = tws; fmt = 'cdmx'; break; }
+      }
+      if (!ws) { ws = wb.Sheets[wb.SheetNames[0]]; fmt = 'auto'; }
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1});
+      if (rows.length < 2) { status.textContent = 'Excel vacío'; status.style.color = '#DC3545'; return; }
+
+      // Detect format from headers
+      var hdr = rows[0].map(function(h){return String(h||'').toUpperCase().trim()});
+      if (fmt === 'auto') {
+        if (hdr.indexOf('FOLIO') !== -1) fmt = 'puebla';
+        else if (hdr.indexOf('FECHA DE VENTA') !== -1 || hdr.indexOf('ORDEN') !== -1) fmt = 'cdmx';
+        else fmt = 'puebla'; // fallback
+      }
+
+      var ventas = [];
+      if (fmt === 'puebla') {
+        // Puebla format: FOLIO,Fecha,Hora,EJECUTIVO,Supervisor,CENTRO,CentroKey,PLAN,PRECIO,RENTA,SUBREGION,ESTATUS
+        for (var i = 1; i < rows.length; i++) {
+          var r = rows[i]; if (!r || !r[0]) continue;
+          var fecha = r[1]; var fechaStr = '';
+          if (fecha instanceof Date) fechaStr = fecha.toISOString().slice(0,10);
+          else if (typeof fecha === 'string') fechaStr = fecha.slice(0,10);
+          ventas.push({
+            folio:String(r[0]||''), fecha:fechaStr, hora:String(r[2]||''),
+            ejecutivo:String(r[3]||'').trim(), supervisor:String(r[4]||'').trim(),
+            centro:String(r[5]||''), centro_key:String(r[6]||'').trim(),
+            plan:String(r[7]||''), precio:parseFloat(r[8])||0,
+            renta_sin_imp:parseFloat(r[9])||0, subregion:String(r[10]||''),
+            estatus:String(r[11]||''), mes:fechaStr.slice(0,7)
+          });
+        }
+      } else {
+        // CDMX/Sub Yelitza format: FECHA DE VENTA,CLIENTE,RFC,DN,ORDEN,PLAN,EQUIPO,PLAZO,DIRECCION,EJECUTIVO,SUPERVISOR,TIPO,DISTRIBUIDOR,TIPO ENTREGA,ID,ASD,FECHA ENTREGA,FACTURACION
+        var colFecha = hdr.indexOf('FECHA DE VENTA'); if(colFecha===-1) colFecha=0;
+        var colOrden = hdr.indexOf('ORDEN'); if(colOrden===-1) colOrden=4;
+        var colPlan = hdr.indexOf('PLAN'); if(colPlan===-1) colPlan=5;
+        var colEjec = hdr.indexOf('EJECUTIVO'); if(colEjec===-1) colEjec=9;
+        var colSup = hdr.indexOf('SUPERVISOR'); if(colSup===-1) colSup=10;
+        var colASD = hdr.indexOf('ASD'); if(colASD===-1) colASD=15;
+        for (var i = 1; i < rows.length; i++) {
+          var r = rows[i]; if (!r || !r[colOrden]) continue;
+          var fecha = r[colFecha]; var fechaStr = '';
+          if (fecha instanceof Date) fechaStr = fecha.toISOString().slice(0,10);
+          else if (typeof fecha === 'string') fechaStr = fecha.slice(0,10);
+          if (!fechaStr || fechaStr.length < 7) continue;
+          var asd = String(r[colASD]||'').toUpperCase();
+          if (asd === 'CANCELADA') continue; // Skip cancelled
+          ventas.push({
+            folio:String(r[colOrden]||'').trim(), fecha:fechaStr, hora:'',
+            ejecutivo:String(r[colEjec]||'').trim(), supervisor:String(r[colSup]||'').trim(),
+            centro:'SUB YELITZA', centro_key:'CDMX',
+            plan:'ATT '+String(r[colPlan]||'').toUpperCase().trim(), precio:0,
+            renta_sin_imp:0, subregion:'', estatus:asd==='ENTREGADA'?'Terminada':'En proceso',
+            mes:fechaStr.slice(0,7)
+          });
+        }
+      }
+      if (ventas.length === 0) { status.textContent = 'No se encontraron ventas'; status.style.color = '#DC3545'; return; }
+      var mainMes = ventas[0].mes;
+      // Detect which centro_keys are in this upload
+      var uploadKeys = {};
+      ventas.forEach(function(v){uploadKeys[v.centro_key]=true});
+      status.textContent = 'Subiendo '+ventas.length+' ventas ('+Object.keys(uploadKeys).join(', ')+')...';
+      // Delete only existing records for these centro_keys and month (don't wipe other operation's data)
+      var keysToDelete = Object.keys(uploadKeys);
+      for (var ki = 0; ki < keysToDelete.length; ki++) {
+        await supabase.from('ventas_global').delete().eq('mes', mainMes).eq('centro_key', keysToDelete[ki]);
+      }
+      // Insert in batches of 100
+      for (var b = 0; b < ventas.length; b += 100) {
+        await supabase.from('ventas_global').insert(ventas.slice(b, b+100));
+      }
+      status.textContent = '✅ '+ventas.length+' ventas cargadas ('+fmt.toUpperCase()+' — '+mainMes+')';
+      status.style.color = '#10B981';
+      document.getElementById('metasFilterMes').value = mainMes;
+      await metasLoadData();
+      metasFilterChanged();
+    } catch(err) { status.textContent = '❌ Error: '+err.message; status.style.color = '#DC3545'; }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Config metas
+async function metasLoadConfig() {
+  var mes = document.getElementById('metasMesConfig').value;
+  try {
+    var r = await supabase.from('metas').select('*').eq('mes', mes);
+    var existing = r.data || [];
+    var h = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:separate;border-spacing:0 4px">';
+    // Operations
+    h += '<tr><td colspan="3" style="padding:8px 6px;font-size:11px;font-weight:700;color:var(--att-blue);text-transform:uppercase">Operaciones</td></tr>';
+    [{t:'operacion',n:'PUE',l:'Puebla'},{t:'operacion',n:'CDMX',l:'CDMX / Sub Yelitza'}].forEach(function(item) {
+      var ex = existing.find(function(e){return e.tipo===item.t && e.nombre===item.n});
+      h += '<tr><td style="padding:5px 6px;background:white;border-radius:6px 0 0 6px;font-size:11px;font-weight:600">'+item.l+'</td>';
+      h += '<td style="padding:5px 6px;background:white;font-size:10px;color:var(--text-3)">'+item.t+'</td>';
+      h += '<td style="padding:5px 6px;background:white;border-radius:0 6px 6px 0"><input class="field metaInput" data-tipo="'+item.t+'" data-nombre="'+item.n+'" type="number" value="'+(ex?ex.meta:0)+'" style="width:80px;font-size:11px;padding:4px 6px;text-align:center"></td></tr>';
+    });
+    // Centros
+    h += '<tr><td colspan="3" style="padding:8px 6px;font-size:11px;font-weight:700;color:var(--att-blue);text-transform:uppercase">Centros</td></tr>';
+    Object.keys(METAS_CENTROS).forEach(function(ck) {
+      var ex = existing.find(function(e){return e.tipo==='centro' && e.nombre===ck});
+      h += '<tr><td style="padding:5px 6px;background:white;border-radius:6px 0 0 6px;font-size:11px;font-weight:600">'+METAS_CENTROS[ck].name+'</td>';
+      h += '<td style="padding:5px 6px;background:white;font-size:10px;color:var(--text-3)">centro</td>';
+      h += '<td style="padding:5px 6px;background:white;border-radius:0 6px 6px 0"><input class="field metaInput" data-tipo="centro" data-nombre="'+ck+'" type="number" value="'+(ex?ex.meta:0)+'" style="width:80px;font-size:11px;padding:4px 6px;text-align:center"></td></tr>';
+    });
+    // Get supervisors and agents from ventas for this month
+    var vr = await supabase.from('ventas_global').select('supervisor,ejecutivo').eq('mes', mes);
+    var vdata = vr.data || [];
+    var sups = {}, agents = {};
+    vdata.forEach(function(v) { if (v.supervisor) sups[v.supervisor]=true; if (v.ejecutivo) agents[v.ejecutivo]=v.supervisor; });
+    // Supervisors
+    h += '<tr><td colspan="3" style="padding:8px 6px;font-size:11px;font-weight:700;color:var(--att-blue);text-transform:uppercase">Supervisores</td></tr>';
+    Object.keys(sups).sort().forEach(function(s) {
+      var ex = existing.find(function(e){return e.tipo==='supervisor' && e.nombre===s});
+      h += '<tr><td style="padding:5px 6px;background:white;border-radius:6px 0 0 6px;font-size:11px;font-weight:600">'+s+'</td>';
+      h += '<td style="padding:5px 6px;background:white;font-size:10px;color:var(--text-3)">supervisor</td>';
+      h += '<td style="padding:5px 6px;background:white;border-radius:0 6px 6px 0"><input class="field metaInput" data-tipo="supervisor" data-nombre="'+s+'" type="number" value="'+(ex?ex.meta:0)+'" style="width:80px;font-size:11px;padding:4px 6px;text-align:center"></td></tr>';
+    });
+    // Agents
+    h += '<tr><td colspan="3" style="padding:8px 6px;font-size:11px;font-weight:700;color:var(--att-blue);text-transform:uppercase">Agentes</td></tr>';
+    Object.keys(agents).sort().forEach(function(ag) {
+      var ex = existing.find(function(e){return e.tipo==='agente' && e.nombre===ag});
+      h += '<tr><td style="padding:5px 6px;background:white;border-radius:6px 0 0 6px;font-size:11px;font-weight:600">'+ag+'</td>';
+      h += '<td style="padding:5px 6px;background:white;font-size:10px;color:var(--text-3)">'+agents[ag]+'</td>';
+      h += '<td style="padding:5px 6px;background:white;border-radius:0 6px 6px 0"><input class="field metaInput" data-tipo="agente" data-nombre="'+ag+'" type="number" value="'+(ex?ex.meta:0)+'" style="width:80px;font-size:11px;padding:4px 6px;text-align:center"></td></tr>';
+    });
+    h += '</table></div>';
+    document.getElementById('metasConfigTable').innerHTML = h;
+  } catch(e) { console.log('Metas config error:',e); }
+}
+
+async function metasSaveAll() {
+  var mes = document.getElementById('metasMesConfig').value;
+  var inputs = document.querySelectorAll('.metaInput');
+  var upserts = [];
+  inputs.forEach(function(inp) {
+    var val = parseInt(inp.value) || 0;
+    upserts.push({mes:mes, tipo:inp.getAttribute('data-tipo'), nombre:inp.getAttribute('data-nombre'), meta:val, updated_at:new Date().toISOString()});
+  });
+  try {
+    for (var i = 0; i < upserts.length; i++) {
+      var u = upserts[i];
+      await supabase.from('metas').upsert(u, {onConflict:'mes,tipo,nombre'});
+    }
+    alert('✅ Metas guardadas para '+mes);
+    await metasLoadData();
+    metasRender();
+  } catch(e) { alert('❌ Error: '+e.message); }
+}
 
 // ============================================================
 // SALES ACADEMY — AI Training Platform (Supabase-backed)
