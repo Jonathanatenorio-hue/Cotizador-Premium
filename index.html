@@ -2019,6 +2019,7 @@ async function generarCotizacion() {
       ejecutivo: { ...state.agente },
       items: state.items.map(it => ({...it, imageData: it.imageData || null})),
       estatus: isEditing ? (state.cotizaciones.find(c=>c.folio===folio)||{}).estatus || 'enviada' : 'enviada',
+      agente_id: currentUser ? currentUser.id : null,
       createdAt: isEditing ? (state.cotizaciones.find(c=>c.folio===folio)||{}).createdAt || now.toISOString() : now.toISOString(),
       editedAt: isEditing ? now.toISOString() : undefined,
     };
@@ -2877,7 +2878,8 @@ function renderHistorial() {
   var roleFiltered = state.cotizaciones;
   if (agentIds) {
     roleFiltered = state.cotizaciones.filter(function(c) {
-      return agentIds.indexOf(c.agente_id) !== -1;
+      var cAgentId = c.agente_id || (currentUser ? currentUser.id : null);
+      return agentIds.indexOf(cAgentId) !== -1;
     });
   }
 
