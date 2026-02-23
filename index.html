@@ -213,6 +213,25 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 .btn-secondary { background: var(--surface); color: var(--att-blue); border: 1.5px solid var(--att-blue); }
 .btn-secondary:hover { background: var(--att-light); }
+.waScBtn.active,.waMsBtn.active,.waRnBtn.active { background: var(--att-blue) !important; color: white !important; }
+.wa-msg-card { background:white; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; overflow:hidden; }
+.wa-msg-header { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-bottom:1px solid var(--border); }
+.wa-msg-tag { font-size:10px; font-weight:700; padding:3px 8px; border-radius:5px; letter-spacing:.3px; }
+.wa-msg-tag-a { background:#EBF5FB; color:var(--att-blue); }
+.wa-msg-tag-b { background:#F3E8FF; color:#8B5CF6; }
+.wa-msg-tag-c { background:#E8F8F0; color:#10B981; }
+.wa-msg-tag-d { background:#FEF3C7; color:#D97706; }
+.wa-bubble-area { padding:14px; background:linear-gradient(135deg,#ECE5DD,#D5DBDB); }
+.wa-bubble-msg { background:#DCF8C6; border-radius:0 10px 10px 10px; padding:10px 12px; max-width:92%; font-size:12px; line-height:1.5; color:#1a1a1a; white-space:pre-wrap; word-wrap:break-word; box-shadow:0 1px 2px rgba(0,0,0,0.06); }
+.wa-bubble-time { text-align:right; font-size:9px; color:#8696a0; margin-top:3px; }
+.tr-msg-user { align-self:flex-end; background:var(--att-blue); color:white; padding:9px 14px; border-radius:14px 14px 4px 14px; max-width:78%; font-size:13px; line-height:1.5; }
+.tr-msg-bot { align-self:flex-start; background:var(--bg-card); color:var(--text-1); padding:10px 14px; border-radius:14px 14px 14px 4px; max-width:82%; font-size:13px; line-height:1.6; border:1px solid var(--border); }
+.tr-msg-sys { align-self:center; background:#EBF5FB; color:var(--text-2); padding:6px 12px; border-radius:8px; font-size:11px; text-align:center; max-width:90%; }
+.tr-typing { align-self:flex-start; background:var(--bg-card); padding:10px 16px; border-radius:14px; border:1px solid var(--border); }
+.tr-typing span { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--text-3); margin:0 2px; animation:trPulse 1.4s infinite; }
+.tr-typing span:nth-child(2) { animation-delay:0.2s; }
+.tr-typing span:nth-child(3) { animation-delay:0.4s; }
+@keyframes trPulse { 0%,100%{opacity:.3} 50%{opacity:1} }
 .btn-lg { padding: 14px 28px; font-size: 15px; width: 100%; }
 .btn-sm { padding: 6px 12px; font-size: 12px; }
 .btn-danger-ghost { background: none; border: none; color: var(--danger); font-size: 18px; cursor: pointer; padding: 4px; }
@@ -529,6 +548,18 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
         <div class="card-icon">⚡</div>
         <div class="card-title">Aceleraciones</div>
         <div class="card-desc" id="acelDesc">Seguimiento diario</div>
+      </div>
+
+      <div class="home-card clickable" onclick="showView('whatsapp')">
+        <div class="card-icon">💬</div>
+        <div class="card-title">Generador WhatsApp</div>
+        <div class="card-desc">Mensajes de migración y renovación</div>
+      </div>
+
+      <div class="home-card clickable" onclick="showView('training')">
+        <div class="card-icon">🎓</div>
+        <div class="card-title">Sales Academy</div>
+        <div class="card-desc">Entrenamiento con IA y roleplay</div>
       </div>
     </div>
   </div>
@@ -913,6 +944,126 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
   </div>
 </div>
 
+<!-- ===== VIEW: WHATSAPP GENERATOR ===== -->
+<div class="view" id="viewWhatsapp">
+  <div class="container">
+    <!-- Tabs -->
+    <div style="display:flex;gap:4px;margin-bottom:14px;background:var(--bg-card);padding:4px;border-radius:10px;border:1px solid var(--border)">
+      <button class="btn" id="waTabPersonal" onclick="waTab('personal')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:var(--att-blue);color:white;border:none">👤 Personalizado</button>
+      <button class="btn" id="waTabMasivo" onclick="waTab('masivo')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">👥 Masivo</button>
+      <button class="btn" id="waTabRenovacion" onclick="waTab('renovacion')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">💎 Renovación</button>
+    </div>
+
+    <!-- PERSONAL TAB -->
+    <div id="waPersonal" class="section" style="padding:14px;margin-bottom:8px">
+      <div class="section-title">Datos del Cliente</div>
+      <div class="form-group" style="margin-bottom:8px"><label class="field-label">Nombre del cliente</label><input class="field" id="waCliNombre" placeholder="Ej. Juan Perez"></div>
+      <div class="form-group" style="margin-bottom:8px"><label class="field-label">Plan anterior</label><select class="field" id="waPlanAnterior"><option value="">Seleccionar plan...</option></select></div>
+      <div class="form-group" style="margin-bottom:8px"><label class="field-label">Renta actual (si difiere)</label><input class="field" id="waRentaOverride" placeholder="Dejar vacío para usar renta estándar"></div>
+      <div class="form-group" style="margin-bottom:8px"><label class="field-label">Plan Premium a ofrecer</label><select class="field" id="waPremiumPlan"><option value="auto">🤖 Automático (mejor opción)</option></select></div>
+      <div id="waHint" style="font-size:10px;color:var(--text-3);margin:-4px 0 8px"></div>
+      <div class="form-group" style="margin-bottom:8px"><label class="field-label">Tu nombre (agente)</label><input class="field" id="waAgentName" placeholder="Ej. Carlos"></div>
+      <label class="field-label" style="margin-top:8px">Escenario</label>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px" id="waScenarios">
+        <button class="btn btn-secondary waScBtn active" data-sc="primer_contacto" onclick="waSelSc(this)" style="font-size:11px;flex:1;min-width:120px">👋 Primer contacto</button>
+        <button class="btn btn-secondary waScBtn" data-sc="seguimiento" onclick="waSelSc(this)" style="font-size:11px;flex:1;min-width:120px">🔄 Seguimiento</button>
+        <button class="btn btn-secondary waScBtn" data-sc="cierre" onclick="waSelSc(this)" style="font-size:11px;flex:1;min-width:120px">🔥 Cierre</button>
+        <button class="btn btn-secondary waScBtn" data-sc="tienda" onclick="waSelSc(this)" style="font-size:11px;flex:1;min-width:120px">🏪 Prefiere tienda</button>
+      </div>
+      <button class="btn btn-primary" onclick="waGenerate('personal')" style="width:100%;padding:12px;font-size:13px">💬 Generar Mensajes WhatsApp</button>
+    </div>
+
+    <!-- MASIVO TAB -->
+    <div id="waMasivo" style="display:none" class="section" style="padding:14px;margin-bottom:8px">
+      <div class="section-title">Mensaje Masivo</div>
+      <div style="background:#EBF5FB;border:1px solid #AED6F1;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:11px;color:var(--text-2)">📢 <b>Sin nombre del cliente.</b> Ideales para listas de 50-500 números.</div>
+      <div class="form-group" style="margin-bottom:8px"><label class="field-label">Plan anterior del grupo</label><select class="field" id="waMassPlan"><option value="">Seleccionar plan...</option></select></div>
+      <div class="form-group" style="margin-bottom:8px"><label class="field-label">Plan Premium a ofrecer</label><select class="field" id="waMassPremium"><option value="auto">🤖 Automático</option></select></div>
+      <label class="field-label" style="margin-top:8px">Tipo de mensaje</label>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px" id="waMassScenarios">
+        <button class="btn btn-secondary waMsBtn active" data-sc="captacion" onclick="waSelMs(this)" style="font-size:11px;flex:1;min-width:120px">👋 Captación</button>
+        <button class="btn btn-secondary waMsBtn" data-sc="seguimiento" onclick="waSelMs(this)" style="font-size:11px;flex:1;min-width:120px">🔄 Seguimiento</button>
+        <button class="btn btn-secondary waMsBtn" data-sc="urgencia" onclick="waSelMs(this)" style="font-size:11px;flex:1;min-width:120px">🔥 Urgencia</button>
+        <button class="btn btn-secondary waMsBtn" data-sc="beneficios" onclick="waSelMs(this)" style="font-size:11px;flex:1;min-width:120px">⭐ Solo beneficios</button>
+      </div>
+      <button class="btn btn-primary" onclick="waGenerate('masivo')" style="width:100%;padding:12px;font-size:13px;background:#8B5CF6">👥 Generar Mensaje Masivo</button>
+    </div>
+
+    <!-- RENOVACION TAB -->
+    <div id="waRenovacion" style="display:none" class="section" style="padding:14px;margin-bottom:8px">
+      <div class="section-title">Renovación Premium</div>
+      <div style="background:#F3E8FF;border:1px solid #D8B4FE;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:11px;color:var(--text-2)">💎 <b>Cliente Premium existente.</b> El plan se mantiene, el beneficio es el equipo.</div>
+      <div class="form-group" style="margin-bottom:8px"><label class="field-label">Nombre del cliente (opcional)</label><input class="field" id="waRenName" placeholder="Dejar vacío para masivo"></div>
+      <div class="form-group" style="margin-bottom:8px"><label class="field-label">Plan Premium actual</label><select class="field" id="waRenPlan"><option value="">Seleccionar plan Premium...</option></select></div>
+      <div class="form-group" style="margin-bottom:8px"><label class="field-label">Tu nombre (agente)</label><input class="field" id="waRenAgent" placeholder="Ej. Carlos (opcional)"></div>
+      <label class="field-label" style="margin-top:8px">Tipo de mensaje</label>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px" id="waRenScenarios">
+        <button class="btn btn-secondary waRnBtn active" data-sc="primer_contacto" onclick="waSelRn(this)" style="font-size:11px;flex:1;min-width:120px">👋 Primer contacto</button>
+        <button class="btn btn-secondary waRnBtn" data-sc="seguimiento" onclick="waSelRn(this)" style="font-size:11px;flex:1;min-width:120px">🔄 Seguimiento</button>
+        <button class="btn btn-secondary waRnBtn" data-sc="equipo" onclick="waSelRn(this)" style="font-size:11px;flex:1;min-width:120px">📱 Enfocado en equipo</button>
+        <button class="btn btn-secondary waRnBtn" data-sc="urgencia" onclick="waSelRn(this)" style="font-size:11px;flex:1;min-width:120px">🔥 Urgencia</button>
+      </div>
+      <button class="btn btn-primary" onclick="waGenerate('renovacion')" style="width:100%;padding:12px;font-size:13px;background:#8B5CF6">💎 Generar Mensaje Renovación</button>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="waResults" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<!-- ===== VIEW: SALES ACADEMY (TRAINING) ===== -->
+<div class="view" id="viewTraining">
+  <div class="container">
+    <!-- Tabs -->
+    <div style="display:flex;gap:4px;margin-bottom:14px;background:var(--bg-card);padding:4px;border-radius:10px;border:1px solid var(--border)">
+      <button class="btn trTab" id="trTabChat" onclick="trTab('chat')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:var(--att-blue);color:white;border:none">💬 Asistente IA</button>
+      <button class="btn trTab" id="trTabRoleplay" onclick="trTab('roleplay')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">🎭 Roleplay</button>
+      <button class="btn trTab" id="trTabExercises" onclick="trTab('exercises')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">🏋️ Ejercicios</button>
+    </div>
+
+    <!-- CHAT TAB -->
+    <div id="trChat">
+      <div class="section" style="padding:0;overflow:hidden;display:flex;flex-direction:column;height:65vh;max-height:600px">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:6px"><div style="width:7px;height:7px;border-radius:50%;background:#10B981"></div><span style="font-size:11px;font-weight:600;color:var(--text-2)">Asistente IA — Entrenado por ExpertCell</span></div>
+          <span id="trMsgCount" style="font-size:10px;color:var(--text-3);font-weight:600"></span>
+        </div>
+        <div id="trChatMsgs" style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;padding:0 10px 6px" id="trQuickBtns"></div>
+        <div style="display:flex;gap:6px;padding:10px;border-top:1px solid var(--border)">
+          <input class="field" id="trChatInput" placeholder="Pregúntame lo que necesites..." style="flex:1" onkeydown="if(event.key==='Enter')trSendChat()">
+          <button class="btn btn-primary" onclick="trSendChat()" style="padding:8px 16px">→</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROLEPLAY TAB -->
+    <div id="trRoleplay" style="display:none">
+      <div id="trRpList"></div>
+      <div id="trRpActive" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+          <div><div id="trRpTitle" style="font-size:16px;font-weight:800;color:var(--text-1)"></div><div id="trRpInfo" style="font-size:11px;color:var(--text-3)"></div></div>
+          <button class="btn btn-secondary" onclick="trRpBack()" style="font-size:11px;padding:5px 12px">← Volver</button>
+        </div>
+        <div style="display:flex;gap:3px;margin-bottom:10px" id="trRpProgress"></div>
+        <div id="trRpFeedback" style="display:none"></div>
+        <div class="section" style="padding:0;overflow:hidden;display:flex;flex-direction:column;height:50vh;max-height:450px">
+          <div id="trRpMsgs" style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px"></div>
+          <div id="trRpInputArea" style="display:flex;gap:6px;padding:10px;border-top:1px solid var(--border)">
+            <input class="field" id="trRpInput" placeholder="Responde como agente..." style="flex:1" onkeydown="if(event.key==='Enter')trSendRp()">
+            <button class="btn btn-primary" onclick="trSendRp()" style="padding:8px 16px">→</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXERCISES TAB -->
+    <div id="trExercises" style="display:none">
+      <div id="trExList"></div>
+    </div>
+  </div>
+</div>
+
 </div> <!-- end appContainer -->
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
@@ -1187,19 +1338,22 @@ var NOW_DATE = new Date();
 function pp(current, newPrice, switchDate) {
   return NOW_DATE >= switchDate ? newPrice : current;
 }
+function ppg(currentGb, newGb, switchDate) {
+  return NOW_DATE >= switchDate ? newGb : currentGb;
+}
 
 const PLANS_PREMIUM = [
-  { id:'azul1', name:'Azul 1', gb:'5GB', price: pp(319, 330, PRICE_SWITCH_DATE_2), col:7 },
-  { id:'azul2', name:'Azul 2', gb:'8GB', price: pp(419, 435, PRICE_SWITCH_DATE_2), col:10 },
-  { id:'azul3', name:'Azul 3', gb:'12GB', price: pp(529, 550, PRICE_SWITCH_DATE_2), col:13 },
-  { id:'plata', name:'Plata', gb:'25GB', price: pp(629, 650, PRICE_SWITCH_DATE_2), col:16 },
-  { id:'oro', name:'Oro', gb:'30GB', price: pp(699, 725, PRICE_SWITCH_DATE_2), col:19 },
-  { id:'black', name:'Black', gb:'40GB', price: pp(799, 825, PRICE_SWITCH_DATE_2), col:22 },
-  { id:'platino', name:'Platino', gb:'45GB', price: pp(999, 1035, PRICE_SWITCH_DATE_2), col:25 },
-  { id:'diamante', name:'Diamante', gb:'50GB', price: pp(1259, 1300, PRICE_SWITCH_DATE_1), col:28 },
+  { id:'azul1', name:'Azul 1', gb: ppg('5GB','5GB',PRICE_SWITCH_DATE_2), price: pp(319, 330, PRICE_SWITCH_DATE_2), col:7 },
+  { id:'azul2', name:'Azul 2', gb: ppg('8GB','8GB',PRICE_SWITCH_DATE_2), price: pp(419, 435, PRICE_SWITCH_DATE_2), col:10 },
+  { id:'azul3', name:'Azul 3', gb: ppg('12GB','14GB',PRICE_SWITCH_DATE_2), price: pp(529, 550, PRICE_SWITCH_DATE_2), col:13 },
+  { id:'plata', name:'Plata', gb: ppg('25GB','25GB',PRICE_SWITCH_DATE_2), price: pp(629, 650, PRICE_SWITCH_DATE_2), col:16 },
+  { id:'oro', name:'Oro', gb: ppg('30GB','32GB',PRICE_SWITCH_DATE_2), price: pp(699, 725, PRICE_SWITCH_DATE_2), col:19 },
+  { id:'black', name:'Black', gb: ppg('40GB','42GB',PRICE_SWITCH_DATE_2), price: pp(799, 825, PRICE_SWITCH_DATE_2), col:22 },
+  { id:'platino', name:'Platino', gb: ppg('45GB','50GB',PRICE_SWITCH_DATE_2), price: pp(999, 1035, PRICE_SWITCH_DATE_2), col:25 },
+  { id:'diamante', name:'Diamante', gb: ppg('50GB','55GB',PRICE_SWITCH_DATE_1), price: pp(1259, 1300, PRICE_SWITCH_DATE_1), col:28 },
 ];
 const PLANS_TITANIO = [
-  { id:'titanio', name:'Titanio', gb:'40GB', price: pp(1499, 1499, PRICE_SWITCH_DATE_2), col:7 },
+  { id:'titanio', name:'Titanio', gb: ppg('40GB','42GB',PRICE_SWITCH_DATE_2), price: pp(1499, 1599, PRICE_SWITCH_DATE_2), col:7 },
 ];
 const ALL_PLANS = [...PLANS_PREMIUM, ...PLANS_TITANIO];
 
@@ -1241,12 +1395,13 @@ const PLANS_ACTUALES = [
   // AT&T Premium (actuales, para clientes que ya tienen Premium)
   { id:'pa_azul1', name:'AT&T Azul 1 (actual)', gb:'5GB', price: pp(319, 330, PRICE_SWITCH_DATE_2) },
   { id:'pa_azul2', name:'AT&T Azul 2 (actual)', gb:'8GB', price: pp(419, 435, PRICE_SWITCH_DATE_2) },
-  { id:'pa_azul3', name:'AT&T Azul 3 (actual)', gb:'12GB', price: pp(529, 550, PRICE_SWITCH_DATE_2) },
+  { id:'pa_azul3', name:'AT&T Azul 3 (actual)', gb: ppg('12GB','14GB',PRICE_SWITCH_DATE_2), price: pp(529, 550, PRICE_SWITCH_DATE_2) },
   { id:'pa_plata', name:'AT&T Plata (actual)', gb:'25GB', price: pp(629, 650, PRICE_SWITCH_DATE_2) },
-  { id:'pa_oro', name:'AT&T Oro (actual)', gb:'30GB', price: pp(699, 725, PRICE_SWITCH_DATE_2) },
-  { id:'pa_black', name:'AT&T Black (actual)', gb:'40GB', price: pp(799, 825, PRICE_SWITCH_DATE_2) },
-  { id:'pa_platino', name:'AT&T Platino (actual)', gb:'45GB', price: pp(999, 1035, PRICE_SWITCH_DATE_2) },
-  { id:'pa_diamante', name:'AT&T Diamante (actual)', gb:'50GB', price: pp(1259, 1300, PRICE_SWITCH_DATE_1) },
+  { id:'pa_oro', name:'AT&T Oro (actual)', gb: ppg('30GB','32GB',PRICE_SWITCH_DATE_2), price: pp(699, 725, PRICE_SWITCH_DATE_2) },
+  { id:'pa_black', name:'AT&T Black (actual)', gb: ppg('40GB','42GB',PRICE_SWITCH_DATE_2), price: pp(799, 825, PRICE_SWITCH_DATE_2) },
+  { id:'pa_platino', name:'AT&T Platino (actual)', gb: ppg('45GB','50GB',PRICE_SWITCH_DATE_2), price: pp(999, 1035, PRICE_SWITCH_DATE_2) },
+  { id:'pa_diamante', name:'AT&T Diamante (actual)', gb: ppg('50GB','55GB',PRICE_SWITCH_DATE_1), price: pp(1259, 1300, PRICE_SWITCH_DATE_1) },
+  { id:'pa_titanio', name:'AT&T Titanio (actual)', gb: ppg('40GB','42GB',PRICE_SWITCH_DATE_2), price: pp(1499, 1599, PRICE_SWITCH_DATE_2) },
 ];
 
 // ============================================================
@@ -1456,7 +1611,7 @@ function showView(name, title) {
 
   const titles = {
     home: '', config: 'Mi Perfil', cotizar: 'Nueva Cotización',
-    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones',
+    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy',
   };
   headerTitle.textContent = title || titles[name] || '';
 
@@ -2461,7 +2616,7 @@ function addPriceWarning(doc, mg, y, cW, H) {
   doc.text('AVISO IMPORTANTE', mg + 4, y + 5);
   doc.setFont('helvetica','normal');
   doc.setFontSize(5.5);
-  var warningText = 'A partir de marzo 2026, el costo de todos los planes AT&T (nuevos y actuales) tendrá un incremento. El ajuste aplica el 6 de marzo para planes Diamante, Ármalo 17GB y 40GB, y el 13 de marzo para el resto de los planes.';
+  var warningText = 'A partir de marzo 2026, el costo de todos los planes AT&T (nuevos y actuales) tendrá un incremento. El ajuste aplica el 6 de marzo para planes Diamante, Ármalo 17GB y 40GB, y el 13 de marzo para el resto de los planes. Adicionalmente, los planes Azul 3, Oro, Black, Platino, Diamante y Titanio recibirán un incremento en datos incluidos.';
   var warnLines = doc.splitTextToSize(warningText, cW - 8);
   doc.text(warnLines, mg + 4, y + 9.5);
   y += 16;
@@ -5097,6 +5252,544 @@ try {
 } catch(e) { console.error('Plan actual init error:', e); }
 
 tryAutoLogin();
+
+// ============================================================
+// WHATSAPP GENERATOR
+// ============================================================
+var WA_PLANS = {};
+PLANS_ACTUALES.forEach(function(p) {
+  if (p.id.startsWith('pa_')) return; // skip Premium actuals
+  var gbNum = parseFloat(p.gb);
+  var type = p.id.startsWith('ct_') ? 'contodo' : p.id.startsWith('cg_') ? 'consiguelo' : 'armalo';
+  // Use clean name without accents for WA compatibility
+  var cleanName = p.name.replace('Á','A').replace('í','i');
+  WA_PLANS[cleanName] = { renta: p.price, gb: gbNum, type: type };
+});
+var WA_PREM = {};
+ALL_PLANS.forEach(function(p) {
+  var gbNum = parseInt(p.gb);
+  WA_PREM['AT&T ' + p.name] = { renta: p.price, gb: gbNum };
+});
+
+var waScenario = 'primer_contacto', waMassScenario = 'captacion', waRenScenario = 'primer_contacto';
+
+// Init WA dropdowns
+(function() {
+  var groups = {"Con Todo":[],"Consiguelo":[],"Armalo":[]};
+  Object.keys(WA_PLANS).forEach(function(k) {
+    var p = WA_PLANS[k];
+    var g = p.type === 'contodo' ? 'Con Todo' : p.type === 'consiguelo' ? 'Consiguelo' : 'Armalo';
+    groups[g].push('<option value="'+k+'">'+k+' — $'+p.renta+'/mes — '+p.gb+' GB</option>');
+  });
+  var opts = '';
+  ['Con Todo','Consiguelo','Armalo'].forEach(function(g) {
+    opts += '<optgroup label="'+g+'">'+groups[g].join('')+'</optgroup>';
+  });
+  ['waPlanAnterior','waMassPlan'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.innerHTML = '<option value="">Seleccionar plan...</option>' + opts;
+  });
+  var premOpts = '';
+  Object.keys(WA_PREM).forEach(function(k) {
+    var p = WA_PREM[k];
+    premOpts += '<option value="'+k+'">'+k+' — $'+p.renta+'/mes — '+p.gb+' GB</option>';
+  });
+  ['waPremiumPlan','waMassPremium'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.innerHTML = '<option value="auto">🤖 Automático</option>' + premOpts;
+  });
+  var renSel = document.getElementById('waRenPlan');
+  if (renSel) renSel.innerHTML = '<option value="">Seleccionar plan Premium...</option>' + premOpts;
+})();
+
+function waTab(tab) {
+  document.getElementById('waPersonal').style.display = tab === 'personal' ? '' : 'none';
+  document.getElementById('waMasivo').style.display = tab === 'masivo' ? '' : 'none';
+  document.getElementById('waRenovacion').style.display = tab === 'renovacion' ? '' : 'none';
+  document.getElementById('waTabPersonal').style.background = tab === 'personal' ? 'var(--att-blue)' : 'transparent';
+  document.getElementById('waTabPersonal').style.color = tab === 'personal' ? 'white' : 'var(--text-2)';
+  document.getElementById('waTabMasivo').style.background = tab === 'masivo' ? '#8B5CF6' : 'transparent';
+  document.getElementById('waTabMasivo').style.color = tab === 'masivo' ? 'white' : 'var(--text-2)';
+  document.getElementById('waTabRenovacion').style.background = tab === 'renovacion' ? '#8B5CF6' : 'transparent';
+  document.getElementById('waTabRenovacion').style.color = tab === 'renovacion' ? 'white' : 'var(--text-2)';
+  document.getElementById('waResults').innerHTML = '';
+}
+function waSelSc(b) { document.querySelectorAll('.waScBtn').forEach(function(x){x.classList.remove('active')}); b.classList.add('active'); waScenario = b.getAttribute('data-sc'); }
+function waSelMs(b) { document.querySelectorAll('.waMsBtn').forEach(function(x){x.classList.remove('active')}); b.classList.add('active'); waMassScenario = b.getAttribute('data-sc'); }
+function waSelRn(b) { document.querySelectorAll('.waRnBtn').forEach(function(x){x.classList.remove('active')}); b.classList.add('active'); waRenScenario = b.getAttribute('data-sc'); }
+
+function waFindBest(renta, gb) {
+  var best = null, bestScore = -99999;
+  Object.keys(WA_PREM).forEach(function(k) {
+    var p = WA_PREM[k];
+    if (p.gb > gb) {
+      var s = (renta - p.renta) * 1.5 + (p.gb - gb) * 5;
+      if (renta - p.renta >= -50) s += 1000;
+      if (s > bestScore) { bestScore = s; best = {name:k,renta:p.renta,gb:p.gb,saving:renta-p.renta,gbGain:p.gb-gb,gbMultiple:(p.gb/gb).toFixed(1)}; }
+    }
+  });
+  if (!best) {
+    var closest = null, diff = 999999;
+    Object.keys(WA_PREM).forEach(function(k) { var p = WA_PREM[k]; if (Math.abs(p.renta-renta) < diff) { diff = Math.abs(p.renta-renta); closest = {name:k,renta:p.renta,gb:p.gb,saving:renta-p.renta,gbGain:p.gb-gb,gbMultiple:(p.gb/Math.max(gb,1)).toFixed(1)}; } });
+    best = closest;
+  }
+  return best;
+}
+
+function waCtx(planName, type, renta, gb, prem, firstName, agent) {
+  var c = {planName:planName,renta:renta,gb:gb,pName:prem.name,pRenta:prem.renta,pGb:prem.gb,saving:prem.saving,gbMult:prem.gbMultiple,savingYear:Math.abs(prem.saving)*12,saves:prem.saving>0,same:prem.saving===0,firstName:firstName||'',agent:agent||'tu asesor',planLabel:type==='contodo'?'Con Todo':type==='consiguelo'?'Consiguelo':'Armalo'};
+  c.pagarias = c.saves ? 'pagando *$'+c.saving+' menos*' : c.same ? 'pagando *lo mismo*' : 'por *solo $'+Math.abs(c.saving)+' mas*';
+  c.tarifaFrase = c.saves ? 'bajara a tan solo *$'+c.pRenta+' al mes*' : c.same ? 'se mantiene en *$'+c.pRenta+' al mes*' : 'sera de *$'+c.pRenta+' al mes*';
+  c.tarifaBajo = c.saves ? 'bajo a tan solo $'+c.pRenta : 'sera de tan solo $'+c.pRenta;
+  c.incremento = c.saves ? 'incremento' : 'tendras';
+  c.sabias = c.saves ? 'Sabias que hoy pagas *$'+renta+'* por tu plan y podrias pagar *$'+c.pRenta+'* con *'+c.pGb+' GB* y apps ilimitadas?' : 'Sabias que por '+(c.same?'lo que ya pagas':'casi lo mismo')+' podrias tener *'+c.pGb+' GB* en lugar de *'+gb+' GB* mas apps ilimitadas y llamadas a EUA y Canada?';
+  c.ahorroMes = c.saves ? 'y *ahorras $'+c.saving+' al mes* ($'+c.savingYear+' al año)' : 'por practicamente el mismo precio';
+  c.ahorroMes2 = c.saves ? 'y pagas *menos* ($'+c.pRenta+' en lugar de $'+renta+')' : 'por '+(c.same?'el mismo precio':'solo $'+Math.abs(c.saving)+' mas');
+  c.sonAhorro = c.saves ? 'Son *$'+c.savingYear+' de ahorro al año* 💰' : 'Es '+c.gbMult+'x mas datos por practicamente lo mismo';
+  c.ahorrandoFrase = c.saves ? 'ahorrando *$'+c.saving+'/mes*' : 'sin pagar mas';
+  c.precioCompare = c.saves ? ' (*ahorras $'+c.saving+'/mes*)' : '';
+  c.tarifaMasBaja = c.saves ? 'mas baja: *$'+c.pRenta+'/mes* (hoy pagas $'+renta+')' : 'de *$'+c.pRenta+'/mes*';
+  c.ahorroLinea = c.saves ? '-Ahorrarias *$'+c.saving+'/mes* ($'+c.savingYear+' al año)' : '-Tu tarifa seria de *$'+c.pRenta+'/mes*';
+  c.masivo_ahorro = c.saves ? 'pagando *menos* ($'+c.pRenta+' en vez de $'+renta+')' : 'por '+(c.same?'el mismo precio':'casi lo mismo');
+  c.masivo_seg_ahorro = c.saves ? 'y *ahorras $'+c.saving+' al mes* ($'+c.savingYear+' al año 💰)' : 'por '+(c.same?'el mismo precio':'practicamente lo mismo');
+  return c;
+}
+
+function WL() { return Array.prototype.slice.call(arguments).join('\n'); }
+
+function waGetPersonalMsgs(c) {
+  var T = {};
+  T.primer_contacto = [
+    {tag:'Opción A — Directo',text:WL('Hola '+c.firstName+', buenas tardes 👋 Te saluda '+c.agent+' de AT&T.','','Revisando tu linea veo que sigues con un plan '+c.planName+' y hoy pagas $'+c.renta+'/mes por '+c.gb+' GB.','','Tengo una buena noticia: ya puedes actualizar a *'+c.pName+'* '+c.pagarias+' y recibes:','','✅ *'+c.pGb+' GB* de navegacion ('+c.gbMult+'x mas que hoy)','✅ 6 apps ilimitadas','✅ Llamadas y mensajes a EUA y Canada','','Conservas tu mismo numero y no tienes que ir a ninguna tienda. Te interesa? Solo toma 5 minutos 📲')},
+    {tag:'Opción B — Corto',text:WL('Hola '+c.firstName+' 👋 Te contacto de AT&T.','',c.sabias,'','Tu plan '+c.planName+' ya puede actualizarse y la mejora es importante.','','Quieres que te explique en 2 minutos? 📱')},
+    {tag:'Opción C — Interactivo',text:WL('Hola '+c.firstName+'!👋','Tu plan *'+c.planName+'* ya cumplio su vigencia y tienes disponible una actualizacion a los planes *Premium*💎','La diferencia principal es que con la actualizacion:','-Recibiras *'+c.pGb+' GB* ('+c.gbMult+'x mas de lo que tienes hoy)','-Tu tarifa '+c.tarifaFrase,'-Podras adquirir el equipo que desees con descuentos increibles o bien si no deseas gastar simplemente reclama el equipo sin costo que te pertenece como cliente','-Mas apps ilimitadas','-Llamadas y mensajes a EUA y Canada','','Con esta propuesta AT&T quiere darte lo mejor y por ello tu respuesta es valiosa para mejorar, responde:','1)💰Obviamente quiero pagar menos💰','2)📱Me interesa cotizar un equipo📱','3)No deseo ser contactado por este medio')},
+    {tag:'Opción D — Alerta',text:WL('🚨Actualizacion importante🚨','','Hola '+c.firstName+', es hora de actualizar tu plan ya que *tu tarifa '+c.tarifaBajo+'* y ademas '+c.incremento+' a *'+c.pGb+' GB* libres para navegar. Adicional puedes elegir entre llevarte un dispositivo sin costo o bien elegir el equipo que gustes aprovechando nuestros descuentos en las mejores marcas.','','📢‼️ Tambien recuerda que puedes adquirir una linea adicional sin plazo establecido si asi lo requieres ‼️📢','','Tu respuesta es importante para nosotros, elige un numero 🚨','1)*Si quiero pagar menos*💰💰💰','2)*Me gustaria cotizar 🤑 un equipo*📲','3)*Requiero una linea adicional*','4)*Quiero mas informacion* 🤩','5) Deseo que no me contacten por este medio','','*AT&T cambia el juego* 😉')}
+  ];
+  T.seguimiento = [
+    {tag:'Opción A — Dato',text:WL(c.firstName+', te escribi hace unos dias sobre la mejora de tu plan AT&T.','','Solo para que lo tengas claro: con tu plan actual pagas *$'+c.renta+'/mes* por *'+c.gb+' GB*. Con la actualizacion tendrias *'+c.pGb+' GB* '+c.ahorroMes+'.','','La promocion sigue disponible, pero no por mucho tiempo ⏳','','Te interesa? Respondeme y lo armamos rapido.')},
+    {tag:'Opción B — Breve',text:WL(c.firstName+' 👋 Tu mejora de plan AT&T sigue disponible.','','De *'+c.gb+' GB* pasas a *'+c.pGb+' GB* '+c.ahorroMes2+'.','','Respondeme *SI* y te explico en 1 minuto ✅')},
+    {tag:'Opción C — Interactivo',text:WL('Hola de nuevo '+c.firstName+'!👋','Te contactamos de AT&T porque tu plan *'+c.planName+'* tiene una actualizacion *Premium* disponible💎','','Mira lo que incluye:','-*'+c.pGb+' GB* de navegacion ('+c.gbMult+'x mas que tu plan actual)','-Tarifa '+c.tarifaMasBaja,'-Acceso a descuentos en equipos o equipo sin costo','-Apps ilimitadas + llamadas a EUA y Canada','','No queremos que te quedes sin esta mejora, respondenos:','1)💰Quiero pagar menos y mejorar mi plan💰','2)📱Me interesa cotizar un equipo📱','3)No deseo ser contactado por este medio')},
+    {tag:'Opción D — Alerta',text:WL('🚨Actualizacion importante🚨','',c.firstName+', te recordamos que tu plan *'+c.planName+'* ya tiene disponible una mejora: *tu tarifa '+c.tarifaBajo+'* y ademas '+c.incremento+' a *'+c.pGb+' GB* libres para navegar. Adicional puedes elegir entre llevarte un dispositivo sin costo o bien elegir el equipo que gustes aprovechando nuestros descuentos en las mejores marcas.','','📢‼️ Tambien recuerda que puedes adquirir una linea adicional sin plazo establecido si asi lo requieres ‼️📢','','Tu respuesta es importante para nosotros, elige un numero 🚨','1)*Si quiero pagar menos*💰💰💰','2)*Me gustaria cotizar 🤑 un equipo*📲','3)*Requiero una linea adicional*','4)*Quiero mas informacion* 🤩','5) Deseo que no me contacten por este medio','','*AT&T cambia el juego* 😉')}
+  ];
+  T.cierre = [
+    {tag:'Opción A — Urgencia',text:WL(c.firstName+', te comento que la promocion para actualizar tu plan '+c.planName+' esta por vencer este mes.','','Mira lo que pierdes si no actualizas:','','❌ Tu plan actual: '+c.gb+' GB + solo redes sociales — *$'+c.renta+'/mes*','✅ Plan '+c.pName+': *'+c.pGb+' GB* + 6 apps ilimitadas + llamadas a EUA/Canada — *$'+c.pRenta+'/mes*','',c.sonAhorro,'','Despues de este mes, tu linea se queda con el plan anterior sin posibilidad de mejora en las mismas condiciones.','','Lo activamos? Te llamo en 2 minutos si me respondes *SI* ✅')},
+    {tag:'Opción B — Social proof',text:WL(c.firstName+', esta semana ya ayudamos a muchos clientes AT&T con plan '+c.planLabel+' a mejorar su servicio.','','La mayoria paso de '+c.gb+' GB a *'+c.pGb+' GB* '+c.ahorrandoFrase+'.','','Lo hacemos en 5 minutos por telefono, no tienes que ir a tienda ni hacer tramites complicados 🙌','','Te marco? Solo respondeme *SI* y listo.')},
+    {tag:'Opción C — Interactivo',text:WL('⚠️ Ultima oportunidad '+c.firstName+'!','Tu plan *'+c.planName+'* esta por perder la posibilidad de actualizar a *Premium*💎','','Lo que esta en juego:','-Pasarias de *'+c.gb+' GB* a *'+c.pGb+' GB* de navegacion',c.ahorroLinea,'-Descuentos exclusivos en equipos nuevos o equipo sin costo','-Apps ilimitadas + llamadas a EUA y Canada','','Responde antes de que cierre:','1)💰Si! Quiero la mejora💰','2)📱Me interesa un equipo nuevo📱','3)No deseo ser contactado por este medio')},
+    {tag:'Opción D — Alerta',text:WL('🚨Actualizacion importante '+c.firstName+'🚨','','Tu plan *'+c.planName+'* esta en sus ultimos dias para actualizar. *Tu tarifa '+c.tarifaBajo+'* y ademas '+c.incremento+' a *'+c.pGb+' GB* libres para navegar. Adicional puedes elegir entre llevarte un dispositivo sin costo o bien elegir el equipo que gustes aprovechando nuestros descuentos en las mejores marcas.','','📢‼️ Tambien recuerda que puedes adquirir una linea adicional sin plazo establecido si asi lo requieres ‼️📢','','No dejes pasar esta oportunidad, elige un numero 🚨','1)*Si quiero pagar menos*💰💰💰','2)*Me gustaria cotizar 🤑 un equipo*📲','3)*Requiero una linea adicional*','4)*Quiero mas informacion* 🤩','5) Deseo que no me contacten por este medio','','*AT&T cambia el juego* 😉')}
+  ];
+  T.tienda = [
+    {tag:'Opción A — Validar',text:WL('Entiendo perfectamente '+c.firstName+' 👍 Es normal querer ir a la tienda.','','Solo te comento 3 ventajas de hacerlo conmigo por telefono:','','1️⃣ *No haces fila* — en tienda el tiempo promedio es de 40 min a 1 hora','2️⃣ *Mismo resultado* — el plan '+c.pName+' con *'+c.pGb+' GB* a *$'+c.pRenta+'/mes* es exactamente el mismo','3️⃣ *Queda grabado* — la llamada queda registrada como respaldo de tu cambio','','Si prefieres ir a tienda no hay problema, pero si quieres ahorrarte el viaje lo hacemos ahorita en 5 minutos 📲','','Tu decides 🤝')},
+    {tag:'Opción B — Disponibilidad',text:WL('Claro '+c.firstName+', en la tienda te pueden atender sin problema.','','Solo ten en cuenta que esta promocion la estamos manejando directamente y *puede que en tienda no tengan la misma oferta*.','','Tu plan '+c.planName+' de $'+c.renta+'/mes cambiaria a *'+c.pName+'* con *'+c.pGb+' GB* a *$'+c.pRenta+'/mes*'+c.precioCompare+'.','','Si decides hacerlo por aqui, te llamo y lo resolvemos rapido. Si prefieres tienda, te recomiendo ir a la mas cercana antes de fin de mes cuando cambian las promociones.','','Como le hacemos? 📱')},
+    {tag:'Opción C — Interactivo',text:WL('Hola '+c.firstName+'!👋','Entendemos que prefieras ir a tienda, es totalmente valido 👍','','Pero antes de que hagas el viaje, mira lo que tu plan *'+c.planName+'* puede mejorar:','-*'+c.pGb+' GB* de navegacion ('+c.gbMult+'x mas que hoy)','-Tarifa '+c.tarifaMasBaja,'-Equipo sin costo o descuentos increibles','-Apps ilimitadas + llamadas a EUA y Canada','','Todo esto lo puedes hacer por telefono en 5 minutos, sin filas. Pero tu decides:','1)💰Hagamoslo por telefono, quiero la mejora💰','2)📱Me interesa cotizar un equipo📱','3)Prefiero ir a tienda de todos modos')},
+    {tag:'Opción D — Alerta',text:WL('🚨Actualizacion importante '+c.firstName+'🚨','','Antes de que vayas a tienda, te compartimos que *tu tarifa '+c.tarifaBajo+'* y ademas '+c.incremento+' a *'+c.pGb+' GB* libres para navegar. Adicional puedes elegir entre llevarte un dispositivo sin costo o bien elegir el equipo que gustes aprovechando nuestros descuentos en las mejores marcas.','','📢‼️ Tambien recuerda que puedes adquirir una linea adicional sin plazo establecido si asi lo requieres ‼️📢','','Lo mejor: lo hacemos por telefono sin que tengas que hacer fila 🙌','','Elige un numero 🚨','1)*Si quiero pagar menos*💰💰💰','2)*Me gustaria cotizar 🤑 un equipo*📲','3)*Requiero una linea adicional*','4)*Quiero mas informacion* 🤩','5) Deseo que no me contacten por este medio','','*AT&T cambia el juego* 😉')}
+  ];
+  return T[waScenario] || T.primer_contacto;
+}
+
+function waGetMassMsgs(c) {
+  var T = {};
+  T.captacion = [
+    {tag:'Opción A — Con datos',text:WL('Hola, buenas tardes 👋 Te contactamos de AT&T.','','Detectamos que tu plan *'+c.planName+'* ya puede actualizarse.','','Hoy pagas *$'+c.renta+'/mes* por *'+c.gb+' GB*. Con la actualizacion a *'+c.pName+'* '+c.pagarias+' y recibes:','','✅ *'+c.pGb+' GB* de navegacion ('+c.gbMult+'x mas)','✅ 6 apps ilimitadas','✅ Llamadas a EUA y Canada','','Conservas tu numero, sin ir a tienda. Te interesa? 📲')},
+    {tag:'Opción B — Curioso',text:WL('Hola 👋 Te escribimos de AT&T.','',c.sabias,'','Tu plan '+c.planName+' ya tiene actualizacion disponible ✅','','Quieres saber mas? Respondeme SI y te explico en 2 minutos.')},
+    {tag:'Opción C — Interactivo',text:WL('Hola!👋','Tu plan *'+c.planName+'* ya cumplio su vigencia y tienes disponible una actualizacion a los planes *Premium*💎','La diferencia principal es que con la actualizacion:','-Recibiras *'+c.pGb+' GB* ('+c.gbMult+'x mas de lo que tienes hoy)','-Tu tarifa '+c.tarifaFrase,'-Podras adquirir el equipo que desees con descuentos increibles o simplemente reclama el equipo sin costo que te pertenece','-Mas apps ilimitadas','-Llamadas y mensajes a EUA y Canada','','Responde:','1)💰Obviamente quiero pagar menos💰','2)📱Me interesa cotizar un equipo📱','3)No deseo ser contactado por este medio')},
+    {tag:'Opción D — Alerta',text:WL('🚨Actualizacion importante🚨','','Es hora de actualizar tu plan ya que *tu tarifa '+c.tarifaBajo+'* y ademas '+c.incremento+' a *'+c.pGb+' GB* libres para navegar. Adicional puedes elegir entre llevarte un dispositivo sin costo o bien elegir el equipo que gustes aprovechando nuestros descuentos en las mejores marcas.','','📢‼️ Tambien recuerda que puedes adquirir una linea adicional sin plazo establecido ‼️📢','','Elige un numero 🚨','1)*Si quiero pagar menos*💰💰💰','2)*Me gustaria cotizar 🤑 un equipo*📲','3)*Requiero una linea adicional*','4)*Quiero mas informacion* 🤩','5) Deseo que no me contacten por este medio','','*AT&T cambia el juego* 😉')}
+  ];
+  T.seguimiento = [
+    {tag:'Opción A — Recordatorio',text:WL('Hola, te escribimos hace unos dias de AT&T sobre la mejora disponible para tu plan 📱','','Solo para recordarte: con tu plan *'+c.planName+'* pagas *$'+c.renta+'/mes* por *'+c.gb+' GB*.','','Con la actualizacion tendrias *'+c.pGb+' GB* '+c.masivo_seg_ahorro+'.','','La oferta sigue vigente pero tiene fecha limite ⏳','','Respondeme SI si te interesa.')},
+    {tag:'Opción B — Breve',text:WL('👋 Tu mejora de plan AT&T sigue disponible.','','De *'+c.gb+' GB* a *'+c.pGb+' GB* '+c.masivo_ahorro+'.','','Responde *SI* y te explico rapido ✅')},
+    {tag:'Opción C — Interactivo',text:WL('Hola de nuevo!👋','Te contactamos de AT&T porque tu plan *'+c.planName+'* tiene una actualizacion *Premium* disponible💎','','Mira lo que incluye:','-*'+c.pGb+' GB* de navegacion ('+c.gbMult+'x mas)','-Tarifa '+c.tarifaMasBaja,'-Acceso a descuentos en equipos o equipo sin costo','-Apps ilimitadas + llamadas a EUA y Canada','','Respondenos:','1)💰Quiero pagar menos💰','2)📱Me interesa cotizar un equipo📱','3)No deseo ser contactado por este medio')},
+    {tag:'Opción D — Alerta',text:WL('🚨Actualizacion importante🚨','','Te recordamos que tu plan *'+c.planName+'* ya tiene disponible una mejora: *tu tarifa '+c.tarifaBajo+'* y ademas '+c.incremento+' a *'+c.pGb+' GB* libres para navegar.','','Elige un numero 🚨','1)*Si quiero pagar menos*💰💰💰','2)*Me gustaria cotizar 🤑 un equipo*📲','3)*Requiero una linea adicional*','4)*Quiero mas informacion* 🤩','5) Deseo que no me contacten por este medio','','*AT&T cambia el juego* 😉')}
+  ];
+  T.urgencia = [
+    {tag:'Opción A — Último aviso',text:WL('⚠️ Ultimo aviso sobre tu actualizacion AT&T.','','Tu plan *'+c.planName+'* ya puede migrar a *'+c.pName+'* con mejores beneficios:','','❌ Hoy: *'+c.gb+' GB* + redes sociales — *$'+c.renta+'/mes*','✅ Nuevo: *'+c.pGb+' GB* + 6 apps ilimitadas + EUA/Canada — *$'+c.pRenta+'/mes*','',c.sonAhorro,'','Esta promocion vence pronto.','','Responde *SI* para activarlo hoy ✅')},
+    {tag:'Opción B — Social proof',text:WL('Esta semana cientos de clientes AT&T con plan *'+c.planLabel+'* ya actualizaron su servicio 🚀','','Pasaron de *'+c.gb+' GB* a *'+c.pGb+' GB* '+c.ahorrandoFrase+'.','','No te quedes con el plan anterior. Responde *SI* y lo activamos en 5 minutos 🙌')},
+    {tag:'Opción C — Interactivo',text:WL('⚠️ Ultima oportunidad!','Tu plan *'+c.planName+'* esta por perder la posibilidad de actualizar a *Premium*💎','','Lo que esta en juego:','-Pasarias de *'+c.gb+' GB* a *'+c.pGb+' GB*',c.ahorroLinea,'-Descuentos exclusivos en equipos','','Responde:','1)💰Si! Quiero la mejora💰','2)📱Me interesa un equipo nuevo📱','3)No deseo ser contactado por este medio')},
+    {tag:'Opción D — Alerta',text:WL('🚨Ultimo aviso🚨','','Tu plan *'+c.planName+'* esta en sus ultimos dias para actualizar. *Tu tarifa '+c.tarifaBajo+'* y ademas '+c.incremento+' a *'+c.pGb+' GB* libres para navegar.','','No dejes pasar esta oportunidad 🚨','1)*Si quiero pagar menos*💰💰💰','2)*Me gustaria cotizar 🤑 un equipo*📲','3)*Requiero una linea adicional*','4)*Quiero mas informacion* 🤩','5) Deseo que no me contacten por este medio','','*AT&T cambia el juego* 😉')}
+  ];
+  T.beneficios = [
+    {tag:'Opción A — Mejoras',text:WL('Hola 👋 Te contactamos de AT&T con buenas noticias.','','Tu plan *'+c.planName+'* ya tiene disponible una actualizacion con mejores beneficios:','','✅ Mas gigas de navegacion libre','✅ 6 apps completamente ilimitadas','✅ Llamadas y mensajes a Mexico, EUA y Canada','✅ Conservas tu mismo numero','','Todo sin ir a tienda y en menos de 5 minutos 📲','','Te gustaria conocer los detalles? Responde SI.')},
+    {tag:'Opción B — Pregunta gancho',text:WL('Hola 👋 Pregunta rapida:','','Tu plan AT&T actual tiene llamadas a Estados Unidos y Canada? Y apps de streaming ilimitadas?','','Si la respuesta es no, tu plan ya puede actualizarse a uno que SI incluye todo eso ✅','','Quieres que te cuente como funciona? Solo toma 2 minutos.')},
+    {tag:'Opción C — Interactivo',text:WL('Hola!👋','Tu plan *'+c.planName+'* puede actualizarse a un plan *Premium* con beneficios superiores:','-*'+c.pGb+' GB* de navegacion libre','-6 apps completamente ilimitadas','-Llamadas a Mexico, EUA y Canada','-Equipo sin costo o con descuentos increibles','','Responde:','1)💰Me interesa mejorar mi plan💰','2)📱Quiero cotizar un equipo📱','3)No deseo ser contactado por este medio')},
+    {tag:'Opción D — Alerta',text:WL('🚨Actualizacion importante🚨','','Es hora de actualizar tu plan ya que *tu tarifa '+c.tarifaBajo+'* y ademas '+c.incremento+' a *'+c.pGb+' GB* libres para navegar.','','Elige un numero 🚨','1)*Si quiero pagar menos*💰💰💰','2)*Me gustaria cotizar 🤑 un equipo*📲','3)*Requiero una linea adicional*','4)*Quiero mas informacion* 🤩','5) Deseo que no me contacten por este medio','','*AT&T cambia el juego* 😉')}
+  ];
+  return T[waMassScenario] || T.captacion;
+}
+
+function waGetRenMsgs(planKey, planData, firstName) {
+  var pN=planKey,pR=planData.renta,pG=planData.gb;
+  var saludo = firstName ? 'Estimado '+firstName+'! 💎' : 'Estimado cliente Premium! 💎';
+  var saludoCorto = firstName ? firstName+', ' : '';
+  var T = {};
+  T.primer_contacto = [
+    {tag:'Opción A — Original',text:WL(saludo,'','Tu linea cuenta con *beneficios exclusivos* gracias al nivel de cliente que tienes en donde AT&T te otorga un *equipo sin costo* 📱 por tu misma renta de *$'+pR+'/mes* con *'+pG+' GB* o si lo prefieres puedes adquirir el equipo que tu desees con *grandes descuentos* significativos 🤑','','Tu numero, fechas de corte y pago *no cambian* y el proceso es muy sencillo ✅','','Responde la opcion deseada 👇','1)*Me interesa el equipo sin costo* 📱','2)*Quiero cotizar un equipo* 💰','3)*Me interesa un plan con mas GB* 🚀','4) No quiero ser contactado por este medio','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción B — Exclusividad',text:WL('🌟 '+saludo,'','Por ser cliente *'+pN+'* con *'+pG+' GB* a *$'+pR+'/mes* tienes acceso a beneficios exclusivos 🔒','','🆓 *Equipo sin costo* — reclama el dispositivo que ya te corresponde','📲 *Descuentos exclusivos* — iPhone, Samsung, Motorola y mas','📊 *Mejora de plan* — si necesitas mas gigas','','Lo mejor: *nada cambia*: mismo numero, misma renta de *$'+pR+'*, misma fecha de corte 👌','','Elige una opcion 🚀','1)*Quiero mi equipo sin costo* 📱','2)*Me interesa cotizar un equipo con descuento* 🤑','3)*Quiero conocer planes con mas GB* 📊','4) No deseo ser contactado por este medio','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción C — Breve',text:WL('👋 '+saludo,'','Sabias que por ser cliente *'+pN+'* tienes derecho a un *equipo nuevo*? 📱','','✅ Sin costo adicional','✅ Tu plan de *'+pG+' GB* a *$'+pR+'/mes* no cambia','✅ Sin cambiar tu numero ni fecha de pago','✅ Todo por telefono en minutos','','O elige el smartphone que mas te guste con *descuentos exclusivos* 🤑','','Que te gustaria hacer? 👇','1)*Quiero el equipo sin costo* 📱','2)*Quiero cotizar un equipo premium* 💰','3)*Me interesan mas GB en mi plan* 🚀','4) No quiero ser contactado por este medio','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción D — Beneficios',text:WL('💎 '+saludo,'','AT&T quiere *premiarte* por tu preferencia. Como cliente *'+pN+'* (*'+pG+' GB* a *$'+pR+'/mes*) estos son tus beneficios:','','📱 *Equipo sin costo* incluido en tu renovacion','🤑 *Descuentos increibles* en las mejores marcas','🚀 *Opcion de mejorar tu plan* si necesitas mas gigas','🔄 *Linea adicional* disponible sin plazo establecido','','Tu numero, renta y fechas de pago se mantienen igual ✅','','Dinos como podemos ayudarte 👇','1)*Me interesa el equipo sin costo* 📱','2)*Quiero cotizar un equipo* 💰','3)*Me interesa un plan con mas GB* 🚀','4)*Quiero una linea adicional* 📲','5) No quiero ser contactado por este medio','','*AT&T Cambia el juego* 😉')}
+  ];
+  T.seguimiento = [
+    {tag:'Opción A — Amable',text:WL('👋 '+saludoCorto+'te escribimos nuevamente de AT&T.','','Tu beneficio como cliente *'+pN+'* (*'+pG+' GB* a *$'+pR+'/mes*) sigue disponible ✅','','Puedes llevarte un *equipo sin costo* 📱 o adquirir el smartphone de tu preferencia con *descuentos exclusivos* 🤑','','Tu renta de *$'+pR+'*, numero y fechas de pago *no cambian* 👌','','Elige una opcion 👇','1)*Me interesa el equipo sin costo* 📱','2)*Quiero cotizar un equipo* 💰','3)*Me interesa un plan con mas GB* 🚀','4) No quiero ser contactado por este medio','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción B — Pregunta',text:WL(saludoCorto+'una pregunta rapida ☝️','','Ya revisaste los equipos disponibles para ti como cliente *'+pN+'*? 📱','','Tienes un equipo *sin costo* esperandote o puedes elegir entre las mejores marcas con *descuentos significativos* 🤑','','Tu plan de *'+pG+' GB* a *$'+pR+'/mes* se mantiene igual ✅','','1)*Si, quiero el equipo sin costo* 📱','2)*Quiero ver equipos con descuento* 💰','3)*Prefiero mejorar mi plan primero* 🚀','4) No quiero ser contactado por este medio','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción C — Lo que pierde',text:WL('⏳ '+saludoCorto+'tu beneficio Premium sigue activo pero tiene vigencia.','','📱 *Equipo sin costo* — ya incluido por ser cliente *'+pN+'*','🤑 *Descuentos exclusivos* — en iPhone, Samsung y mas','🚀 *Mejora de plan* — mas GB si lo necesitas','','Tu plan de *'+pG+' GB* a *$'+pR+'/mes* no cambia ✅','','Elige antes de que venza 👇','1)*Me interesa el equipo sin costo* 📱','2)*Quiero cotizar un equipo* 💰','3)*Me interesa mas GB* 🚀','4) No quiero ser contactado por este medio','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción D — Ultra breve',text:WL('👋 '+saludoCorto+'recordatorio rapido:','','Tu *equipo sin costo* como cliente *'+pN+'* (*'+pG+' GB, $'+pR+'/mes*) sigue disponible 📱','','1)*Quiero el equipo sin costo* 📱','2)*Cotizar un equipo* 💰','3)*Mas informacion* 🚀','4) No contactar','','*AT&T Cambia el juego* 😉')}
+  ];
+  T.equipo = [
+    {tag:'Opción A — Marcas',text:WL('📱 '+saludo,'','Como cliente *'+pN+'* (*'+pG+' GB* a *$'+pR+'/mes*) tienes acceso a:','','🍎 *iPhone* — ultimos modelos con descuentos','📱 *Samsung Galaxy* — lo mejor en Android','⚡ *Motorola* — rendimiento increible','🌟 *Xiaomi* — innovacion a grandes precios','','O llevate un *equipo totalmente sin costo* 🆓','','Tu renta de *$'+pR+'/mes* y tu numero no cambian ✅','','1)*Quiero el equipo sin costo* 🆓','2)*Quiero cotizar un iPhone* 🍎','3)*Quiero cotizar un Samsung* 📱','4)*Quiero ver otra marca* 🌟','5) No quiero ser contactado por este medio','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción B — Sin costo',text:WL('🆓 '+saludo,'','Tienes un *equipo nuevo esperandote SIN COSTO* como cliente *'+pN+'* 📱','','✅ Eliges tu equipo sin costo','✅ Conservas tu plan de *'+pG+' GB* a *$'+pR+'/mes*','✅ Tu numero y fecha de pago no cambian','✅ Todo por telefono en minutos','','Si prefieres *gama alta*, tenemos *descuentos exclusivos* 🤑','','1)*Me llevo el equipo sin costo* 📱','2)*Quiero cotizar un equipo con descuento* 💰','3)*Quiero ver las marcas disponibles* 🌟','4) No quiero ser contactado por este medio','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción C — Celular viejo',text:WL('📲 '+saludo,'','Si tu celular ya esta lento o la bateria no dura... este es el momento perfecto ⚡','','Como cliente *'+pN+'* (*'+pG+' GB, $'+pR+'/mes*) tienes:','','🆓 *Equipo sin costo* — para que estrenes ya','🤑 *Descuentos de hasta 40%* en equipos de gama alta','📱 Las *mejores marcas*: iPhone, Samsung, Motorola, Xiaomi','','Tu numero, renta y fechas de pago no cambian ✅','','1)*Quiero el equipo sin costo* 📱','2)*Quiero cotizar un equipo premium* 💰','3)*Me interesa un plan con mas GB* 🚀','4) No quiero ser contactado por este medio','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción D — Urgencia equipo',text:WL('⚠️ '+saludoCorto+'los equipos disponibles para clientes *'+pN+'* tienen *stock limitado* 📱','','🆓 *Equipo sin costo* disponible ahora','🤑 *Descuentos exclusivos* en iPhone, Samsung y mas','✅ Tu plan de *'+pG+' GB* a *$'+pR+'/mes* no cambia','','1)*Quiero el equipo sin costo* 📱','2)*Cotizar equipo con descuento* 💰','3)*Mas GB en mi plan* 🚀','4) No contactar por este medio','','*AT&T Cambia el juego* 😉')}
+  ];
+  T.urgencia = [
+    {tag:'Opción A — Último aviso',text:WL('🚨 '+saludoCorto+'este es un *ultimo aviso* importante.','','Tu beneficio como cliente *'+pN+'* (*'+pG+' GB* a *$'+pR+'/mes*) esta por vencer:','','📱 *Equipo sin costo* — solo por tiempo limitado','🤑 *Descuentos exclusivos* — en las mejores marcas','🚀 *Mejora de plan* — mas GB si los necesitas','','Despues de esta fecha *no podemos garantizar las mismas condiciones* ⏳','','Tu renta de *$'+pR+'* y fechas de pago *no cambian* ✅','','1)*Me interesa el equipo sin costo* 📱','2)*Quiero cotizar un equipo* 💰','3)*Me interesa un plan con mas GB* 🚀','4) No quiero ser contactado por este medio','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción B — Escasez',text:WL('⏳ '+saludoCorto+'tu ventana para reclamar tu equipo como cliente *'+pN+'* se esta cerrando.','','❌ Si no renuevas → pierdes el equipo sin costo','❌ Si no renuevas → pierdes los descuentos exclusivos','✅ Si renuevas → equipo nuevo + mismo plan (*'+pG+' GB, $'+pR+'/mes*)','','No cambia absolutamente nada de tu plan 👌','','1)*Quiero mi equipo sin costo ya* 📱','2)*Cotizar equipo con descuento* 💰','3)*Mas informacion* 🚀','4) No contactar por este medio','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción C — Directo',text:WL('🚨 *Ultima oportunidad* '+(firstName||'cliente Premium')+'!','','Tu equipo sin costo 📱 y tus descuentos 🤑 de tu plan *'+pN+'* (*'+pG+' GB, $'+pR+'/mes*) estan por vencer.','','Mismo numero ✅ Misma renta ✅ Mismas fechas ✅','','1)*Quiero el equipo sin costo* 📱','2)*Cotizar equipo* 💰','3)*Mejorar plan* 🚀','4) No contactar','','*AT&T Cambia el juego* 😉')},
+    {tag:'Opción D — Completo',text:WL('🚨 '+saludoCorto+'tu beneficio como cliente *'+pN+'* (*'+pG+' GB, $'+pR+'/mes*) vence pronto.','','Tienes derecho a:','','📱 *Equipo sin costo* en tu renovacion','🤑 *Descuentos significativos* en el equipo que elijas','🚀 *Mas GB* si necesitas mejorar tu plan','📲 *Linea adicional* sin plazo establecido','','Tu numero, renta y fechas *se mantienen igual* ✅','','1)*Me interesa el equipo sin costo* 📱','2)*Quiero cotizar un equipo* 💰','3)*Me interesa un plan con mas GB* 🚀','4)*Quiero una linea adicional* 📲','5) No quiero ser contactado por este medio','','*AT&T Cambia el juego* 😉')}
+  ];
+  return T[waRenScenario] || T.primer_contacto;
+}
+
+// Main generate
+function waGenerate(mode) {
+  var msgs, compHtml = '';
+  if (mode === 'personal') {
+    var name = document.getElementById('waCliNombre').value.trim();
+    var planKey = document.getElementById('waPlanAnterior').value;
+    var rentaOvr = document.getElementById('waRentaOverride').value.trim();
+    var agent = document.getElementById('waAgentName').value.trim() || (state.agente ? state.agente.nombre : 'tu asesor');
+    var premChoice = document.getElementById('waPremiumPlan').value;
+    if (!name) { document.getElementById('waCliNombre').style.borderColor='#DC3545'; return; }
+    if (!planKey) { document.getElementById('waPlanAnterior').style.borderColor='#DC3545'; return; }
+    var plan = WA_PLANS[planKey];
+    var renta = rentaOvr ? parseInt(rentaOvr.replace(/[^0-9]/g,'')) : plan.renta;
+    var prem = premChoice === 'auto' ? waFindBest(renta, plan.gb) : (function(){var p=WA_PREM[premChoice];return{name:premChoice,renta:p.renta,gb:p.gb,saving:renta-p.renta,gbGain:p.gb-plan.gb,gbMultiple:(p.gb/plan.gb).toFixed(1)}})();
+    var c = waCtx(planKey, plan.type, renta, plan.gb, prem, name.split(' ')[0], agent);
+    msgs = waGetPersonalMsgs(c);
+    compHtml = waCompareHtml(planKey, renta, plan.gb, prem);
+  } else if (mode === 'masivo') {
+    var planKey = document.getElementById('waMassPlan').value;
+    var premChoice = document.getElementById('waMassPremium').value;
+    if (!planKey) { document.getElementById('waMassPlan').style.borderColor='#DC3545'; return; }
+    var plan = WA_PLANS[planKey];
+    var prem = premChoice === 'auto' ? waFindBest(plan.renta, plan.gb) : (function(){var p=WA_PREM[premChoice];return{name:premChoice,renta:p.renta,gb:p.gb,saving:plan.renta-p.renta,gbGain:p.gb-plan.gb,gbMultiple:(p.gb/Math.max(plan.gb,1)).toFixed(1)}})();
+    var c = waCtx(planKey, plan.type, plan.renta, plan.gb, prem, '', '');
+    msgs = waGetMassMsgs(c);
+    compHtml = waCompareHtml(planKey, plan.renta, plan.gb, prem);
+  } else {
+    var planKey = document.getElementById('waRenPlan').value;
+    var name = document.getElementById('waRenName').value.trim();
+    if (!planKey) { document.getElementById('waRenPlan').style.borderColor='#DC3545'; return; }
+    var planData = WA_PREM[planKey];
+    var firstName = name ? name.split(' ')[0] : '';
+    msgs = waGetRenMsgs(planKey, planData, firstName);
+    compHtml = '<div class="section" style="padding:12px;margin-bottom:8px;background:#F3E8FF;border:1px solid #D8B4FE">' +
+      '<div style="display:flex;justify-content:center;gap:20px;flex-wrap:wrap">' +
+      '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#8B5CF6">'+planKey+'</div><div style="font-size:10px;color:var(--text-3)">Plan actual = renovado</div></div>' +
+      '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:#10B981">'+planData.gb+' GB</div><div style="font-size:10px;color:var(--text-3)">Se mantiene</div></div>' +
+      '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:var(--att-blue)">$'+planData.renta+'/mes</div><div style="font-size:10px;color:var(--text-3)">Misma tarifa</div></div>' +
+      '<div style="text-align:center"><div style="font-size:18px">📱</div><div style="font-size:10px;color:var(--text-3)">+ Equipo</div></div>' +
+      '</div></div>';
+  }
+  window._waMsgs = msgs;
+  var h = compHtml;
+  var tags = ['wa-msg-tag-a','wa-msg-tag-b','wa-msg-tag-c','wa-msg-tag-d'];
+  var now = new Date();
+  var timeStr = ('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2);
+  for (var i = 0; i < msgs.length; i++) {
+    h += '<div class="wa-msg-card"><div class="wa-msg-header"><span class="wa-msg-tag '+tags[i]+'">'+msgs[i].tag+'</span>';
+    h += '<button class="btn btn-secondary" style="font-size:10px;padding:5px 10px" onclick="waCopy(this,'+i+')">📋 Copiar</button>';
+    h += '</div><div class="wa-bubble-area"><div class="wa-bubble-msg">'+msgs[i].text+'<div class="wa-bubble-time">'+timeStr+' ✓✓</div></div></div></div>';
+  }
+  document.getElementById('waResults').innerHTML = h;
+  document.getElementById('waResults').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function waCompareHtml(planName, renta, gb, prem) {
+  var saves = prem.saving > 0, same = prem.saving === 0;
+  return '<div class="section" style="padding:12px;margin-bottom:8px">' +
+    '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center">' +
+    '<div style="text-align:center;padding:10px;background:#FEE2E2;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#DC3545;letter-spacing:1px">PLAN ACTUAL</div><div style="font-weight:700;font-size:12px">'+planName+'</div><div style="font-size:18px;font-weight:800;color:#DC3545">$'+renta+'</div><div style="font-size:10px;color:var(--text-3)">'+gb+' GB</div></div>' +
+    '<div style="font-size:20px;color:var(--att-blue);text-align:center">→</div>' +
+    '<div style="text-align:center;padding:10px;background:#D1FAE5;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#10B981;letter-spacing:1px">PLAN PREMIUM</div><div style="font-weight:700;font-size:12px">'+prem.name+'</div><div style="font-size:18px;font-weight:800;color:#10B981">$'+prem.renta+'</div><div style="font-size:10px;color:var(--text-3)">'+prem.gb+' GB</div></div>' +
+    '</div>' +
+    '<div style="display:flex;justify-content:center;gap:16px;margin-top:8px;flex-wrap:wrap">' +
+    '<div style="text-align:center"><div style="font-size:14px;font-weight:800;color:'+(saves?'#10B981':same?'var(--att-blue)':'#F59E0B')+'">'+(saves?'-$'+prem.saving+'/mes':same?'$0':'+$'+Math.abs(prem.saving)+'/mes')+'</div><div style="font-size:9px;color:var(--text-3)">'+(saves?'AHORRO MENSUAL':same?'MISMO PRECIO':'DIFERENCIA')+'</div></div>' +
+    '<div style="text-align:center"><div style="font-size:14px;font-weight:800;color:var(--att-blue)">'+prem.gbMultiple+'x</div><div style="font-size:9px;color:var(--text-3)">MÁS DATOS</div></div>' +
+    '<div style="text-align:center"><div style="font-size:14px;font-weight:800;color:#10B981">'+prem.gb+' GB</div><div style="font-size:9px;color:var(--text-3)">NAVEGACIÓN</div></div>' +
+    (saves ? '<div style="text-align:center"><div style="font-size:14px;font-weight:800;color:#10B981">$'+(prem.saving*12)+'/año</div><div style="font-size:9px;color:var(--text-3)">AHORRO ANUAL</div></div>' : '') +
+    '</div></div>';
+}
+
+function waCopy(btn, idx) {
+  try {
+    var text = window._waMsgs[idx].text.replace(/\n{3,}/g,'\n\n');
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+    document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    var orig = btn.innerHTML;
+    btn.innerHTML = '✅ Copiado!';
+    btn.style.background = '#10B981'; btn.style.color = 'white'; btn.style.borderColor = '#10B981';
+    setTimeout(function() { btn.innerHTML = orig; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }, 2000);
+  } catch(e) { alert('Error al copiar: ' + e.message); }
+}
+
+// Auto-fill agent name from logged in user
+document.getElementById('waPlanAnterior').addEventListener('change', function() {
+  var k = this.value;
+  if (!k) { document.getElementById('waHint').textContent = ''; return; }
+  var plan = WA_PLANS[k], ro = document.getElementById('waRentaOverride').value.trim();
+  var r = ro ? parseInt(ro.replace(/[^0-9]/g,'')) : plan.renta;
+  var b = waFindBest(r, plan.gb);
+  if (b) document.getElementById('waHint').innerHTML = '💡 Sugerencia: <b>'+b.name+'</b> ($'+b.renta+'/mes, '+b.gb+' GB) — '+(b.saving>0?'ahorra $'+b.saving+'/mes':b.saving===0?'mismo precio':'solo $'+Math.abs(b.saving)+' más');
+});
+
+// ============================================================
+// SALES ACADEMY — AI Training Platform (Supabase-backed)
+// ============================================================
+var TR_KB = {
+  objeciones:[
+    {q:"Está muy caro",a:"Técnica ACE: Acepta ('Entiendo'), Compara valor ('Incluye X sin costo'), Ejemplifica ('Clientes ahorran $X/mes'). Redirige al valor."},
+    {q:"No me interesa",a:"'Entiendo, precisamente le llamo para que NO pierda beneficios. ¿Está satisfecho con su velocidad de datos?' Busca punto de dolor."},
+    {q:"Ya tengo otra compañía",a:"'Me alegra. ¿Me permite 2 min para mostrarle su renovación sin compromiso?' Genera curiosidad."},
+    {q:"Necesito pensarlo",a:"'Esta promoción tiene vigencia limitada. ¿Qué info necesitaría para decidir hoy?'"},
+    {q:"No tengo dinero",a:"'Esta renovación puede REDUCIR lo que paga. ¿Cuánto paga hoy? Con esta oferta pagaría $X menos.'"},
+    {q:"Mala experiencia con AT&T",a:"'Lamento eso. ¿Qué sucedió? [escucha] Como muestra de mejora, le ofrezco [beneficio].'"},
+    {q:"Quiero cancelar",a:"'¿Qué lo llevó a considerar cancelar? [escucha] Tengo solución. ¿Probamos un mes?'"},
+    {q:"No confío en llamadas",a:"'Soy [nombre] de ExpertCell, distribuidor AT&T. Puede verificar marcando *611.'"}
+  ],
+  procesos:[
+    {q:"Proceso renovación",a:"1) Verificar identidad. 2) Revisar plan. 3) Presentar opciones. 4) Confirmar. 5) Procesar. 6) Folio. 7) Recapitular."},
+    {q:"Protocolo llamada",a:"Apertura 30s, Sondeo 60s, Presentación 90s, Objeciones máx 3 intentos, Cierre 60s. Total 5-8 min."}
+  ],
+  cierres:[
+    {q:"Cierre directo",a:"'¿Procedemos? Solo confirmo datos.' Cierra con acción."},
+    {q:"Cierre alternativo",a:"'¿Prefiere 10GB o 15GB?' Ambas opciones son venta."},
+    {q:"Cierre por resumen",a:"'Recapitulando: datos, apps, todo por $X menos. ¿Confirmo?'"},
+    {q:"Cierre urgencia",a:"'Promoción hasta [fecha]. Después sería $X más. ¿Aprovechamos?'"},
+    {q:"Cierre concesión",a:"'Déjeme ver... Sí, puedo incluir [extra]. ¿Procedemos?'"}
+  ],
+  sysPrompt:"Eres asistente de entrenamiento de ventas de ExpertCell, distribuidor AT&T en México. Ayuda a agentes de call center a mejorar ventas telefónicas. Sé directo, práctico y motivador. Da frases textuales para usar en llamada. Español mexicano."
+};
+var TR_SCENARIOS = [
+  {id:1,title:"Cliente indeciso por precio",diff:"Fácil",persona:"María, 35 años, ama de casa. Plan $299.",personality:"Amable pero indecisa. Dice 'déjeme pensarlo'.",goal:"Renovar al plan $499."},
+  {id:2,title:"Cliente molesto por servicio",diff:"Medio",persona:"Roberto, 52 años, empresario. 3 fallas de red.",personality:"Impaciente, directo. Quiere soluciones.",goal:"Retener con beneficio."},
+  {id:3,title:"Cliente quiere cancelar",diff:"Difícil",persona:"Ana, 28 años, freelancer. Quiere cancelar.",personality:"Decidida. Menciona Bait.",goal:"Mantener con plan ajustado."},
+  {id:4,title:"Comparando competencia",diff:"Medio",persona:"Carlos, 41 años, ingeniero. Cotización Telcel.",personality:"Analítico. Le importa cobertura.",goal:"Demostrar valor y cerrar."},
+  {id:5,title:"Cliente desconfiado",diff:"Difícil",persona:"Doña Lupita, 67 años. Plan $199, vence en 5 días.",personality:"Desconfiada pero educada.",goal:"Generar confianza y renovar."}
+];
+var TR_EXERCISES = [
+  {title:"Práctica de Apertura",type:"speech",desc:"Practica tu apertura en 30 seg: nombre, empresa, motivo.",criteria:["≤ 30 seg","Tono seguro","Info completa","Sin muletillas"]},
+  {title:"Maratón de Objeciones",type:"objection",desc:"Responde 5 objeciones aleatorias en <15 seg cada una.",criteria:["<15 seg","Sin titubeo","Técnica correcta","Tono empático"]},
+  {title:"Cierre en 60 Segundos",type:"closing",desc:"Lleva conversación al cierre en máx 60 seg.",criteria:["Resumen beneficios","Pregunta cierre","Manejo objeción","Confirmar datos"]},
+  {title:"Pitch de Valor",type:"pitch",desc:"Pitch de 45 seg del plan más vendido. 3 beneficios + diferenciador.",criteria:["3 beneficios","Diferenciador","Call to action","≤ 45 seg"]},
+  {title:"Rapport Express",type:"rapport",desc:"3 formas de generar conexión en 15 seg.",criteria:["Personalización","Naturalidad","Calidez","Brevedad"]},
+  {title:"Recuperación de Llamada",type:"recovery",desc:"Cliente molesto → revierte y convierte en oportunidad.",criteria:["Empatía genuina","No defensivo","Ofrecer solución","Cierre suave"]}
+];
+var trChatMsgs=[],trRpMsgs=[],trRpHistory=[],trRpScenario=null,trRpTurn=0,trLoading=false,trExCompleted={};
+var TR_DAILY_LIMIT=30, TR_API_KEY='', TR_USAGE_TODAY=0;
+
+// ── Supabase Config Sync ──
+async function trLoadConfig() {
+  if (!supabase) return;
+  try {
+    var res = await supabase.from('app_config').select('key,value');
+    if (res.data) {
+      res.data.forEach(function(r) {
+        if (r.key === 'ai_api_key' && r.value) TR_API_KEY = r.value;
+        if (r.key === 'ai_daily_limit') TR_DAILY_LIMIT = parseInt(r.value) || 30;
+      });
+    }
+  } catch(e) { console.log('Config load error:', e); }
+}
+async function trSaveConfig(key, value) {
+  if (!supabase) return;
+  try { await supabase.from('app_config').upsert({key:key,value:String(value),updated_at:new Date().toISOString()}); } catch(e) { console.log('Config save error:', e); }
+}
+
+// ── Usage Tracking (Supabase) ──
+async function trLoadUsage() {
+  if (!supabase || !state.agente) return;
+  try {
+    var today = new Date().toISOString().slice(0,10);
+    var res = await supabase.from('training_usage').select('total_count').eq('agent_id', state.agente.id).eq('date', today).maybeSingle();
+    TR_USAGE_TODAY = res.data ? res.data.total_count : 0;
+  } catch(e) { TR_USAGE_TODAY = 0; }
+}
+async function trIncUsage(type) {
+  if (!supabase || !state.agente) return;
+  var today = new Date().toISOString().slice(0,10);
+  var agId = state.agente.id, agName = state.agente.nombre;
+  TR_USAGE_TODAY++;
+  try {
+    var res = await supabase.from('training_usage').select('id,chat_count,roleplay_count,total_count').eq('agent_id',agId).eq('date',today).maybeSingle();
+    if (res.data) {
+      var upd = {total_count: res.data.total_count + 1};
+      if (type === 'chat') upd.chat_count = (res.data.chat_count||0) + 1;
+      if (type === 'roleplay') upd.roleplay_count = (res.data.roleplay_count||0) + 1;
+      await supabase.from('training_usage').update(upd).eq('id', res.data.id);
+    } else {
+      await supabase.from('training_usage').insert({agent_id:agId,agent_name:agName,date:today,chat_count:type==='chat'?1:0,roleplay_count:type==='roleplay'?1:0,total_count:1});
+    }
+  } catch(e) { console.log('Usage track error:', e); }
+}
+function trCanUse() {
+  if (state.agente && state.agente.rol === 'admin') return true;
+  if (TR_DAILY_LIMIT === 0) return true;
+  return TR_USAGE_TODAY < TR_DAILY_LIMIT;
+}
+function trRemaining() {
+  if (state.agente && state.agente.rol === 'admin') return '∞';
+  if (TR_DAILY_LIMIT === 0) return '∞';
+  return Math.max(0, TR_DAILY_LIMIT - TR_USAGE_TODAY);
+}
+
+// ── Save Roleplay Progress to Supabase ──
+async function trSaveProgress(type, title, feedback) {
+  if (!supabase || !state.agente) return;
+  try {
+    await supabase.from('training_progress').insert({
+      agent_id: state.agente.id, agent_name: state.agente.nombre, type: type,
+      scenario_title: title, score: feedback.score || null,
+      strengths: JSON.stringify(feedback.strengths || []),
+      improvements: JSON.stringify(feedback.improvements || []),
+      recommendation: feedback.recommendation || ''
+    });
+  } catch(e) { console.log('Progress save error:', e); }
+}
+
+// ── AI Calls ──
+async function trCallAI(sys, msg) {
+  var ak = TR_API_KEY || localStorage.getItem('ec_api_key') || '';
+  if (!ak) return '⚠️ No hay API key. El admin debe configurarla en Admin → panel.';
+  if (!trCanUse()) return '⚠️ Límite de '+TR_DAILY_LIMIT+' msgs/día alcanzado. Se reinicia mañana.';
+  await trIncUsage('chat');
+  var kb='\nBASE DE CONOCIMIENTO:\nOBJECIONES:\n'+TR_KB.objeciones.map(function(o){return'P:'+o.q+'\nR:'+o.a}).join('\n')+'\nCIERRES:\n'+TR_KB.cierres.map(function(c){return'P:'+c.q+'\nR:'+c.a}).join('\n');
+  try{var r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,system:sys+'\n'+kb,messages:[{role:'user',content:msg}]})});
+  if(!r.ok){var e=await r.json().catch(function(){return{}});return '⚠️ Error: '+(e.error?e.error.message:r.statusText)}
+  var d=await r.json();return d.content?d.content.map(function(b){return b.text||''}).join(''):'Sin respuesta.'}catch(e){return '⚠️ Error de conexión.'}
+}
+async function trCallAIMulti(sys, msgs) {
+  var ak = TR_API_KEY || localStorage.getItem('ec_api_key') || '';
+  if (!ak) return '⚠️ No hay API key.';
+  if (!trCanUse()) return '⚠️ Límite alcanzado.';
+  await trIncUsage('roleplay');
+  try{var r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:500,system:sys,messages:msgs})});
+  var d=await r.json();return d.content?d.content.map(function(b){return b.text||''}).join(''):'...'}catch(e){return 'Error.'}
+}
+
+// ── Tab switching ──
+function trTab(tab){
+  document.getElementById('trChat').style.display=tab==='chat'?'':'none';
+  document.getElementById('trRoleplay').style.display=tab==='roleplay'?'':'none';
+  document.getElementById('trExercises').style.display=tab==='exercises'?'':'none';
+  ['Chat','Roleplay','Exercises'].forEach(function(t){var el=document.getElementById('trTab'+t);var a=t.toLowerCase()===tab;el.style.background=a?'var(--att-blue)':'transparent';el.style.color=a?'white':'var(--text-2)'});
+  if(tab==='chat'&&trChatMsgs.length===0)trInitChat();
+  if(tab==='roleplay')trRenderScenarios();
+  if(tab==='exercises')trRenderExercises();
+}
+
+// ── CHAT ──
+function trInitChat(){
+  trLoadConfig().then(function(){return trLoadUsage()}).then(function(){
+    var n=state.agente?state.agente.nombre.split(' ')[0]:'Agente';
+    trChatMsgs=[{role:'bot',text:'¡Hola '+n+'! 👋 Soy tu asistente de ventas con IA. Pregúntame sobre objeciones, procesos, cierres o cualquier situación.'}];
+    trRenderChat();
+  });
+  var qs=['¿Cómo manejo objeción de precio?','Técnicas de cierre','Protocolo de llamada','Cliente quiere cancelar','Tips de venta'];
+  document.getElementById('trQuickBtns').innerHTML=qs.map(function(q){return'<button class="btn" style="padding:3px 8px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:10px" onclick="document.getElementById(\'trChatInput\').value=\''+q+'\';trSendChat()">'+q+'</button>'}).join('');
+}
+function trRenderChat(){
+  var c=document.getElementById('trChatMsgs');
+  c.innerHTML=trChatMsgs.map(function(m){var cls=m.role==='user'?'tr-msg-user':'tr-msg-bot';return'<div class="'+cls+'">'+m.text.split('\n').map(function(l){return'<div>'+l+'</div>'}).join('')+'</div>'}).join('');
+  if(trLoading)c.innerHTML+='<div class="tr-typing"><span></span><span></span><span></span></div>';
+  c.scrollTop=c.scrollHeight;
+  var rem=trRemaining();document.getElementById('trMsgCount').textContent=rem==='∞'?'':rem+' msgs restantes';
+}
+async function trSendChat(){
+  var inp=document.getElementById('trChatInput'),msg=inp.value.trim();if(!msg||trLoading)return;
+  trChatMsgs.push({role:'user',text:msg});inp.value='';trLoading=true;trRenderChat();
+  var n=state.agente?state.agente.nombre:'Agente';
+  var reply=await trCallAI(TR_KB.sysPrompt+'\nEl agente se llama '+n+'. Responde en español, práctico y directo.',msg);
+  trChatMsgs.push({role:'bot',text:reply});trLoading=false;trRenderChat();
+}
+
+// ── ROLEPLAY ──
+function trRenderScenarios(){
+  if(trRpScenario)return;
+  var h='<div style="font-size:16px;font-weight:800;margin-bottom:4px">Roleplay con IA</div><p style="font-size:11px;color:var(--text-3);margin-bottom:12px">Clientes simulados que se adaptan y te evalúan al final.</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">';
+  TR_SCENARIOS.forEach(function(s){var dc=s.diff==='Fácil'?'#10B981':s.diff==='Medio'?'#F59E0B':'#DC3545';
+    h+='<div onclick="trStartRp('+s.id+')" class="section" style="padding:12px;cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor=\'var(--att-blue)\'" onmouseout="this.style.borderColor=\'\'">';
+    h+='<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;background:'+dc+'20;color:'+dc+'">'+s.diff+'</span>';
+    h+='<div style="font-size:13px;font-weight:700;margin:4px 0 2px">'+s.title+'</div>';
+    h+='<div style="font-size:10px;color:var(--text-2);margin-bottom:4px">'+s.persona+'</div>';
+    h+='<div style="font-size:10px;color:var(--att-blue);font-weight:600">🎯 '+s.goal+'</div></div>'});
+  h+='</div>';
+  document.getElementById('trRpList').innerHTML=h;document.getElementById('trRpList').style.display='';document.getElementById('trRpActive').style.display='none';
+}
+async function trStartRp(id){
+  trRpScenario=TR_SCENARIOS.find(function(s){return s.id===id});if(!trRpScenario)return;
+  trRpTurn=0;trRpHistory=[];trRpMsgs=[];
+  await trLoadConfig(); await trLoadUsage();
+  document.getElementById('trRpList').style.display='none';document.getElementById('trRpActive').style.display='';
+  document.getElementById('trRpFeedback').style.display='none';document.getElementById('trRpInputArea').style.display='flex';
+  document.getElementById('trRpTitle').textContent='🎭 '+trRpScenario.title;
+  document.getElementById('trRpInfo').textContent='Turno 1/6 · '+trRpScenario.goal;
+  trRenderRpProg();
+  trRpMsgs.push({role:'sys',text:'📋 '+trRpScenario.title+'\n🎭 '+trRpScenario.persona+'\n🎯 '+trRpScenario.goal+'\n\nTienes 6 turnos. ¡Comienza!'});
+  trRenderRpMsgs();trLoading=true;trRenderRpMsgs();
+  var sys='Eres '+trRpScenario.persona+'. Personalidad: '+trRpScenario.personality+'. Actúa como este cliente en llamada. Breve (1-3 oraciones). Español mexicano coloquial.';
+  var reply=await trCallAIMulti(sys,[{role:'user',content:'El agente te llama. Contesta el teléfono.'}]);
+  trRpHistory=[{role:'assistant',content:reply}];trRpMsgs.push({role:'bot',text:reply});trLoading=false;trRenderRpMsgs();
+}
+function trRenderRpProg(){var h='';for(var i=0;i<6;i++)h+='<div style="flex:1;height:3px;border-radius:2px;background:'+(i<trRpTurn?'var(--att-blue)':'var(--border)')+'"></div>';document.getElementById('trRpProgress').innerHTML=h}
+function trRenderRpMsgs(){
+  var c=document.getElementById('trRpMsgs');
+  c.innerHTML=trRpMsgs.map(function(m){var cls=m.role==='user'?'tr-msg-user':m.role==='sys'?'tr-msg-sys':'tr-msg-bot';return'<div class="'+cls+'">'+m.text.split('\n').map(function(l){return'<div>'+l+'</div>'}).join('')+'</div>'}).join('');
+  if(trLoading)c.innerHTML+='<div class="tr-typing"><span></span><span></span><span></span></div>';c.scrollTop=c.scrollHeight;
+}
+async function trSendRp(){
+  var inp=document.getElementById('trRpInput'),msg=inp.value.trim();if(!msg||trLoading||!trRpScenario)return;
+  trRpMsgs.push({role:'user',text:msg});inp.value='';trLoading=true;trRpTurn++;
+  document.getElementById('trRpInfo').textContent='Turno '+Math.min(trRpTurn+1,6)+'/6 · '+trRpScenario.goal;
+  trRenderRpProg();trRenderRpMsgs();trRpHistory.push({role:'user',content:msg});
+  if(trRpTurn>=6){
+    var cv=trRpHistory.map(function(m){return(m.role==='user'?'AGENTE':'CLIENTE')+': '+m.content}).join('\n');
+    var n=state.agente?state.agente.nombre:'Agente';
+    var fp='Evalúa este roleplay. Agente: "'+n+'". Escenario: "'+trRpScenario.title+'". Objetivo: '+trRpScenario.goal+'.\nConversación:\n'+cv+'\nResponde SOLO JSON: {"score":85,"strengths":["...","..."],"improvements":["...","..."],"recommendation":"..."}';
+    var fr=await trCallAIMulti('Responde SOLO JSON válido sin markdown.',[{role:'user',content:fp}]);
+    var fb;try{fb=JSON.parse(fr.replace(/```json|```/g,'').trim())}catch(e){fb={score:70,strengths:['Completaste el ejercicio'],improvements:['Practica más'],recommendation:'Repite enfocándote en cerrar.'}}
+    // Save to Supabase
+    await trSaveProgress('roleplay', trRpScenario.title, fb);
+    trRpMsgs.push({role:'sys',text:'🏁 ¡Roleplay completado!'});document.getElementById('trRpInputArea').style.display='none';
+    var sc=fb.score>=80?'#10B981':fb.score>=60?'#F59E0B':'#DC3545';
+    var fh='<div class="section" style="padding:14px;margin-bottom:8px;border:1px solid '+sc+'40"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div style="font-size:32px;font-weight:900;color:'+sc+'">'+fb.score+'</div><div><div style="font-size:13px;font-weight:700">Evaluación</div><div style="font-size:10px;color:var(--text-3)">'+(fb.score>=80?'¡Excelente!':fb.score>=60?'Buen trabajo':'Más práctica')+'</div></div></div>';
+    fh+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px"><div><div style="font-size:9px;color:#10B981;font-weight:700;margin-bottom:3px">✓ FORTALEZAS</div>'+(fb.strengths||[]).map(function(s){return'<div style="font-size:10px;color:var(--text-2)">• '+s+'</div>'}).join('')+'</div><div><div style="font-size:9px;color:#F59E0B;font-weight:700;margin-bottom:3px">△ MEJORA</div>'+(fb.improvements||[]).map(function(s){return'<div style="font-size:10px;color:var(--text-2)">• '+s+'</div>'}).join('')+'</div></div>';
+    if(fb.recommendation)fh+='<div style="font-size:10px;color:var(--att-blue);padding:6px 8px;background:#EBF5FB;border-radius:5px">💡 '+fb.recommendation+'</div>';
+    fh+='</div>';document.getElementById('trRpFeedback').innerHTML=fh;document.getElementById('trRpFeedback').style.display='';
+    trLoading=false;trRenderRpMsgs();return;
+  }
+  var sys='Eres '+trRpScenario.persona+'. Personalidad: '+trRpScenario.personality+'. Breve, español mexicano. '+(trRpTurn>=4?'Puedes ceder si convenció.':'Mantén postura.');
+  var reply=await trCallAIMulti(sys,trRpHistory);trRpHistory.push({role:'assistant',content:reply});trRpMsgs.push({role:'bot',text:reply});trLoading=false;trRenderRpMsgs();
+}
+function trRpBack(){trRpScenario=null;trRpMsgs=[];trRpHistory=[];trRenderScenarios()}
+
+// ── EXERCISES ──
+function trRenderExercises(){
+  var ti=new Date().getDay()%TR_EXERCISES.length,te=TR_EXERCISES[ti];
+  var h='<div style="font-size:16px;font-weight:800;margin-bottom:4px">Ejercicios</div><p style="font-size:11px;color:var(--text-3);margin-bottom:12px">Práctica diaria para mejorar</p>';
+  h+='<div class="section" style="padding:14px;margin-bottom:12px;border:1px solid var(--att-blue);background:#EBF5FB"><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;background:var(--att-blue);color:white">EJERCICIO DEL DÍA</span><div style="font-size:15px;font-weight:800;margin:5px 0 3px">'+te.title+'</div><p style="font-size:11px;color:var(--text-2);line-height:1.4;margin-bottom:6px">'+te.desc+'</p><div style="display:flex;flex-wrap:wrap;gap:3px">'+te.criteria.map(function(c){return'<span style="padding:2px 6px;border-radius:4px;background:white;color:var(--text-2);font-size:9px;border:1px solid var(--border)">✓ '+c+'</span>'}).join('')+'</div></div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">';
+  TR_EXERCISES.forEach(function(ex,i){var d=trExCompleted[i];
+    h+='<div class="section" style="padding:12px;'+(d?'opacity:0.5':'')+'"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:#EBF5FB;color:var(--att-blue)">'+ex.type+'</span><div style="font-size:12px;font-weight:700;margin-top:3px">'+ex.title+'</div></div><button class="btn '+(d?'btn-secondary':'btn-primary')+'" style="font-size:9px;padding:3px 8px" onclick="trMarkEx('+i+')">'+(d?'✓':'Hecho')+'</button></div><p style="font-size:10px;color:var(--text-2);line-height:1.3;margin:4px 0">'+ex.desc+'</p><div style="display:flex;flex-wrap:wrap;gap:2px">'+ex.criteria.map(function(c){return'<span style="padding:1px 5px;border-radius:3px;background:var(--bg-card);color:var(--text-3);font-size:8px;border:1px solid var(--border)">✓ '+c+'</span>'}).join('')+'</div></div>'});
+  h+='</div>';document.getElementById('trExList').innerHTML=h;
+}
+async function trMarkEx(i){
+  trExCompleted[i]=!trExCompleted[i];
+  if(trExCompleted[i]) await trSaveProgress('exercise',TR_EXERCISES[i].title,{score:100,strengths:['Completado'],improvements:[],recommendation:''});
+  trRenderExercises();
+}
+
+// Hook into showView for auto-init
+var _origShowView = showView;
+showView = function(name, title) { _origShowView(name, title); if (name === 'training' && trChatMsgs.length === 0) trInitChat(); };
 </script>
 </body>
 </html>
