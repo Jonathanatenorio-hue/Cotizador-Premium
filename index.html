@@ -2268,20 +2268,20 @@ function updateDeviceCalc(id) {
         <span class="calc-val blue">$${precioPromo.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
       </div>
       ${ahorro > 0 ? `
-      <div style="background:linear-gradient(135deg,#10B981,#059669);border-radius:10px;padding:12px;margin:8px 0;color:white">
+      <div style="background:linear-gradient(135deg,#D1FAE5,#A7F3D0);border:1px solid #6EE7B7;border-radius:10px;padding:12px;margin:8px 0;color:#065F46">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
-            <div style="font-size:9px;text-transform:uppercase;opacity:0.8;font-weight:600">💰 AHORRO EN EQUIPO</div>
-            <div style="font-size:22px;font-weight:900">$${ahorro.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+            <div style="font-size:9px;text-transform:uppercase;font-weight:600;color:#047857">AHORRO EN EQUIPO</div>
+            <div style="font-size:22px;font-weight:900;color:#065F46">$${ahorro.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
           </div>
           <div style="text-align:right">
-            <div style="font-size:9px;text-transform:uppercase;opacity:0.8;font-weight:600">EQUIVALE A</div>
-            <div style="font-size:18px;font-weight:900">${ahorroMensualidades} meses</div>
-            <div style="font-size:9px;opacity:0.8">de plan pagados</div>
+            <div style="font-size:9px;text-transform:uppercase;font-weight:600;color:#047857">EQUIVALE A</div>
+            <div style="font-size:18px;font-weight:900;color:#065F46">${ahorroMensualidades} meses</div>
+            <div style="font-size:9px;color:#047857">de plan pagados</div>
           </div>
         </div>
-        <div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.3);font-size:10px;opacity:0.9">
-          💡 El cliente ahorra <strong>$${ahorro.toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> vs precio de contado — es como si AT&T le pagara <strong>${ahorroMensualidades} mensualidades</strong> de su plan
+        <div style="margin-top:6px;padding-top:6px;border-top:1px solid #6EE7B7;font-size:10px;color:#047857">
+          El cliente ahorra <strong>$${ahorro.toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> vs precio de contado — es como si AT&T le pagara <strong>${ahorroMensualidades} mensualidades</strong> de su plan
         </div>
       </div>` : `
       <div class="calc-row">
@@ -2930,30 +2930,48 @@ function buildAndDownloadPDF(cot) {
   });
   y = doc.lastAutoTable.finalY + 4;
 
-  // ═══════ AHORRO HIGHLIGHT BOX ═══════
-  var totalAhorro = 0;
-  cot.items.forEach(function(it) { totalAhorro += (it.precioLista - it.precioPromo); });
-  if (totalAhorro > 0) {
-    var avgPlanPrice = 0;
-    cot.items.forEach(function(it) { avgPlanPrice += it.planPrecio; });
-    avgPlanPrice = avgPlanPrice / cot.items.length;
-    var mesesEquiv = avgPlanPrice > 0 ? Math.floor(totalAhorro / avgPlanPrice) : 0;
-    var boxH = 18;
-    doc.setFillColor(16, 185, 129);
-    doc.roundedRect(mg, y, cW, boxH, 2, 2, 'F');
-    doc.setTextColor(255,255,255);
-    doc.setFontSize(10);
+  // ═══════ AHORRO TABLE PER EQUIPMENT ═══════
+  var ahorroItems = cot.items.filter(function(it){return (it.precioLista - it.precioPromo) > 0});
+  if (ahorroItems.length > 0) {
+    doc.setTextColor(...DARK);
+    doc.setFontSize(12);
     doc.setFont('helvetica','bold');
-    doc.text('💰 AHORRO TOTAL EN EQUIPO: $' + totalAhorro.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}), mg + 6, y + 7);
-    doc.setFontSize(8);
-    doc.setFont('helvetica','normal');
-    doc.text('Equivale a ' + mesesEquiv + ' mensualidades de tu plan — es como si AT&T te pagara ' + mesesEquiv + ' meses', mg + 6, y + 13);
-    y += boxH + 4;
+    doc.text('Ahorro en equipos', mg, y + 4);
+    y += 7;
+
+    var aD = ahorroItems.map(function(it) {
+      var ah = it.precioLista - it.precioPromo;
+      var meses = it.planPrecio > 0 ? Math.floor(ah / it.planPrecio) : 0;
+      var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+      return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), meses + ' meses de plan'];
+    });
+    doc.autoTable({
+      startY: y,
+      head: [['EQUIPO','PRECIO LISTA','PROMOCION','AHORRO','EQUIVALE A']],
+      body: aD,
+      margin: { left: mg, right: mg },
+      tableWidth: cW,
+      styles: { fontSize:7.5, cellPadding:3, textColor:DARK, lineColor:[220,220,220], lineWidth:0.2 },
+      headStyles: { fillColor:[16,185,129], textColor:WHT, fontStyle:'bold', fontSize:7, halign:'center' },
+      columnStyles: {
+        0:{cellWidth:cW*0.30},
+        1:{halign:'right',cellWidth:cW*0.17},
+        2:{halign:'right',cellWidth:cW*0.17},
+        3:{halign:'right',cellWidth:cW*0.17, fontStyle:'bold'},
+        4:{halign:'center',cellWidth:cW*0.19, fontStyle:'bold'},
+      },
+      didParseCell: function(data) {
+        if (data.section === 'body' && data.column.index === 3) { data.cell.styles.textColor = [16,185,129]; }
+        if (data.section === 'body' && data.column.index === 4) { data.cell.styles.textColor = [16,185,129]; }
+      },
+      theme: 'grid',
+    });
+    y = doc.lastAutoTable.finalY + 8;
   } else {
     y += 4;
   }
 
-  var usedPlans = [];
+  // ═══════ PLANS TABLE (half width like original) ═══════
   var seen = {};
   cot.items.forEach(function(i) { if (!seen[i.planId]) { seen[i.planId]=true; usedPlans.push(i.planId); } });
   var pD = usedPlans.map(function(pid) {
@@ -3261,25 +3279,44 @@ function buildAndDownloadPDF_v2(cot) {
   });
   y = doc.lastAutoTable.finalY + 4;
 
-  // ═══════ AHORRO HIGHLIGHT BOX ═══════
-  var totalAhorro2 = 0;
-  cot.items.forEach(function(it) { totalAhorro2 += (it.precioLista - it.precioPromo); });
-  if (totalAhorro2 > 0) {
-    var avgPP2 = 0;
-    cot.items.forEach(function(it) { avgPP2 += it.planPrecio; });
-    avgPP2 = avgPP2 / cot.items.length;
-    var mE2 = avgPP2 > 0 ? Math.floor(totalAhorro2 / avgPP2) : 0;
-    var bH2 = 16;
-    doc.setFillColor(16, 185, 129);
-    doc.roundedRect(mg, y, cW, bH2, 2, 2, 'F');
-    doc.setTextColor(255,255,255);
-    doc.setFontSize(9);
+  // ═══════ AHORRO TABLE PER EQUIPMENT ═══════
+  var ahorroItems2 = cot.items.filter(function(it){return (it.precioLista - it.precioPromo) > 0});
+  if (ahorroItems2.length > 0) {
+    doc.setFillColor(...D1);
+    doc.roundedRect(mg, y, cW, 7, 1.5, 1.5, 'F');
+    doc.setTextColor(...WH);
+    doc.setFontSize(8);
     doc.setFont('helvetica','bold');
-    doc.text('AHORRO TOTAL EN EQUIPO: $' + totalAhorro2.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}), mg + 5, y + 6);
-    doc.setFontSize(7);
-    doc.setFont('helvetica','normal');
-    doc.text('Equivale a ' + mE2 + ' mensualidades de tu plan', mg + 5, y + 12);
-    y += bH2 + 4;
+    doc.text('AHORRO EN EQUIPOS', mg+5, y+4.8);
+    y += 9;
+
+    var aD2 = ahorroItems2.map(function(it) {
+      var ah = it.precioLista - it.precioPromo;
+      var meses = it.planPrecio > 0 ? Math.floor(ah / it.planPrecio) : 0;
+      var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+      return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), meses + ' meses'];
+    });
+    doc.autoTable({
+      startY: y,
+      head: [['EQUIPO','PRECIO LISTA','PROMOCION','AHORRO','EQUIVALE A']],
+      body: aD2,
+      margin: { left: mg, right: mg },
+      tableWidth: cW,
+      styles: { fontSize:7, cellPadding:2.5, textColor:D1, lineColor:G2, lineWidth:0.15 },
+      headStyles: { fillColor:[16,185,129], textColor:WH, fontStyle:'bold', fontSize:6.5, halign:'center' },
+      columnStyles: {
+        0:{cellWidth:cW*0.30},
+        1:{halign:'right',cellWidth:cW*0.17},
+        2:{halign:'right',cellWidth:cW*0.17},
+        3:{halign:'right',cellWidth:cW*0.17, fontStyle:'bold'},
+        4:{halign:'center',cellWidth:cW*0.19, fontStyle:'bold'},
+      },
+      didParseCell: function(data) {
+        if (data.section === 'body' && (data.column.index === 3 || data.column.index === 4)) { data.cell.styles.textColor = [16,185,129]; }
+      },
+      theme: 'grid',
+    });
+    y = doc.lastAutoTable.finalY + 8;
   } else {
     y += 2;
   }
