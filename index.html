@@ -1416,6 +1416,30 @@ function showView(name, title) {
     document.getElementById('cfgWhatsapp').value = state.agente.whatsapp || '';
   }
   if (name === 'historial') { initHistorialFilters(); renderHistorial(); }
+  if (name === 'cotizar' && !title) {
+    // Clear form for new cotización (not editing)
+    try {
+      document.getElementById('cliNombre').value = '';
+      document.getElementById('cliTelefono').value = '';
+      document.getElementById('cliEmail').value = '';
+      document.getElementById('cliDireccion').value = '';
+      document.getElementById('cliPlanActual').value = '';
+      state.items = [];
+      state.editingFolio = null;
+      renderItems();
+    } catch(e) {}
+  }
+  if (name === 'cotizar' && !title) {
+    // Clear form for new cotización (not edit mode)
+    document.getElementById('cliNombre').value = '';
+    document.getElementById('cliTelefono').value = '';
+    document.getElementById('cliEmail').value = '';
+    document.getElementById('cliDireccion').value = '';
+    document.getElementById('cliPlanActual').value = '';
+    state.items = [];
+    state.editingFolio = null;
+    try { renderItems(); } catch(e) {}
+  }
   if (name === 'home') {
     state.viewStack = ['home'];
     updateHome();
@@ -1611,37 +1635,122 @@ async function handleFileUpload(event) {
     const devices = [];
 
     // Parse Promociones AT&T Premium
-    var pSheetName = Object.keys(wb.Sheets).find(function(s) { return s.toLowerCase().includes('premium'); });
+    var pSheetName = null;
+    var sheetKeys = Object.keys(wb.Sheets);
+    // First try: exact name with "Promociones" and "Premium" (not the duplicate)
+    for (var si = 0; si < sheetKeys.length; si++) {
+      var sn = sheetKeys[si].toLowerCase();
+      if (sn.indexOf('promocion') >= 0 && sn.indexOf('premium') >= 0 && sn.indexOf('(2)') < 0) {
+        pSheetName = sheetKeys[si];
+        break;
+      }
+    }
+    // Fallback: any sheet with "premium" in name that's not a duplicate
+    if (!pSheetName) {
+      for (var si = 0; si < sheetKeys.length; si++) {
+        var sn = sheetKeys[si].toLowerCase();
+        if (sn.indexOf('premium') >= 0 && sn.indexOf('(2)') < 0 && sn.indexOf('combo') < 0) {
+          pSheetName = sheetKeys[si];
+          break;
+        }
+      }
+    }
     const pSheet = pSheetName ? wb.Sheets[pSheetName] : null;
     console.log('Premium sheet:', pSheetName, '| found:', !!pSheet, '| All sheets:', Object.keys(wb.Sheets));
     if (pSheet) {
       const rows = XLSX.utils.sheet_to_json(pSheet, { header:1, defval:null });
-      for (let i = 8; i < rows.length; i++) {
-        const r = rows[i];
-        if (!r || !r[5] || typeof r[5] !== 'string') continue;
-        const pc = parseFloat(r[6]) || 0;
-        if (pc === 0) continue;
-
-        const pricing = {};
-        PLANS_PREMIUM.forEach(plan => {
-          pricing[plan.id] = {};
-          [0,1,2].forEach(offset => {
-            const plazo = [24,30,36][offset];
-            const val = r[plan.col + offset];
-            pricing[plan.id][plazo] = (typeof val === 'number' && val >= 0) ? val : null;
-          });
-        });
-
-        devices.push({
-          id: 'p'+i, sheet:'Premium', oferta:'AT&T Premium',
-          equipo: r[5], marca: r[4]||'', precioContado: pc,
-          estatus: r[2]||'', vigencia: r[33]||'',
-          fechaInicio: r[31] instanceof Date ? r[31] : null,
-          fechaFin: r[32] instanceof Date ? r[32] : null,
-          fechaFinText: typeof r[32] === 'string' ? r[32] : '',
-          pricing, plans: PLANS_PREMIUM, plazos: [24,30,36],
-        });
+      
+      // Auto-detect columns
+      var pCols = { equipo: -1, marca: -1, precio: -1, estatus: -1, vigencia: -1 };
+      var planCols = {}; // { planId: colIndex for 24m }
+      var pStartRow = -1;
+      
+      for (var pri = 0; pri < Math.min(rows.length, 15); pri++) {
+        var prow = rows[pri];
+        if (!prow) continue;
+        for (var pci = 0; pci < prow.length; pci++) {
+          var pcell = String(prow[pci] || '').toLowerCase().trim();
+          if (pcell.includes('equipo')) pCols.equipo = pci;
+          if (pcell.includes('marca')) pCols.marca = pci;
+          if (pcell.includes('precio') && pcell.includes('contado')) pCols.precio = pci;
+          if (pcell.includes('estatus') && pCols.estatus < 0) pCols.estatus = pci;
+          if (pcell === 'vigencia') pCols.vigencia = pci;
+        }
+        if (pCols.equipo >= 0 && pCols.precio >= 0) {
+          pStartRow = pri + 1;
+          break;
+        }
       }
+      
+      // Detect plan columns by looking for "24 Meses" headers in the plan area
+      // Plans start after precio contado. Each plan has 3 columns: 24, 30, 36
+      // Look for plan names in rows above the header
+      if (pCols.precio >= 0) {
+        // Find the first "24" column after precio
+        for (var pri2 = 0; pri2 < pStartRow; pri2++) {
+          var pr2 = rows[pri2];
+          if (!pr2) continue;
+          for (var pc2 = pCols.precio + 1; pc2 < pr2.length; pc2++) {
+            var v2 = String(pr2[pc2] || '').trim();
+            if (v2 === '24' || v2 === '24 Meses' || v2 === '24 meses') {
+              // This is a 24-month column, figure out which plan
+              // Plans are spaced every 3 columns: 24, 30, 36
+              // Map by index relative to first plan col
+              var firstPlanCol = pCols.precio + 1;
+              var planIdx = Math.floor((pc2 - firstPlanCol) / 3);
+              if (planIdx >= 0 && planIdx < PLANS_PREMIUM.length) {
+                PLANS_PREMIUM[planIdx].col = pc2;
+              }
+            }
+          }
+        }
+      }
+      
+      console.log('Premium columns:', JSON.stringify(pCols), '| start row:', pStartRow);
+      console.log('Premium plan cols:', PLANS_PREMIUM.map(function(p){return p.name+':'+p.col}).join(', '));
+      
+      if (pStartRow >= 0 && pCols.equipo >= 0) {
+        for (var i = pStartRow; i < rows.length; i++) {
+          var r = rows[i];
+          if (!r) continue;
+          
+          var equipo = r[pCols.equipo];
+          if (!equipo || typeof equipo !== 'string' || equipo.trim() === '') continue;
+          
+          var pc = pCols.precio >= 0 ? (typeof r[pCols.precio] === 'number' ? r[pCols.precio] : parseFloat(String(r[pCols.precio] || '').replace(/[$,]/g, ''))) : 0;
+          if (!pc || pc <= 0) continue;
+          
+          var pricing = {};
+          PLANS_PREMIUM.forEach(function(plan) {
+            pricing[plan.id] = {};
+            [0,1,2].forEach(function(offset) {
+              var plazo = [24,30,36][offset];
+              var val = r[plan.col + offset];
+              if (typeof val === 'number' && val >= 0) {
+                pricing[plan.id][plazo] = val;
+              } else if (typeof val === 'string') {
+                var parsed = parseFloat(val.replace(/[$,]/g, ''));
+                pricing[plan.id][plazo] = (!isNaN(parsed) && parsed >= 0) ? parsed : null;
+              } else {
+                pricing[plan.id][plazo] = null;
+              }
+            });
+          });
+          
+          var marca = pCols.marca >= 0 ? (r[pCols.marca] || '') : '';
+          var estatus = pCols.estatus >= 0 ? (r[pCols.estatus] || '') : '';
+          var vigencia = pCols.vigencia >= 0 ? (r[pCols.vigencia] || '') : '';
+          
+          devices.push({
+            id: 'p'+i, sheet:'Premium', oferta:'AT&T Premium',
+            equipo: equipo.trim(), marca: String(marca), precioContado: pc,
+            estatus: String(estatus), vigencia: String(vigencia),
+            fechaInicio: null, fechaFin: null, fechaFinText: '',
+            pricing: pricing, plans: PLANS_PREMIUM, plazos: [24,30,36],
+          });
+        }
+      }
+      console.log('Premium devices loaded:', devices.filter(function(d){return d.sheet==='Premium'}).length);
     }
 
     // Parse Promociones AT&T Titanio
@@ -1649,50 +1758,71 @@ async function handleFileUpload(event) {
     const tSheet = tSheetName ? wb.Sheets[tSheetName] : null;
     console.log('Titanio sheet:', tSheetName, '| found:', !!tSheet);
     if (tSheet) {
-      const rows = XLSX.utils.sheet_to_json(tSheet, { header:1, defval:null, raw:false });
+      const rows = XLSX.utils.sheet_to_json(tSheet, { header:1, defval:null });
       console.log('Titanio total rows:', rows.length);
-      // Find header row (look for "Equipo" in any row)
-      var tStartRow = 7;
+
+      // Auto-detect columns by finding header row
+      var tCols = { equipo: -1, marca: -1, precio: -1, promo24: -1, estatus: -1, vigencia: -1 };
+      var tStartRow = -1;
       for (var ri = 0; ri < Math.min(rows.length, 15); ri++) {
         var row = rows[ri];
-        if (row && row.some && row.some(function(cell) { return typeof cell === 'string' && cell.toLowerCase().includes('equipo'); })) {
+        if (!row) continue;
+        for (var ci = 0; ci < row.length; ci++) {
+          var cell = String(row[ci] || '').toLowerCase().trim();
+          if (cell.includes('equipo')) tCols.equipo = ci;
+          if (cell.includes('marca')) tCols.marca = ci;
+          if (cell.includes('precio') && cell.includes('contado')) tCols.precio = ci;
+          if (cell.includes('24') && cell.includes('mes')) tCols.promo24 = ci;
+          if (cell.includes('estatus')) tCols.estatus = ci;
+          if (cell === 'vigencia') tCols.vigencia = ci;
+        }
+        if (tCols.equipo >= 0 && tCols.precio >= 0) {
           tStartRow = ri + 1;
-          console.log('Titanio header at row', ri, '| data starts at', tStartRow);
           break;
         }
       }
-      for (let i = tStartRow; i < rows.length; i++) {
-        const r = rows[i];
-        if (!r) continue;
-        // Find equipo - try column 5 (F) first, then search
-        var equipo = r[5] || r[4] || '';
-        if (typeof equipo !== 'string' || equipo.trim() === '') continue;
-        equipo = equipo.trim();
+      console.log('Titanio columns detected:', JSON.stringify(tCols), '| data starts row:', tStartRow);
 
-        // Parse prices - handle $, commas
-        function parsePrice(v) {
+      if (tStartRow >= 0 && tCols.equipo >= 0) {
+        function tParsePrice(v) {
           if (v === null || v === undefined || v === '' || v === 'NA' || v === 'N/A') return null;
           if (typeof v === 'number') return v;
           var n = parseFloat(String(v).replace(/[$,]/g, ''));
           return isNaN(n) ? null : n;
         }
 
-        var pc = parsePrice(r[6]) || 0;
-        if (pc === 0) continue;
-        var promo24 = parsePrice(r[7]);
+        for (var i = tStartRow; i < rows.length; i++) {
+          var r = rows[i];
+          if (!r) continue;
 
-        console.log('Titanio device:', equipo, '| contado:', pc, '| 24m:', promo24);
+          var equipo = r[tCols.equipo];
+          if (!equipo || typeof equipo !== 'string' || equipo.trim() === '') continue;
+          equipo = equipo.trim();
 
-        devices.push({
-          id: 't'+i, sheet:'Titanio', oferta:'AT&T Titanio',
-          equipo: equipo, marca: r[4]||r[3]||'', precioContado: pc,
-          estatus: r[2]||r[1]||'', vigencia: r[11]||r[10]||'',
-          fechaInicio: null,
-          fechaFin: null,
-          fechaFinText: '',
-          pricing: { titanio: { 24: promo24 } },
-          plans: PLANS_TITANIO, plazos: [24],
-        });
+          var pc = tParsePrice(r[tCols.precio]);
+          if (pc === null || pc === undefined) continue;
+          // Allow pc === 0 (free device)
+
+          var promo24 = tCols.promo24 >= 0 ? tParsePrice(r[tCols.promo24]) : null;
+          // Allow promo24 === 0 (free promo)
+
+          var marca = tCols.marca >= 0 ? (r[tCols.marca] || '') : '';
+          var estatus = tCols.estatus >= 0 ? (r[tCols.estatus] || '') : '';
+          var vigencia = tCols.vigencia >= 0 ? (r[tCols.vigencia] || '') : '';
+
+          console.log('Titanio:', equipo, '| marca:', marca, '| contado:', pc, '| 24m:', promo24);
+
+          devices.push({
+            id: 't'+i, sheet:'Titanio', oferta:'AT&T Titanio',
+            equipo: equipo, marca: String(marca), precioContado: pc || 0,
+            estatus: String(estatus), vigencia: String(vigencia),
+            fechaInicio: null,
+            fechaFin: null,
+            fechaFinText: '',
+            pricing: { titanio: { 24: promo24 } },
+            plans: PLANS_TITANIO, plazos: [24],
+          });
+        }
       }
       console.log('Titanio devices loaded:', devices.filter(function(d){return d.sheet==='Titanio'}).length);
     }
@@ -2255,7 +2385,7 @@ function addPlanComparison(doc, cot, mg, y, cW, H) {
 
 function addTitanioMessage(doc, mg, y, cW, H) {
   if (y > H - 30) { doc.addPage(); y = 16; }
-  y += 3;
+  y += 1;
   doc.setFillColor(230, 245, 255);
   doc.setDrawColor(0, 150, 214);
   doc.roundedRect(mg, y, cW, 18, 2, 2, 'FD');
@@ -2508,7 +2638,7 @@ function buildAndDownloadPDF(cot) {
       tableWidth: cW,
       styles: { fontSize:8, cellPadding:3, textColor:DARK, lineColor:[220,220,220], lineWidth:0.2 },
       headStyles: { fillColor:BLUE, textColor:WHT, fontStyle:'bold' },
-      columnStyles: { 0:{cellWidth:cW*0.35}, 1:{halign:'right',cellWidth:cW*0.35}, 2:{halign:'right',cellWidth:cW*0.30} },
+      columnStyles: { 0:{cellWidth:cW*0.35}, 1:{halign:'left',cellWidth:cW*0.35}, 2:{halign:'left',cellWidth:cW*0.30} },
       theme: 'grid',
     });
     y = doc.lastAutoTable.finalY + 8;
@@ -2819,7 +2949,7 @@ function buildAndDownloadPDF_v2(cot) {
       tableWidth: cW,
       styles: { fontSize:8, cellPadding:3, textColor:D1, lineColor:G2, lineWidth:0.15 },
       headStyles: { fillColor:D2, textColor:WH, fontStyle:'bold' },
-      columnStyles: { 0:{cellWidth:cW*0.30}, 1:{halign:'right',cellWidth:cW*0.35}, 2:{halign:'center',cellWidth:cW*0.35} },
+      columnStyles: { 0:{cellWidth:cW*0.30}, 1:{halign:'left',cellWidth:cW*0.35}, 2:{halign:'left',cellWidth:cW*0.35} },
       alternateRowStyles: { fillColor: G1 },
       theme: 'grid',
     });
