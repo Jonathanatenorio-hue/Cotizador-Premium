@@ -1016,9 +1016,35 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
   <div class="container">
     <!-- Tabs -->
     <div style="display:flex;gap:4px;margin-bottom:14px;background:var(--bg-card);padding:4px;border-radius:10px;border:1px solid var(--border)">
-      <button class="btn trTab" id="trTabChat" onclick="trTab('chat')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:var(--att-blue);color:white;border:none">💬 Asistente IA</button>
+      <button class="btn trTab" id="trTabChat" onclick="trTab('chat')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:var(--att-blue);color:white;border:none">💬 Asistente</button>
       <button class="btn trTab" id="trTabRoleplay" onclick="trTab('roleplay')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">🎭 Roleplay</button>
       <button class="btn trTab" id="trTabExercises" onclick="trTab('exercises')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">🏋️ Ejercicios</button>
+      <button class="btn trTab" id="trTabMetrics" onclick="trTab('metrics')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">📊 Métricas</button>
+    </div>
+
+    <!-- LEVEL BAR -->
+    <div id="trLevelBar" class="section" style="padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px;min-width:180px">
+        <div id="trLevelBadge" style="width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:white;background:linear-gradient(135deg,#3B82F6,#1D4ED8)">1</div>
+        <div>
+          <div id="trLevelTitle" style="font-size:13px;font-weight:700;color:var(--text-1)">Novato</div>
+          <div id="trLevelXP" style="font-size:10px;color:var(--text-3)">0 / 100 XP</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:120px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+          <span id="trLevelNext" style="font-size:9px;color:var(--text-3)">Sig: Aprendiz</span>
+          <span id="trLevelPct" style="font-size:9px;font-weight:700;color:var(--att-blue)">0%</span>
+        </div>
+        <div style="height:8px;border-radius:4px;background:var(--border);overflow:hidden">
+          <div id="trLevelFill" style="height:100%;border-radius:4px;background:linear-gradient(90deg,#3B82F6,#1D4ED8);width:0%;transition:width 0.5s ease"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px" id="trLevelStats">
+        <div style="text-align:center"><div id="trLvlRp" style="font-size:14px;font-weight:800;color:var(--att-blue)">0</div><div style="font-size:8px;color:var(--text-3)">Roleplays</div></div>
+        <div style="text-align:center"><div id="trLvlEx" style="font-size:14px;font-weight:800;color:#10B981">0</div><div style="font-size:8px;color:var(--text-3)">Ejercicios</div></div>
+        <div style="text-align:center"><div id="trLvlStreak" style="font-size:14px;font-weight:800;color:#F59E0B">0</div><div style="font-size:8px;color:var(--text-3)">🔥 Racha</div></div>
+      </div>
     </div>
 
     <!-- CHAT TAB -->
@@ -1060,6 +1086,17 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
     <!-- EXERCISES TAB -->
     <div id="trExercises" style="display:none">
       <div id="trExList"></div>
+    </div>
+
+    <!-- METRICS TAB -->
+    <div id="trMetrics" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+        <div><div style="font-size:16px;font-weight:800">📊 Métricas de Entrenamiento</div><div id="trMetricsSubtitle" style="font-size:11px;color:var(--text-3)"></div></div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap" id="trMetricsFilters"></div>
+      </div>
+      <div id="trMetricsKPIs" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px"></div>
+      <div id="trMetricsTable"></div>
+      <div id="trMetricsRoleplays" style="margin-top:14px"></div>
     </div>
   </div>
 </div>
@@ -5583,22 +5620,36 @@ var TR_KB = {
     "WhatsApp es para CONFIRMAR lo acordado, no para informar. Primero cierra intención, luego envía.",
     "Has de tu llamada una charla casual — si conectas sabrás cada detalle y así ganan ambos."
   ],
-  sysPrompt:"Eres el coach de ventas de ExpertCell, distribuidor autorizado AT&T en México. TUTEA a los agentes. Tono: motivador, directo y estricto — exiges resultados pero con buena vibra. Filosofía: 'Has de tu llamada una charla casual, si conectas sabrás cada detalle y así ganan ambos.' REGLAS ESTRICTAS: 1) NUNCA digas 'gratis' o 'de regalo' — di 'sin costo', 'incluido' o 'costo cero'. 2) NUNCA sugieras al cliente cancelar o dar de baja. 3) SIEMPRE recomienda aplicar cierres, dar seguimiento en tiempo y forma, mandar cotización formal. 4) SIEMPRE motiva a vencer el miedo practicando. 5) WhatsApp NO es salida a objeciones — primero debate, luego envía. 6) ExpertCell es distribuidor autorizado AT&T, operación formal y confiable. Cuando des consejos, da frases textuales que puedan usar en llamada. Sé específico y práctico. Español mexicano."
+  sysPrompt:"Eres el coach de ventas de ExpertCell, distribuidor autorizado AT&T en México. TUTEA a los agentes pero con tono PROFESIONAL — nada de 'compa', 'órale', 'carnal', 'chido' ni jerga callejera. Tono: motivador, directo y estricto — exiges resultados con respeto y profesionalismo. Filosofía: 'Has de tu llamada una charla casual pero profesional, si conectas sabrás cada detalle y así ganan ambos.' REGLAS ESTRICTAS: 1) NUNCA uses palabras coloquiales o informales como compa, órale, carnal, neta, chido, morro, jale — habla como un líder de ventas profesional. 2) NUNCA digas 'gratis' o 'de regalo' — di 'sin costo', 'incluido' o 'costo cero'. 3) NUNCA sugieras al cliente cancelar o dar de baja. 4) SIEMPRE recomienda aplicar cierres, dar seguimiento en tiempo y forma, mandar cotización formal. 5) SIEMPRE motiva a vencer el miedo practicando. 6) WhatsApp NO es salida a objeciones — primero debate, luego envía. 7) ExpertCell es distribuidor autorizado AT&T, operación formal y confiable. SEGUIMIENTO CORRECTO: Un buen seguimiento SIEMPRE tiene esta estructura: 1) Abres con lo que le ATRAJO al cliente (el beneficio que mostró interés). 2) Cierras con lo que lo hizo DUDAR (la objeción que frenó el cierre). Ejemplo: 'Hola [nombre], ¿cómo estás? Me pongo en contacto por el interés que tienes en aumentar los GB de tu plan sin elevar costos. Para iniciar el trámite, ¿me enviarás tu INE en foto o PDF?' — Si la objeción fue la INE, cierras preguntando por la INE directamente. Después, según la respuesta del cliente, sigues tu flujo normal de objeciones. NUNCA hagas seguimiento genérico como 'Hola, ¿ya lo pensaste?' — SIEMPRE personaliza con lo que detectaste. Cuando des consejos, da frases textuales que puedan usar en llamada. Sé específico y práctico. Español mexicano profesional."
 };
 var TR_SCENARIOS = [
-  {id:1,title:"Cliente indeciso por precio",diff:"Fácil",persona:"María, 35 años, ama de casa. Plan $299.",personality:"Amable pero indecisa. Dice 'déjeme pensarlo'.",goal:"Renovar al plan $499."},
-  {id:2,title:"Cliente molesto por servicio",diff:"Medio",persona:"Roberto, 52 años, empresario. 3 fallas de red.",personality:"Impaciente, directo. Quiere soluciones.",goal:"Retener con beneficio."},
-  {id:3,title:"Cliente quiere cancelar",diff:"Difícil",persona:"Ana, 28 años, freelancer. Quiere cancelar.",personality:"Decidida. Menciona Bait.",goal:"Mantener con plan ajustado."},
-  {id:4,title:"Comparando competencia",diff:"Medio",persona:"Carlos, 41 años, ingeniero. Cotización Telcel.",personality:"Analítico. Le importa cobertura.",goal:"Demostrar valor y cerrar."},
-  {id:5,title:"Cliente desconfiado",diff:"Difícil",persona:"Doña Lupita, 67 años. Plan $199, vence en 5 días.",personality:"Desconfiada pero educada.",goal:"Generar confianza y renovar."}
+  // Uno por cada objeción real
+  {id:1,title:"No quiere el equipo",diff:"Medio",persona:"Luis, 38 años, contador. Plan Oro $699. Su iPhone funciona bien. No entiende por qué tiene que llevar equipo para renovar.",personality:"Racional, hace cuentas. Dice 'pero si mi teléfono está bien'. Responde a lógica financiera, no a presión.",goal:"Que acepte equipo sin costo o financiado. NUNCA digas gratis."},
+  {id:2,title:"Prefiere ir a sucursal",diff:"Medio",persona:"Patricia, 45 años, maestra. Plan Plata $629. Dice que prefiere ir a la tienda AT&T. Desconfía de trámites por teléfono.",personality:"Educada pero firme. Quiere sentir seguridad. Valora que le expliquen con paciencia.",goal:"Generar confianza y cerrar sin que vaya a sucursal."},
+  {id:3,title:"Deja lo pienso",diff:"Difícil",persona:"Miguel, 33 años, diseñador freelance. Plan Azul 3 $529. Dice que necesita pensarlo. En realidad no quiere decidir ahorita.",personality:"Evasivo, amable pero escurridizo. Dice 'sí, sí, déjame ver'. Necesitas descubrir su objeción real.",goal:"Descubrir qué lo frena y cerrar en la misma llamada."},
+  {id:4,title:"Problemas económicos",diff:"Medio",persona:"Carmen, 50 años, vendedora de ropa. Plan Con Todo 499. Dice que no sabe si podrá seguir pagando el plan.",personality:"Preocupada genuinamente. Agradece empatía. Responde bien cuando le muestras ahorro real.",goal:"Demostrar que renovar le AHORRA dinero y cerrar con equipo sin costo."},
+  {id:5,title:"Estoy bien con mi plan",diff:"Fácil",persona:"Daniel, 29 años, oficinista. Plan Azul 2 $419. Dice que está contento y no necesita cambiar.",personality:"Conformista, no conflictivo. No ve urgencia. Se activa cuando le muestras que puede recibir más por lo mismo.",goal:"Mover de conformidad a interés con comparativa concreta."},
+  {id:6,title:"No me interesa gracias",diff:"Difícil",persona:"Alejandra, 40 años, abogada. Contesta seca: 'No me interesa, gracias'. Está en modo automático de rechazo.",personality:"Cortante, directa, no quiere perder tiempo. Pero si rompes su guion mental, escucha.",goal:"Romper el automático, descubrir razón real y abrir conversación."},
+  {id:7,title:"No hago trámites por teléfono",diff:"Medio",persona:"Don Raúl, 62 años, jubilado. Plan Consíguelo 5 $667. Su hijo le configuró el teléfono. No confía en llamadas.",personality:"Desconfiado pero educado. Necesita explicaciones simples. Valora transparencia y paciencia.",goal:"Generar confianza con elementos de seguridad (folio, sistema oficial) y cerrar."},
+  {id:8,title:"No quiero pagar más (plan bajo)",diff:"Medio",persona:"Karen, 26 años, estudiante universitaria. Plan Azul 1 $319. Dice que no quiere pagar ni un peso más.",personality:"Directa, cuida cada peso. Pero usa mucho TikTok y YouTube con datos. A veces se queda sin datos.",goal:"Detectar que se queda corta de datos y subir a Azul 2 con lógica de ahorro por día."},
+  {id:9,title:"Me falla la cobertura",diff:"Difícil",persona:"Ing. Torres, 48 años, constructor. Plan Black $799. Se queja de que la señal falla en obra y en carretera.",personality:"Pragmático, quiere soluciones no excusas. Si detecta honestidad, respeta. Si mientes, te corta.",goal:"Manejar con transparencia, diagnosticar si es zona/equipo, y retener con beneficios reales."},
+  {id:10,title:"Estoy ocupado / no tengo tiempo",diff:"Fácil",persona:"Sofía, 31 años, gerente de tienda. Plan Oro $699. Contesta apurada diciendo que está trabajando.",personality:"Apresurada pero amable. Si le das micro-resumen de 10 seg y agendas, cumple.",goal:"No vender, solo asegurar agenda con día y hora exacta. Micro-compromiso."},
+  // Especiales
+  {id:11,title:"Técnica de cierre: cliente listo",diff:"Medio",persona:"Roberto, 35 años, vendedor. Plan Consíguelo 8 $887. Ya preguntó precio, fecha de activación y si puede pagar con tarjeta.",personality:"Ya está listo para comprar pero nadie le ha hecho la pregunta de cierre. Si no cierras, se enfría.",goal:"Detectar las señales de compra y aplicar cierre directo inmediato. No sigas explicando."},
+  {id:12,title:"Seguimiento profesional",diff:"Difícil",persona:"Andrea, 37 años, contadora. Ayer le cotizaste Plata por $629. Le gustó el precio pero no envió su INE. Hoy le das seguimiento.",personality:"Interesada pero cautelosa con documentos. Ayer le atrajo el ahorro de $150/mes. La INE fue lo que la frenó.",goal:"Abrir con lo que le ATRAJO (ahorro $150) y cerrar con lo que la frenó (INE). No hagas seguimiento genérico."},
+  {id:13,title:"WhatsApp estratégico vs escape",diff:"Difícil",persona:"Juan Carlos, 42 años, comerciante. En llamada te dijo 'mándame la información por WhatsApp'. No quiere decidir ahorita.",personality:"Usa el 'mándame info' como escape. Si le mandas plantilla genérica, nunca responde. Si le preguntas antes de enviar, abre conversación.",goal:"NO mandar WhatsApp como escape. Primero descubre qué quiere revisar, cierra intención, y si mandas mensaje que sea comparativo con cierre al final."}
 ];
 var TR_EXERCISES = [
-  {title:"Práctica de Apertura",type:"speech",desc:"Practica tu apertura en 30 seg: nombre, empresa, motivo.",criteria:["≤ 30 seg","Tono seguro","Info completa","Sin muletillas"]},
-  {title:"Maratón de Objeciones",type:"objection",desc:"Responde 5 objeciones aleatorias en <15 seg cada una.",criteria:["<15 seg","Sin titubeo","Técnica correcta","Tono empático"]},
-  {title:"Cierre en 60 Segundos",type:"closing",desc:"Lleva conversación al cierre en máx 60 seg.",criteria:["Resumen beneficios","Pregunta cierre","Manejo objeción","Confirmar datos"]},
-  {title:"Pitch de Valor",type:"pitch",desc:"Pitch de 45 seg del plan más vendido. 3 beneficios + diferenciador.",criteria:["3 beneficios","Diferenciador","Call to action","≤ 45 seg"]},
-  {title:"Rapport Express",type:"rapport",desc:"3 formas de generar conexión en 15 seg.",criteria:["Personalización","Naturalidad","Calidez","Brevedad"]},
-  {title:"Recuperación de Llamada",type:"recovery",desc:"Cliente molesto → revierte y convierte en oportunidad.",criteria:["Empatía genuina","No defensivo","Ofrecer solución","Cierre suave"]}
+  {title:"Objeción: No quiere equipo",type:"objection",desc:"Practica reencuadrar: el equipo es BENEFICIO incluido, no obligación. Usa las 3 opciones (sin costo, financiado, vender). Nunca digas gratis.",criteria:["Reencuadre correcto","3 opciones claras","Sin decir gratis","Cierre con alternativa"]},
+  {title:"Objeción: Prefiere sucursal",type:"objection",desc:"Genera confianza sin atacar sucursal. Menciona: mismo sistema, sin filas, seguimiento personal, folio oficial.",criteria:["Valida primero","No ataca sucursal","Da elementos de seguridad","Cierra con conveniencia"]},
+  {title:"Objeción: Deja lo pienso",type:"objection",desc:"Descubre la objeción REAL. Pregunta: '¿Qué parte quieres analizar?' No dejes que escape sin saber qué lo frena.",criteria:["Pregunta diagnóstica","Descubre objeción real","No acepta el escape","Intenta cerrar en el momento"]},
+  {title:"Objeción: No me interesa",type:"objection",desc:"Rompe el automático. Técnica: 'Solo para no insistirte, ¿es porque estás ocupado o tu plan te funciona bien?' Clasifica y actúa.",criteria:["No confronta","Pregunta clasificadora","Rompe patrón","Abre conversación"]},
+  {title:"Objeción: No tengo tiempo",type:"objection",desc:"Micro-resumen de 10 segundos + agenda cerrada. NUNCA dejes seguimiento abierto. Siempre día + hora + confirmación.",criteria:["Micro-resumen ≤10 seg","Agenda con hora exacta","No deja abierto","Opciones cerradas A o B"]},
+  {title:"Técnica de cierres",type:"closing",desc:"Practica los 7 cierres: Alternativa, Lógica, Micro-compromiso, Consecuencia, Eliminación de riesgo, Proyección, Directo. Usa el correcto según momento.",criteria:["Identifica tipo de cliente","Elige cierre correcto","Pregunta cerrada al final","No sobre-explica"]},
+  {title:"Seguimiento profesional",type:"followup",desc:"Estructura correcta: 1) Abre con lo que le ATRAJO. 2) Cierra con lo que lo hizo DUDAR. Ejemplo: 'Hola, me contacto por tu interés en más GB sin subir costo. ¿Me envías tu INE en foto o PDF?'",criteria:["Abre con beneficio que atrajo","Cierra con lo que frenó","Personalizado, no genérico","Pregunta cerrada al final"]},
+  {title:"WhatsApp estratégico",type:"whatsapp",desc:"REGLA: WhatsApp NO es salida a objeciones. Antes de enviar info: 1) Pregunta qué quiere revisar. 2) Cierra intención. 3) Si mandas mensaje: comparativo + cierre. NUNCA plantilla genérica.",criteria:["No usa WA como escape","Pregunta antes de enviar","Mensaje con comparativa real","Termina en pregunta cerrada"]},
+  {title:"Objeción: Problemas económicos",type:"objection",desc:"Reformula: la renovación puede BAJAR su mensualidad. Si equipo: puede venderlo y pagar meses. Desglose por día siempre suena mejor.",criteria:["Empatía genuina","Muestra ahorro concreto","Desglose por día","Cierre con beneficio"]},
+  {title:"Objeción: Me falla la cobertura",type:"objection",desc:"NUNCA niegues el problema. Diagnostica: ¿todos lados o zona específica? Sé transparente. Frase: 'Prefiero decirte la realidad que prometer algo que no depende del plan.'",criteria:["Valida el problema","Pregunta diagnóstica","Transparencia total","No promete lo que no puede"]}
 ];
 var trChatMsgs=[],trRpMsgs=[],trRpHistory=[],trRpScenario=null,trRpTurn=0,trLoading=false,trExCompleted={};
 var TR_DAILY_LIMIT=30, TR_API_KEY='', TR_USAGE_TODAY=0;
@@ -5697,10 +5748,12 @@ function trTab(tab){
   document.getElementById('trChat').style.display=tab==='chat'?'':'none';
   document.getElementById('trRoleplay').style.display=tab==='roleplay'?'':'none';
   document.getElementById('trExercises').style.display=tab==='exercises'?'':'none';
-  ['Chat','Roleplay','Exercises'].forEach(function(t){var el=document.getElementById('trTab'+t);var a=t.toLowerCase()===tab;el.style.background=a?'var(--att-blue)':'transparent';el.style.color=a?'white':'var(--text-2)'});
+  document.getElementById('trMetrics').style.display=tab==='metrics'?'':'none';
+  ['Chat','Roleplay','Exercises','Metrics'].forEach(function(t){var el=document.getElementById('trTab'+t);if(!el)return;var a=t.toLowerCase()===tab;el.style.background=a?'var(--att-blue)':'transparent';el.style.color=a?'white':'var(--text-2)'});
   if(tab==='chat'&&trChatMsgs.length===0)trInitChat();
   if(tab==='roleplay')trRenderScenarios();
   if(tab==='exercises')trRenderExercises();
+  if(tab==='metrics')trLoadMetrics();
 }
 
 // ── CHAT ──
@@ -5883,6 +5936,7 @@ async function trSendRp(){
     var fb;try{fb=JSON.parse(fr.replace(/```json|```/g,'').trim())}catch(e){fb={score:70,strengths:['Completaste el ejercicio'],improvements:['Practica más'],recommendation:'Repite enfocándote en cerrar.'}}
     // Save to Supabase
     await trSaveProgress('roleplay', trRpScenario.title, fb);
+    trRenderLevelBar();
     trRpMsgs.push({role:'sys',text:'🏁 ¡Roleplay completado!'});document.getElementById('trRpInputArea').style.display='none';
     var sc=fb.score>=80?'#10B981':fb.score>=60?'#F59E0B':'#DC3545';
     var fh='<div class="section" style="padding:14px;margin-bottom:8px;border:1px solid '+sc+'40"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div style="font-size:32px;font-weight:900;color:'+sc+'">'+fb.score+'</div><div><div style="font-size:13px;font-weight:700">Evaluación</div><div style="font-size:10px;color:var(--text-3)">'+(fb.score>=80?'¡Excelente!':fb.score>=60?'Buen trabajo':'Más práctica')+'</div></div></div>';
@@ -5909,12 +5963,282 @@ function trRenderExercises(){
 async function trMarkEx(i){
   trExCompleted[i]=!trExCompleted[i];
   if(trExCompleted[i]) await trSaveProgress('exercise',TR_EXERCISES[i].title,{score:100,strengths:['Completado'],improvements:[],recommendation:''});
+  trRenderLevelBar();
   trRenderExercises();
+}
+
+// ── LEVEL SYSTEM ──
+var TR_LEVELS = [
+  {lvl:1,name:'Novato',min:0,badge:'#9CA3AF',grad:'#6B7280,#4B5563'},
+  {lvl:2,name:'Aprendiz',min:100,badge:'#3B82F6',grad:'#3B82F6,#1D4ED8'},
+  {lvl:3,name:'Practicante',min:300,badge:'#8B5CF6',grad:'#8B5CF6,#6D28D9'},
+  {lvl:4,name:'Vendedor',min:600,badge:'#F59E0B',grad:'#F59E0B,#D97706'},
+  {lvl:5,name:'Experto',min:1000,badge:'#10B981',grad:'#10B981,#059669'},
+  {lvl:6,name:'Maestro',min:1500,badge:'#EF4444',grad:'#EF4444,#DC2626'},
+  {lvl:7,name:'Leyenda',min:2500,badge:'#F59E0B',grad:'#F59E0B,#EF4444'}
+];
+
+// XP Rules: Roleplay = score (0-100 XP), Exercise = 15 XP, Streak day = 10 XP
+async function trCalcLevel() {
+  if (!supabase || !state.agente) return {lvl:1,name:'Novato',xp:0,next:100,pct:0,rp:0,ex:0,streak:0};
+  var agId = state.agente.id;
+  try {
+    // Get all progress
+    var progRes = await supabase.from('training_progress').select('type,score,completed_at').eq('agent_id', agId);
+    var prog = progRes.data || [];
+    var rpDone = prog.filter(function(p){return p.type==='roleplay'});
+    var exDone = prog.filter(function(p){return p.type==='exercise'});
+
+    // Get usage for streak
+    var usageRes = await supabase.from('training_usage').select('date,total_count').eq('agent_id', agId).gt('total_count',0).order('date',{ascending:false});
+    var usageDays = (usageRes.data || []).map(function(u){return u.date});
+
+    // Calculate streak
+    var streak = 0;
+    var today = new Date().toISOString().slice(0,10);
+    var checkDate = new Date();
+    // Allow today or yesterday as start
+    if (usageDays.indexOf(today) !== -1) {
+      streak = 1;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      var yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+      if (usageDays.indexOf(yesterday.toISOString().slice(0,10)) !== -1) {
+        streak = 1;
+        checkDate = new Date(yesterday);
+        checkDate.setDate(checkDate.getDate() - 1);
+      }
+    }
+    if (streak > 0) {
+      for (var s = 0; s < 365; s++) {
+        var ds = checkDate.toISOString().slice(0,10);
+        if (usageDays.indexOf(ds) !== -1) { streak++; checkDate.setDate(checkDate.getDate()-1); }
+        else break;
+      }
+    }
+
+    // Calculate XP
+    var xp = 0;
+    rpDone.forEach(function(r) { xp += (r.score || 50); }); // roleplay = score as XP
+    xp += exDone.length * 15; // exercise = 15 XP
+    xp += streak * 10; // streak day = 10 XP
+
+    // Find level
+    var curLevel = TR_LEVELS[0];
+    var nextLevel = TR_LEVELS[1];
+    for (var i = TR_LEVELS.length - 1; i >= 0; i--) {
+      if (xp >= TR_LEVELS[i].min) { curLevel = TR_LEVELS[i]; nextLevel = TR_LEVELS[i+1] || null; break; }
+    }
+    var pct = nextLevel ? Math.min(100, Math.round((xp - curLevel.min) / (nextLevel.min - curLevel.min) * 100)) : 100;
+
+    return {lvl:curLevel.lvl, name:curLevel.name, xp:xp, next:nextLevel?nextLevel.min:curLevel.min, nextName:nextLevel?nextLevel.name:'¡Máximo!', pct:pct, rp:rpDone.length, ex:exDone.length, streak:streak, grad:curLevel.grad};
+  } catch(e) { console.log('Level calc error:', e); return {lvl:1,name:'Novato',xp:0,next:100,pct:0,rp:0,ex:0,streak:0,grad:'#6B7280,#4B5563'}; }
+}
+
+async function trRenderLevelBar() {
+  var d = await trCalcLevel();
+  document.getElementById('trLevelBadge').textContent = d.lvl;
+  document.getElementById('trLevelBadge').style.background = 'linear-gradient(135deg,' + (d.grad||'#3B82F6,#1D4ED8') + ')';
+  document.getElementById('trLevelTitle').textContent = d.name;
+  document.getElementById('trLevelXP').textContent = d.xp + ' / ' + d.next + ' XP';
+  document.getElementById('trLevelNext').textContent = 'Sig: ' + (d.nextName||'¡Máximo!');
+  document.getElementById('trLevelPct').textContent = d.pct + '%';
+  document.getElementById('trLevelFill').style.width = d.pct + '%';
+  document.getElementById('trLevelFill').style.background = 'linear-gradient(90deg,' + (d.grad||'#3B82F6,#1D4ED8') + ')';
+  document.getElementById('trLvlRp').textContent = d.rp;
+  document.getElementById('trLvlEx').textContent = d.ex;
+  document.getElementById('trLvlStreak').textContent = d.streak;
+  return d;
 }
 
 // Hook into showView for auto-init
 var _origShowView = showView;
-showView = function(name, title) { _origShowView(name, title); if (name === 'training' && trChatMsgs.length === 0) trInitChat(); };
+showView = function(name, title) { _origShowView(name, title); if (name === 'training') { if (trChatMsgs.length === 0) trInitChat(); trRenderLevelBar(); } };
+
+// ── METRICS TAB ──
+var trMetricsUsers = [];
+async function trLoadMetrics() {
+  if (!supabase) return;
+  var rol = currentUser ? currentUser.rol : 'agente';
+
+  // Load users for hierarchy
+  try {
+    var res = await supabase.from('usuarios').select('id,nombre,rol,supervisor_id,coordinador_id,centro_id').eq('activo',true);
+    trMetricsUsers = res.data || [];
+  } catch(e) { trMetricsUsers = []; }
+
+  // Build filters based on role
+  var filtersHtml = '';
+  if (rol === 'admin' || rol === 'coordinador') {
+    var sups = trMetricsUsers.filter(function(u) {
+      if (u.rol !== 'supervisor') return false;
+      if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
+      return true;
+    });
+    filtersHtml += '<select class="field" id="trMetFilterSup" onchange="trRenderMetrics()" style="width:auto;font-size:11px;padding:5px 6px"><option value="all">Todos los supervisores</option>';
+    sups.forEach(function(u) { filtersHtml += '<option value="'+u.id+'">'+u.nombre+'</option>'; });
+    filtersHtml += '</select>';
+  }
+  if (rol !== 'agente') {
+    var agents = trMetricsUsers.filter(function(u) {
+      if (u.rol !== 'agente') return false;
+      if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
+      if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
+      return true;
+    });
+    filtersHtml += '<select class="field" id="trMetFilterAgent" onchange="trRenderMetrics()" style="width:auto;font-size:11px;padding:5px 6px"><option value="all">Todos los agentes</option>';
+    agents.forEach(function(u) { filtersHtml += '<option value="'+u.id+'">'+u.nombre+'</option>'; });
+    filtersHtml += '</select>';
+  }
+  filtersHtml += '<select class="field" id="trMetFilterPeriod" onchange="trRenderMetrics()" style="width:auto;font-size:11px;padding:5px 6px"><option value="7">Últimos 7 días</option><option value="30" selected>Últimos 30 días</option><option value="all">Todo</option></select>';
+  document.getElementById('trMetricsFilters').innerHTML = filtersHtml;
+
+  var subtitle = rol === 'agente' ? 'Tu actividad de entrenamiento' : rol === 'supervisor' ? 'Actividad de tu equipo' : rol === 'coordinador' ? 'Actividad de tus supervisores y agentes' : 'Actividad de toda la operación';
+  document.getElementById('trMetricsSubtitle').textContent = subtitle;
+
+  await trRenderMetrics();
+}
+
+async function trRenderMetrics() {
+  if (!supabase) return;
+  var rol = currentUser ? currentUser.rol : 'agente';
+
+  // Get filtered agent IDs
+  var agentIds = [];
+  if (rol === 'agente') {
+    agentIds = [currentUser.id];
+  } else {
+    var supFilter = document.getElementById('trMetFilterSup');
+    var agentFilter = document.getElementById('trMetFilterAgent');
+    var supVal = supFilter ? supFilter.value : 'all';
+    var agentVal = agentFilter ? agentFilter.value : 'all';
+
+    if (agentVal !== 'all') {
+      agentIds = [agentVal];
+    } else {
+      agentIds = trMetricsUsers.filter(function(u) {
+        if (u.rol !== 'agente') return false;
+        if (supVal !== 'all' && u.supervisor_id !== supVal) return false;
+        if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
+        if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
+        return true;
+      }).map(function(u) { return u.id; });
+    }
+  }
+
+  // Period filter
+  var periodEl = document.getElementById('trMetFilterPeriod');
+  var period = periodEl ? periodEl.value : '30';
+  var dateFilter = '';
+  if (period !== 'all') {
+    var cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - parseInt(period));
+    dateFilter = cutoff.toISOString().slice(0,10);
+  }
+
+  // Fetch usage data
+  var usageQuery = supabase.from('training_usage').select('*');
+  if (agentIds.length > 0 && agentIds.length <= 50) usageQuery = usageQuery.in('agent_id', agentIds);
+  if (dateFilter) usageQuery = usageQuery.gte('date', dateFilter);
+  var usageRes = await usageQuery.order('date',{ascending:false});
+  var usage = (usageRes.data || []).filter(function(u) { return agentIds.length === 0 || agentIds.indexOf(u.agent_id) !== -1; });
+
+  // Fetch progress data
+  var progQuery = supabase.from('training_progress').select('*');
+  if (agentIds.length > 0 && agentIds.length <= 50) progQuery = progQuery.in('agent_id', agentIds);
+  if (dateFilter) progQuery = progQuery.gte('completed_at', dateFilter+'T00:00:00');
+  var progRes = await progQuery.order('completed_at',{ascending:false});
+  var progress = (progRes.data || []).filter(function(p) { return agentIds.length === 0 || agentIds.indexOf(p.agent_id) !== -1; });
+
+  // KPIs
+  var totalMsgs = usage.reduce(function(a,b){return a+b.total_count},0);
+  var totalChat = usage.reduce(function(a,b){return a+(b.chat_count||0)},0);
+  var totalRp = usage.reduce(function(a,b){return a+(b.roleplay_count||0)},0);
+  var uniqueAgents = {};
+  usage.forEach(function(u){ if(u.total_count>0) uniqueAgents[u.agent_id]=true; });
+  var activeAgents = Object.keys(uniqueAgents).length;
+  var roleplays = progress.filter(function(p){return p.type==='roleplay'});
+  var avgScore = roleplays.length ? (roleplays.reduce(function(a,b){return a+(b.score||0)},0)/roleplays.length).toFixed(0) : '-';
+  var exercises = progress.filter(function(p){return p.type==='exercise'}).length;
+
+  document.getElementById('trMetricsKPIs').innerHTML =
+    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--att-blue)">'+totalMsgs+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Total msgs IA</div></div>'+
+    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:#8B5CF6">'+totalChat+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Chat</div></div>'+
+    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:#F59E0B">'+totalRp+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Roleplay</div></div>'+
+    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:#10B981">'+activeAgents+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Agentes activos</div></div>'+
+    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:'+(parseInt(avgScore)>=70?'#10B981':'#F59E0B')+'">'+avgScore+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Score promedio</div></div>'+
+    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:24px;font-weight:800;color:#06B6D4">'+exercises+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Ejercicios</div></div>';
+
+  // Usage table by agent
+  var byAgent = {};
+  usage.forEach(function(u) {
+    if (!byAgent[u.agent_id]) byAgent[u.agent_id] = {name:u.agent_name||'?',chat:0,rp:0,total:0,days:0};
+    byAgent[u.agent_id].chat += (u.chat_count||0);
+    byAgent[u.agent_id].rp += (u.roleplay_count||0);
+    byAgent[u.agent_id].total += u.total_count;
+    byAgent[u.agent_id].days++;
+  });
+  // Add roleplay scores
+  roleplays.forEach(function(p) {
+    if (!byAgent[p.agent_id]) byAgent[p.agent_id] = {name:p.agent_name||'?',chat:0,rp:0,total:0,days:0};
+    if (!byAgent[p.agent_id].scores) byAgent[p.agent_id].scores = [];
+    byAgent[p.agent_id].scores = byAgent[p.agent_id].scores || [];
+    byAgent[p.agent_id].scores.push(p.score||0);
+  });
+
+  var agents = Object.keys(byAgent).sort(function(a,b){return byAgent[b].total - byAgent[a].total});
+  var tbl = '<div class="section" style="padding:14px"><div style="font-size:13px;font-weight:700;margin-bottom:10px">Uso por agente</div>';
+  if (agents.length === 0) {
+    tbl += '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">Sin actividad en este periodo</div>';
+  } else {
+    tbl += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:separate;border-spacing:0 3px"><thead><tr>';
+    ['Agente','Nivel','Chat','Roleplay','Total','Días activo','Score prom.'].forEach(function(h){tbl+='<th style="padding:5px 8px;text-align:left;font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px">'+h+'</th>'});
+    tbl += '</tr></thead><tbody>';
+    agents.forEach(function(id) {
+      var a = byAgent[id];
+      var sc = a.scores && a.scores.length ? (a.scores.reduce(function(x,y){return x+y},0)/a.scores.length).toFixed(0) : '-';
+      var scColor = sc !== '-' ? (parseInt(sc)>=70?'#10B981':'#F59E0B') : 'var(--text-3)';
+      // Calculate XP for level
+      var axp = 0;
+      if (a.scores) a.scores.forEach(function(s){axp+=s});
+      var aex = progress.filter(function(p){return p.agent_id===id && p.type==='exercise'}).length;
+      axp += aex * 15;
+      var alvl = TR_LEVELS[0];
+      for (var li = TR_LEVELS.length-1; li>=0; li--) { if (axp >= TR_LEVELS[li].min) { alvl = TR_LEVELS[li]; break; } }
+      tbl += '<tr><td style="padding:7px 8px;background:white;border-radius:6px 0 0 6px;font-size:12px;font-weight:600">'+a.name+'</td>';
+      tbl += '<td style="padding:7px 8px;background:white"><span style="display:inline-flex;align-items:center;gap:4px"><span style="width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:white;background:linear-gradient(135deg,'+alvl.grad+')">'+alvl.lvl+'</span><span style="font-size:10px;font-weight:600">'+alvl.name+'</span></span></td>';
+      tbl += '<td style="padding:7px 8px;background:white;font-size:12px">'+a.chat+'</td>';
+      tbl += '<td style="padding:7px 8px;background:white;font-size:12px">'+a.rp+'</td>';
+      tbl += '<td style="padding:7px 8px;background:white;font-size:12px;font-weight:700;color:var(--att-blue)">'+a.total+'</td>';
+      tbl += '<td style="padding:7px 8px;background:white;font-size:12px">'+a.days+'</td>';
+      tbl += '<td style="padding:7px 8px;background:white;border-radius:0 6px 6px 0;font-size:12px;font-weight:700;color:'+scColor+'">'+sc+'</td></tr>';
+    });
+    tbl += '</tbody></table></div>';
+  }
+  tbl += '</div>';
+  document.getElementById('trMetricsTable').innerHTML = tbl;
+
+  // Recent roleplays
+  var rpHtml = '';
+  if (roleplays.length > 0) {
+    rpHtml = '<div class="section" style="padding:14px"><div style="font-size:13px;font-weight:700;margin-bottom:10px">Últimos roleplays completados</div>';
+    roleplays.slice(0,10).forEach(function(rp) {
+      var sc = rp.score||0;
+      var scColor = sc>=80?'#10B981':sc>=60?'#F59E0B':'#DC3545';
+      var strengths = []; try { strengths = JSON.parse(rp.strengths||'[]'); } catch(e){}
+      var improvements = []; try { improvements = JSON.parse(rp.improvements||'[]'); } catch(e){}
+      rpHtml += '<div style="background:white;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+      rpHtml += '<div style="font-size:22px;font-weight:900;color:'+scColor+';min-width:40px;text-align:center">'+sc+'</div>';
+      rpHtml += '<div style="flex:1;min-width:150px"><div style="font-size:12px;font-weight:600">'+rp.agent_name+' — '+(rp.scenario_title||'')+'</div>';
+      rpHtml += '<div style="font-size:10px;color:var(--text-3)">'+(rp.completed_at||'').slice(0,10)+'</div></div>';
+      if (strengths.length) rpHtml += '<div style="font-size:10px;color:#10B981">✓ '+strengths[0]+'</div>';
+      if (improvements.length) rpHtml += '<div style="font-size:10px;color:#F59E0B">△ '+improvements[0]+'</div>';
+      rpHtml += '</div>';
+    });
+    rpHtml += '</div>';
+  }
+  document.getElementById('trMetricsRoleplays').innerHTML = rpHtml;
+}
 </script>
 </body>
 </html>
