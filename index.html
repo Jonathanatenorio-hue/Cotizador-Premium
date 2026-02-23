@@ -524,6 +524,12 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
         <div class="card-title">Recuperación</div>
         <div class="card-desc" id="recupDesc">Cotizaciones por reasignar</div>
       </div>
+
+      <div class="home-card clickable" id="cardAceleraciones" style="display:none" onclick="openAceleraciones()">
+        <div class="card-icon">⚡</div>
+        <div class="card-title">Aceleraciones</div>
+        <div class="card-desc" id="acelDesc">Seguimiento diario</div>
+      </div>
     </div>
   </div>
 </div>
@@ -860,6 +866,27 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
         <button class="btn btn-secondary" style="font-size:12px" onclick="seleccionarTodasRecup()">Seleccionar todas</button>
       </div>
       <div id="recupList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== VIEW: ACELERACIONES ===== -->
+<div class="view" id="viewAceleraciones">
+  <div class="container">
+    <div class="section" style="padding:14px;margin-bottom:8px">
+      <div class="section-title">⚡ Agenda de Aceleraciones</div>
+      <p style="font-size:11px;color:var(--text-3);margin:4px 0 10px">Clientes en aceleración pendiente organizados por fecha de liberación.</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <select class="field" id="acelFilterIne" onchange="renderAceleraciones()" style="width:auto;font-size:12px;padding:5px 8px">
+          <option value="all">Todos</option>
+          <option value="con_ine">Con INE</option>
+          <option value="sin_ine">Sin INE</option>
+        </select>
+        <select class="field" id="acelFilterAgente" onchange="renderAceleraciones()" style="width:auto;font-size:12px;padding:5px 8px">
+          <option value="all">Todos los agentes</option>
+        </select>
+      </div>
+      <div id="acelList"></div>
     </div>
   </div>
 </div>
@@ -1406,7 +1433,7 @@ function showView(name, title) {
 
   const titles = {
     home: '', config: 'Mi Perfil', cotizar: 'Nueva Cotización',
-    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación',
+    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones',
   };
   headerTitle.textContent = title || titles[name] || '';
 
@@ -1536,6 +1563,18 @@ function updateHome() {
     }
   } else {
     recupCard.style.display = 'none';
+  }
+
+  // Show aceleraciones card
+  var acelCard = document.getElementById('cardAceleraciones');
+  var acelCount = state.cotizaciones.filter(function(c) {
+    return c.sub_estatus === 'aceleracion' && c.estatus !== 'perdida' && c.estatus !== 'venta';
+  }).length;
+  if (acelCount > 0) {
+    acelCard.style.display = '';
+    document.getElementById('acelDesc').textContent = acelCount + ' cliente(s) en seguimiento';
+  } else {
+    acelCard.style.display = 'none';
   }
 
   // Alerts/Notifications
@@ -4642,6 +4681,125 @@ async function reasignarSeleccionadas() {
   } catch(e) {
     alert('Error: ' + e.message);
   }
+}
+
+// ============================================================
+// ACELERACIONES
+// ============================================================
+function openAceleraciones() {
+  showView('aceleraciones', 'Aceleraciones');
+  // Populate agent filter
+  var agenteSel = document.getElementById('acelFilterAgente');
+  agenteSel.innerHTML = '<option value="all">Todos los agentes</option>';
+  var agentes = {};
+  state.cotizaciones.forEach(function(c) {
+    if (c.sub_estatus === 'aceleracion' && c.ejecutivo) {
+      var key = c.ejecutivo.attuid || c.ejecutivo.nombre;
+      if (!agentes[key]) {
+        agentes[key] = c.ejecutivo.nombre;
+        agenteSel.innerHTML += '<option value="' + key + '">' + c.ejecutivo.nombre + '</option>';
+      }
+    }
+  });
+  renderAceleraciones();
+}
+
+function renderAceleraciones() {
+  var ineFilter = document.getElementById('acelFilterIne').value;
+  var agenteFilter = document.getElementById('acelFilterAgente').value;
+  var now = new Date();
+  now.setHours(0,0,0,0);
+
+  // Get all aceleracion cotizaciones
+  var acels = state.cotizaciones.filter(function(c) {
+    if (c.sub_estatus !== 'aceleracion') return false;
+    if (c.estatus === 'perdida' || c.estatus === 'venta') return false;
+    if (ineFilter !== 'all' && c.tiene_ine !== ineFilter) return false;
+    if (agenteFilter !== 'all') {
+      var key = c.ejecutivo ? (c.ejecutivo.attuid || c.ejecutivo.nombre) : '';
+      if (key !== agenteFilter) return false;
+    }
+    return true;
+  });
+
+  // Sort by fecha_fin_plazo ascending (soonest first)
+  acels.sort(function(a, b) {
+    var da = a.fecha_fin_plazo ? new Date(a.fecha_fin_plazo + 'T00:00:00') : new Date('2099-01-01');
+    var db = b.fecha_fin_plazo ? new Date(b.fecha_fin_plazo + 'T00:00:00') : new Date('2099-01-01');
+    return da - db;
+  });
+
+  // Group: vencidas, esta semana, proximas
+  var vencidas = [], estaSemana = [], proximas = [];
+  var en7dias = new Date(now.getTime() + 7 * 86400000);
+
+  acels.forEach(function(c) {
+    var fecha = c.fecha_fin_plazo ? new Date(c.fecha_fin_plazo + 'T00:00:00') : null;
+    if (!fecha || fecha <= now) {
+      vencidas.push(c);
+    } else if (fecha <= en7dias) {
+      estaSemana.push(c);
+    } else {
+      proximas.push(c);
+    }
+  });
+
+  var html = '';
+
+  if (acels.length === 0) {
+    html = '<div style="text-align:center;color:var(--text-3);font-size:12px;padding:20px">No hay aceleraciones pendientes.</div>';
+    document.getElementById('acelList').innerHTML = html;
+    return;
+  }
+
+  // Summary
+  html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
+  html += '<div style="flex:1;min-width:100px;background:#F8D7DA;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700;color:#721C24">' + vencidas.length + '</div><div style="font-size:10px;color:#721C24">Vencidas</div></div>';
+  html += '<div style="flex:1;min-width:100px;background:#FFF3CD;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700;color:#856404">' + estaSemana.length + '</div><div style="font-size:10px;color:#856404">Esta semana</div></div>';
+  html += '<div style="flex:1;min-width:100px;background:#D1ECF1;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700;color:#0C5460">' + proximas.length + '</div><div style="font-size:10px;color:#0C5460">Próximas</div></div>';
+  html += '</div>';
+
+  function renderSection(title, icon, items, bgColor, borderColor, textColor) {
+    if (items.length === 0) return '';
+    var s = '<div style="margin-bottom:14px">';
+    s += '<div style="font-weight:700;font-size:13px;color:' + textColor + ';margin-bottom:6px">' + icon + ' ' + title + ' (' + items.length + ')</div>';
+    items.forEach(function(c) {
+      var fecha = c.fecha_fin_plazo || 'Sin fecha';
+      var diasFaltan = '';
+      if (c.fecha_fin_plazo) {
+        var df = Math.ceil((new Date(c.fecha_fin_plazo + 'T00:00:00') - now) / 86400000);
+        if (df < 0) diasFaltan = '<span style="color:#DC3545;font-weight:700">Venció hace ' + Math.abs(df) + ' día(s)</span>';
+        else if (df === 0) diasFaltan = '<span style="color:#DC3545;font-weight:700">¡Vence HOY!</span>';
+        else diasFaltan = '<span style="color:#856404">Faltan ' + df + ' día(s)</span>';
+      }
+      var ineLabel = c.tiene_ine === 'con_ine' ? '<span style="color:#28A745;font-size:10px">✅ Con INE</span>' : '<span style="color:#DC3545;font-size:10px">❌ Sin INE</span>';
+
+      s += '<div style="background:white;border:1px solid ' + borderColor + ';border-left:4px solid ' + borderColor + ';border-radius:8px;padding:10px 12px;margin-bottom:4px">';
+      s += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">';
+      s += '<div style="font-weight:700;font-size:13px;color:var(--text-1)">' + c.cliente.nombre + '</div>';
+      s += '<div>' + ineLabel + '</div>';
+      s += '</div>';
+      s += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px">';
+      if (c.cliente.telefono) {
+        s += '<a href="tel:' + c.cliente.telefono + '" style="font-size:12px;color:var(--att-blue);text-decoration:none">📞 ' + c.cliente.telefono + '</a>';
+      }
+      s += '<span style="font-size:11px;color:var(--text-3)">|</span>';
+      s += '<span style="font-size:11px;color:var(--text-2)">📅 Liberación: <strong>' + fecha + '</strong></span>';
+      s += '<span style="font-size:11px;color:var(--text-3)">|</span>';
+      s += '<span style="font-size:11px">' + diasFaltan + '</span>';
+      s += '</div>';
+      s += '<div style="font-size:10px;color:var(--text-3);margin-top:3px">Agente: ' + (c.ejecutivo ? c.ejecutivo.nombre : 'N/A') + ' · Folio: ' + c.folio + '</div>';
+      s += '</div>';
+    });
+    s += '</div>';
+    return s;
+  }
+
+  html += renderSection('VENCIDAS — ¡Contactar de inmediato!', '🚨', vencidas, '#F8D7DA', '#DC3545', '#721C24');
+  html += renderSection('ESTA SEMANA — Preparar contacto', '📅', estaSemana, '#FFF3CD', '#E6A200', '#856404');
+  html += renderSection('PRÓXIMAMENTE', '🗓️', proximas, '#D1ECF1', '#17A2B8', '#0C5460');
+
+  document.getElementById('acelList').innerHTML = html;
 }
 
 async function moverCotsARecuperacion(userId) {
