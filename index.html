@@ -1177,17 +1177,17 @@ const PLANS_ACTUALES = [
   { id:'cg_20', name:'Consíguelo 20', gb:'20GB', price: pp(1853, 1918, PRICE_SWITCH_DATE_2) },
   // Ármalo
   { id:'ar_3', name:'Ármalo 3', gb:'3GB', price: pp(314, 325, PRICE_SWITCH_DATE_2) },
-  { id:'ar_5', name:'Ármalo 5', gb:'7GB', price: pp(419, 434, PRICE_SWITCH_DATE_2) },
-  { id:'ar_8', name:'Ármalo 8', gb:'10GB', price: pp(524, 542, PRICE_SWITCH_DATE_2) },
-  { id:'ar_9', name:'Ármalo 9', gb:'12GB', price: pp(629, 651, PRICE_SWITCH_DATE_2) },
-  { id:'ar_10', name:'Ármalo 10', gb:'14GB', price: pp(629, 651, PRICE_SWITCH_DATE_2) },
-  { id:'ar_11', name:'Ármalo 11', gb:'16GB', price: pp(681, 705, PRICE_SWITCH_DATE_2) },
-  { id:'ar_12', name:'Ármalo 12', gb:'18GB', price: pp(681, 705, PRICE_SWITCH_DATE_2) },
-  { id:'ar_14', name:'Ármalo 14', gb:'19GB', price: pp(786, 814, PRICE_SWITCH_DATE_2) },
-  { id:'ar_17', name:'Ármalo 17', gb:'23GB', price: pp(891, 922, PRICE_SWITCH_DATE_1) },
-  { id:'ar_20', name:'Ármalo 20', gb:'26GB', price: pp(996, 1031, PRICE_SWITCH_DATE_2) },
-  { id:'ar_26', name:'Ármalo 26', gb:'32GB', price: pp(1101, 1140, PRICE_SWITCH_DATE_2) },
-  { id:'ar_40', name:'Ármalo 40', gb:'50GB', price: pp(1399, 1454, PRICE_SWITCH_DATE_1) },
+  { id:'ar_5', name:'Ármalo 5', gb:'5GB', price: pp(419, 434, PRICE_SWITCH_DATE_2) },
+  { id:'ar_8', name:'Ármalo 8', gb:'8GB', price: pp(524, 542, PRICE_SWITCH_DATE_2) },
+  { id:'ar_9', name:'Ármalo 9', gb:'9GB', price: pp(629, 651, PRICE_SWITCH_DATE_2) },
+  { id:'ar_10', name:'Ármalo 10', gb:'10GB', price: pp(629, 651, PRICE_SWITCH_DATE_2) },
+  { id:'ar_11', name:'Ármalo 11', gb:'11GB', price: pp(681, 705, PRICE_SWITCH_DATE_2) },
+  { id:'ar_12', name:'Ármalo 12', gb:'12GB', price: pp(681, 705, PRICE_SWITCH_DATE_2) },
+  { id:'ar_14', name:'Ármalo 14', gb:'14GB', price: pp(786, 814, PRICE_SWITCH_DATE_2) },
+  { id:'ar_17', name:'Ármalo 17', gb:'17GB', price: pp(891, 922, PRICE_SWITCH_DATE_1) },
+  { id:'ar_20', name:'Ármalo 20', gb:'20GB', price: pp(996, 1031, PRICE_SWITCH_DATE_2) },
+  { id:'ar_26', name:'Ármalo 26', gb:'26GB', price: pp(1101, 1140, PRICE_SWITCH_DATE_2) },
+  { id:'ar_40', name:'Ármalo 40', gb:'40GB', price: pp(1399, 1454, PRICE_SWITCH_DATE_1) },
   // AT&T Premium (actuales, para clientes que ya tienen Premium)
   { id:'pa_azul1', name:'AT&T Azul 1 (actual)', gb:'5GB', price: pp(319, 330, PRICE_SWITCH_DATE_2) },
   { id:'pa_azul2', name:'AT&T Azul 2 (actual)', gb:'8GB', price: pp(419, 435, PRICE_SWITCH_DATE_2) },
@@ -2240,7 +2240,16 @@ function addPlanComparison(doc, cot, mg, y, cW, H) {
     y += 8;
   });
 
-  y += 2;
+  // Impact phrase
+  y += 3;
+  doc.setFillColor(0, 57, 93);
+  doc.roundedRect(mg, y, cW, 10, 1.5, 1.5, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(7);
+  doc.setFont('helvetica','bold');
+  doc.text('Más datos, más velocidad, más beneficios — al mejor precio. ¡Es el momento ideal para renovar!', mg + cW/2, y + 6.5, { align: 'center' });
+  y += 14;
+
   return y;
 }
 
