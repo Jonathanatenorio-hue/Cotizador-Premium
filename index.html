@@ -589,25 +589,6 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
           <select class="field" id="cliPlanActual">
             <option value="">Sin plan actual / No aplica</option>
           </select>
-          <script>
-            (function() {
-              var sel = document.getElementById('cliPlanActual');
-              // Group plans
-              var groups = [
-                { label: '── AT&T Premium ──', plans: PLANS_ACTUALES.filter(function(p){return p.id.startsWith('pa_')}) },
-                { label: '── Consíguelo ──', plans: PLANS_ACTUALES.filter(function(p){return p.id.startsWith('cg_')}) },
-                { label: '── Ármalo ──', plans: PLANS_ACTUALES.filter(function(p){return p.id.startsWith('ar_')}) },
-                { label: '── Con Todo ──', plans: PLANS_ACTUALES.filter(function(p){return p.id.startsWith('ct_')}) },
-              ];
-              groups.forEach(function(g) {
-                if (g.plans.length === 0) return;
-                sel.innerHTML += '<option disabled>'+g.label+'</option>';
-                g.plans.forEach(function(p) {
-                  sel.innerHTML += '<option value="'+p.id+'">'+p.name+' - '+p.gb+' - $'+p.price+'/mes</option>';
-                });
-              });
-            })();
-          </script>
         </div>
       </div>
     </div>
@@ -1911,13 +1892,13 @@ function validatePhone(input) {
   }
 }
 
-function removeItem(itemId) {
-  state.items = state.items.filter(it => it.id !== itemId);
+function removeItem(idx) {
+  state.items.splice(idx, 1);
   renderItems();
 }
 
-function updateEnganche(itemId, pct) {
-  const item = state.items.find(it => it.id === itemId);
+function updateEnganche(idx, pct) {
+  const item = state.items[idx];
   if (!item) return;
   const p = Math.max(0, Math.min(100, parseInt(pct) || 0));
   item.enganchePct = p;
@@ -1951,7 +1932,7 @@ function renderItems() {
             <div class="item-name">${item.equipo}</div>
             <div class="item-plan">${item.planNombre} · ${item.plazo} meses</div>
           </div>
-          <button class="btn-danger-ghost" onclick="removeItem(${item.id})">✕</button>
+          <button class="btn-danger-ghost" onclick="removeItem(${idx})">✕</button>
         </div>
         <div class="item-grid">
           <div class="item-detail">
@@ -1970,7 +1951,8 @@ function renderItems() {
             <span class="detail-label">Enganche %</span>
             <input class="field" type="number" min="0" max="100" value="${item.enganchePct}"
               style="width:60px;padding:4px 6px;font-size:13px;text-align:center"
-              onchange="updateEnganche(${item.id}, this.value)">
+              oninput="updateEnganche(${idx}, this.value)"
+              onchange="updateEnganche(${idx}, this.value)">
           </div>
           <div class="item-detail">
             <span class="detail-label">Enganche $</span>
@@ -1982,9 +1964,9 @@ function renderItems() {
               ${item.imageData ? '<img src="'+item.imageData+'" style="width:36px;height:36px;object-fit:contain;border-radius:4px;border:1px solid var(--border)">' : ''}
               <label class="btn btn-sm btn-secondary" style="cursor:pointer;margin:0">
                 ${item.imageData ? 'Cambiar' : '📷 Agregar'}
-                <input type="file" accept="image/*" style="display:none" onchange="addImageToItem(${item.id}, this)">
+                <input type="file" accept="image/*" style="display:none" onchange="addImageToItem(${idx}, this)">
               </label>
-              ${item.imageData ? '<button class="btn-danger-ghost" style="font-size:14px" onclick="removeImageFromItem('+item.id+')">✕</button>' : ''}
+              ${item.imageData ? '<button class="btn-danger-ghost" style="font-size:14px" onclick="removeImageFromItem('+idx+')">✕</button>' : ''}
             </div>
           </div>
           <div class="item-detail total-row">
@@ -1999,24 +1981,22 @@ function renderItems() {
   list.innerHTML = html;
 }
 
-function addImageToItem(itemId, input) {
+function addImageToItem(idx, input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
-    const item = state.items.find(it => it.id === itemId);
-    if (item) {
-      item.imageData = e.target.result;
+    if (state.items[idx]) {
+      state.items[idx].imageData = e.target.result;
       renderItems();
     }
   };
   reader.readAsDataURL(file);
 }
 
-function removeImageFromItem(itemId) {
-  const item = state.items.find(it => it.id === itemId);
-  if (item) {
-    item.imageData = null;
+function removeImageFromItem(idx) {
+  if (state.items[idx]) {
+    state.items[idx].imageData = null;
     renderItems();
   }
 }
@@ -2574,9 +2554,6 @@ function buildAndDownloadPDF(cot) {
     y = addTitanioMessage(doc, mg, y, cW, H);
   }
 
-  // ═══════ PRICE INCREASE WARNING ═══════
-  y = addPriceWarning(doc, mg, y, cW, H);
-
   // ═══════ WHATSAPP PER-ITEM LINKS ═══════
   var wa = cot.ejecutivo.whatsapp;
   if (wa && wa.length >= 10) {
@@ -2622,6 +2599,9 @@ function buildAndDownloadPDF(cot) {
     doc.link(mg, y, btnW, btnH, {url: 'https://wa.me/52' + wa + '?text=' + encodeURIComponent(waOtro)});
     y += btnH + 4;
   }
+
+  // ═══════ PRICE INCREASE WARNING (at bottom) ═══════
+  y = addPriceWarning(doc, mg, y, cW, H);
 
   // ═══════ FOOTER (like original: AT&T logo + blue bar) ═══════
   try { doc.addImage(ATT_LOGO_B64, 'PNG', mg, H-15, 11, 11); } catch(e) {}
@@ -2887,9 +2867,6 @@ function buildAndDownloadPDF_v2(cot) {
     y = addTitanioMessage(doc, mg, y, cW, H);
   }
 
-  // ═══════ PRICE INCREASE WARNING ═══════
-  y = addPriceWarning(doc, mg, y, cW, H);
-
   // ===== WHATSAPP PER-ITEM LINKS =====
   var wa = cot.ejecutivo.whatsapp;
   if (wa && wa.length >= 10) {
@@ -2933,6 +2910,9 @@ function buildAndDownloadPDF_v2(cot) {
     doc.link(mg, y, btnW, btnH, {url: 'https://wa.me/52' + wa + '?text=' + encodeURIComponent(waOtro)});
     y += btnH + 4;
   }
+
+  // ═══════ PRICE INCREASE WARNING (at bottom) ═══════
+  y = addPriceWarning(doc, mg, y, cW, H);
 
   // ===== FOOTER =====
   doc.setFillColor(...D1);
@@ -4629,6 +4609,27 @@ async function eliminarUsuario(userId, nombre) {
 try { loadState(); } catch(e) { console.error('loadState error:', e); }
 try { selectTemplate('classic'); } catch(e) { console.error('selectTemplate error:', e); }
 try { updateHome(); } catch(e) { console.error('updateHome error:', e); }
+
+// Populate plan actual dropdown
+try {
+  var paSel = document.getElementById('cliPlanActual');
+  if (paSel) {
+    var groups = [
+      { label: '── AT&T Premium ──', plans: PLANS_ACTUALES.filter(function(p){return p.id.startsWith('pa_')}) },
+      { label: '── Consíguelo ──', plans: PLANS_ACTUALES.filter(function(p){return p.id.startsWith('cg_')}) },
+      { label: '── Ármalo ──', plans: PLANS_ACTUALES.filter(function(p){return p.id.startsWith('ar_')}) },
+      { label: '── Con Todo ──', plans: PLANS_ACTUALES.filter(function(p){return p.id.startsWith('ct_')}) },
+    ];
+    groups.forEach(function(g) {
+      if (g.plans.length === 0) return;
+      paSel.innerHTML += '<option disabled>'+g.label+'</option>';
+      g.plans.forEach(function(p) {
+        paSel.innerHTML += '<option value="'+p.id+'">'+p.name+' - '+p.gb+' - $'+p.price+'/mes</option>';
+      });
+    });
+  }
+} catch(e) { console.error('Plan actual init error:', e); }
+
 tryAutoLogin();
 </script>
 </body>
