@@ -4704,13 +4704,14 @@ function openAceleraciones() {
   renderAceleraciones();
 }
 
+var acelSeccionFilter = 'all';
+
 function renderAceleraciones() {
   var ineFilter = document.getElementById('acelFilterIne').value;
   var agenteFilter = document.getElementById('acelFilterAgente').value;
   var now = new Date();
   now.setHours(0,0,0,0);
 
-  // Get all aceleracion cotizaciones
   var acels = state.cotizaciones.filter(function(c) {
     if (c.sub_estatus !== 'aceleracion') return false;
     if (c.estatus === 'perdida' || c.estatus === 'venta') return false;
@@ -4722,14 +4723,12 @@ function renderAceleraciones() {
     return true;
   });
 
-  // Sort by fecha_fin_plazo ascending (soonest first)
   acels.sort(function(a, b) {
     var da = a.fecha_fin_plazo ? new Date(a.fecha_fin_plazo + 'T00:00:00') : new Date('2099-01-01');
     var db = b.fecha_fin_plazo ? new Date(b.fecha_fin_plazo + 'T00:00:00') : new Date('2099-01-01');
     return da - db;
   });
 
-  // Group: vencidas, esta semana, proximas
   var vencidas = [], estaSemana = [], proximas = [];
   var en7dias = new Date(now.getTime() + 7 * 86400000);
 
@@ -4752,14 +4751,27 @@ function renderAceleraciones() {
     return;
   }
 
-  // Summary
+  // Clickable summary cards
+  function sumCard(id, count, label, bg, color, border) {
+    var active = acelSeccionFilter === id;
+    var style = 'flex:1;min-width:100px;border-radius:8px;padding:10px;text-align:center;cursor:pointer;border:2px solid ' + (active ? color : 'transparent') + ';background:' + bg + ';';
+    if (active) style += 'box-shadow:0 2px 8px rgba(0,0,0,0.15);';
+    return '<div style="' + style + '" onclick="acelSeccionFilter=\'' + id + '\';renderAceleraciones()">' +
+      '<div style="font-size:20px;font-weight:700;color:' + color + '">' + count + '</div>' +
+      '<div style="font-size:10px;color:' + color + '">' + label + '</div></div>';
+  }
+
   html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
-  html += '<div style="flex:1;min-width:100px;background:#F8D7DA;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700;color:#721C24">' + vencidas.length + '</div><div style="font-size:10px;color:#721C24">Vencidas</div></div>';
-  html += '<div style="flex:1;min-width:100px;background:#FFF3CD;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700;color:#856404">' + estaSemana.length + '</div><div style="font-size:10px;color:#856404">Esta semana</div></div>';
-  html += '<div style="flex:1;min-width:100px;background:#D1ECF1;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700;color:#0C5460">' + proximas.length + '</div><div style="font-size:10px;color:#0C5460">Próximas</div></div>';
+  var allActive = acelSeccionFilter === 'all';
+  html += '<div style="flex:0.6;min-width:70px;border-radius:8px;padding:10px;text-align:center;cursor:pointer;border:2px solid ' + (allActive ? 'var(--att-blue)' : 'transparent') + ';background:' + (allActive ? '#E8F4FD' : '#F0F0F0') + '" onclick="acelSeccionFilter=\'all\';renderAceleraciones()">' +
+    '<div style="font-size:20px;font-weight:700;color:var(--text-1)">' + acels.length + '</div>' +
+    '<div style="font-size:10px;color:var(--text-2)">Todas</div></div>';
+  html += sumCard('vencidas', vencidas.length, 'Vencidas', '#F8D7DA', '#721C24', '#DC3545');
+  html += sumCard('semana', estaSemana.length, 'Esta semana', '#FFF3CD', '#856404', '#E6A200');
+  html += sumCard('proximas', proximas.length, 'Próximas', '#D1ECF1', '#0C5460', '#17A2B8');
   html += '</div>';
 
-  function renderSection(title, icon, items, bgColor, borderColor, textColor) {
+  function renderSection(title, icon, items, borderColor, textColor) {
     if (items.length === 0) return '';
     var s = '<div style="margin-bottom:14px">';
     s += '<div style="font-weight:700;font-size:13px;color:' + textColor + ';margin-bottom:6px">' + icon + ' ' + title + ' (' + items.length + ')</div>';
@@ -4774,16 +4786,16 @@ function renderAceleraciones() {
       }
       var ineLabel = c.tiene_ine === 'con_ine' ? '<span style="color:#28A745;font-size:10px">✅ Con INE</span>' : '<span style="color:#DC3545;font-size:10px">❌ Sin INE</span>';
 
-      s += '<div style="background:white;border:1px solid ' + borderColor + ';border-left:4px solid ' + borderColor + ';border-radius:8px;padding:10px 12px;margin-bottom:4px">';
+      s += '<div onclick="showDetalle(\'' + c.folio + '\')" style="cursor:pointer;background:white;border:1px solid ' + borderColor + ';border-left:4px solid ' + borderColor + ';border-radius:8px;padding:10px 12px;margin-bottom:4px;transition:background 0.15s" onmouseover="this.style.background=\'#F8F9FA\'" onmouseout="this.style.background=\'white\'">';
       s += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">';
       s += '<div style="font-weight:700;font-size:13px;color:var(--text-1)">' + c.cliente.nombre + '</div>';
       s += '<div>' + ineLabel + '</div>';
       s += '</div>';
       s += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px">';
       if (c.cliente.telefono) {
-        s += '<a href="tel:' + c.cliente.telefono + '" style="font-size:12px;color:var(--att-blue);text-decoration:none">📞 ' + c.cliente.telefono + '</a>';
+        s += '<a href="tel:' + c.cliente.telefono + '" onclick="event.stopPropagation()" style="font-size:12px;color:var(--att-blue);text-decoration:none">📞 ' + c.cliente.telefono + '</a>';
+        s += '<span style="font-size:11px;color:var(--text-3)">|</span>';
       }
-      s += '<span style="font-size:11px;color:var(--text-3)">|</span>';
       s += '<span style="font-size:11px;color:var(--text-2)">📅 Liberación: <strong>' + fecha + '</strong></span>';
       s += '<span style="font-size:11px;color:var(--text-3)">|</span>';
       s += '<span style="font-size:11px">' + diasFaltan + '</span>';
@@ -4795,9 +4807,16 @@ function renderAceleraciones() {
     return s;
   }
 
-  html += renderSection('VENCIDAS — ¡Contactar de inmediato!', '🚨', vencidas, '#F8D7DA', '#DC3545', '#721C24');
-  html += renderSection('ESTA SEMANA — Preparar contacto', '📅', estaSemana, '#FFF3CD', '#E6A200', '#856404');
-  html += renderSection('PRÓXIMAMENTE', '🗓️', proximas, '#D1ECF1', '#17A2B8', '#0C5460');
+  // Show sections based on filter
+  if (acelSeccionFilter === 'all' || acelSeccionFilter === 'vencidas') {
+    html += renderSection('VENCIDAS — ¡Contactar de inmediato!', '🚨', vencidas, '#DC3545', '#721C24');
+  }
+  if (acelSeccionFilter === 'all' || acelSeccionFilter === 'semana') {
+    html += renderSection('ESTA SEMANA — Preparar contacto', '📅', estaSemana, '#E6A200', '#856404');
+  }
+  if (acelSeccionFilter === 'all' || acelSeccionFilter === 'proximas') {
+    html += renderSection('PRÓXIMAMENTE', '🗓️', proximas, '#17A2B8', '#0C5460');
+  }
 
   document.getElementById('acelList').innerHTML = html;
 }
