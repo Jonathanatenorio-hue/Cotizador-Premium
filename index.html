@@ -1354,7 +1354,7 @@ function showView(name, title) {
     document.getElementById('cfgAttuid').value = state.agente.attuid;
     document.getElementById('cfgWhatsapp').value = state.agente.whatsapp || '';
   }
-  if (name === 'historial') { initHistorialFilters(); }
+  if (name === 'historial') { initHistorialFilters(); renderHistorial(); }
   if (name === 'home') {
     state.viewStack = ['home'];
     updateHome();
@@ -1550,7 +1550,9 @@ async function handleFileUpload(event) {
     const devices = [];
 
     // Parse Promociones AT&T Premium
-    const pSheet = wb.Sheets['Promociones AT&T Premium'];
+    var pSheetName = Object.keys(wb.Sheets).find(function(s) { return s.toLowerCase().includes('premium'); });
+    const pSheet = pSheetName ? wb.Sheets[pSheetName] : null;
+    console.log('Premium sheet:', pSheetName, '| found:', !!pSheet, '| All sheets:', Object.keys(wb.Sheets));
     if (pSheet) {
       const rows = XLSX.utils.sheet_to_json(pSheet, { header:1, defval:null });
       for (let i = 8; i < rows.length; i++) {
@@ -1582,9 +1584,12 @@ async function handleFileUpload(event) {
     }
 
     // Parse Promociones AT&T Titanio
-    const tSheet = wb.Sheets['Promociones AT&T Titanio'];
+    var tSheetName = Object.keys(wb.Sheets).find(function(s) { return s.toLowerCase().includes('titanio'); });
+    const tSheet = tSheetName ? wb.Sheets[tSheetName] : null;
+    console.log('Titanio sheet:', tSheetName, '| found:', !!tSheet);
     if (tSheet) {
       const rows = XLSX.utils.sheet_to_json(tSheet, { header:1, defval:null });
+      console.log('Titanio rows:', rows.length, '| sample row 7:', JSON.stringify(rows[7]));
       for (let i = 7; i < rows.length; i++) {
         const r = rows[i];
         if (!r || !r[5] || typeof r[5] !== 'string') continue;
@@ -3107,6 +3112,7 @@ async function guardarEstatus(folio) {
   }
 
   alert('Estatus actualizado: ' + {enviada:'Enviada', seguimiento:'Seguimiento', venta:'Venta Exitosa', perdida:'Perdida'}[est]);
+  showDetalle(folio);
 }
 
 // ============================================================
