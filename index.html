@@ -5546,27 +5546,44 @@ document.getElementById('waPlanAnterior').addEventListener('change', function() 
 // ============================================================
 var TR_KB = {
   objeciones:[
-    {q:"Está muy caro",a:"Técnica ACE: Acepta ('Entiendo'), Compara valor ('Incluye X sin costo'), Ejemplifica ('Clientes ahorran $X/mes'). Redirige al valor."},
-    {q:"No me interesa",a:"'Entiendo, precisamente le llamo para que NO pierda beneficios. ¿Está satisfecho con su velocidad de datos?' Busca punto de dolor."},
-    {q:"Ya tengo otra compañía",a:"'Me alegra. ¿Me permite 2 min para mostrarle su renovación sin compromiso?' Genera curiosidad."},
-    {q:"Necesito pensarlo",a:"'Esta promoción tiene vigencia limitada. ¿Qué info necesitaría para decidir hoy?'"},
-    {q:"No tengo dinero",a:"'Esta renovación puede REDUCIR lo que paga. ¿Cuánto paga hoy? Con esta oferta pagaría $X menos.'"},
-    {q:"Mala experiencia con AT&T",a:"'Lamento eso. ¿Qué sucedió? [escucha] Como muestra de mejora, le ofrezco [beneficio].'"},
-    {q:"Quiero cancelar",a:"'¿Qué lo llevó a considerar cancelar? [escucha] Tengo solución. ¿Probamos un mes?'"},
-    {q:"No confío en llamadas",a:"'Soy [nombre] de ExpertCell, distribuidor AT&T. Puede verificar marcando *611.'"}
+    {q:"No me interesa el equipo, solo quiero la mejora del plan",a:"Cambia percepción de obligación a beneficio. Acepta: 'Entiendo que no quieras cambiar tu equipo 👌' Reencuadra: 'La renovación incluye equipo como parte del beneficio, no es cargo oculto.' Opciones: A) Equipo sin costo como respaldo o para vender. B) Financiar uno mejor sin intereses. Cierre: '¿Prefieres que te deje el equipo sin costo o vemos uno mejor?' NUNCA digas 'gratis' o 'regalo', di 'sin costo' o 'incluido'."},
+    {q:"Prefiero ir a la sucursal",a:"Es objeción de CONFIANZA, no de producto. Valida: 'Claro que puedes 👌' Diferénciate: 'Conmigo lo haces en 5 min, sin filas, mismo sistema oficial.' Ventajas: seguimiento personal, contacto directo, stock de almacén global. Cierre: 'Si lo podemos resolver hoy sin que te muevas, ¿por qué no aprovecharlo?' NUNCA digas 'es lo mismo que sucursal', DI 'es el mismo sistema pero con atención personalizada y sin filas'."},
+    {q:"Deja lo pienso y me pongo en contacto",a:"Es salida de escape, objeción más peligrosa. Responde: 'Claro. Solo para entender mejor, ¿qué parte es la que quieres analizar?' Haces que diga la objeción REAL. Cierre: 'Si resolvemos esa parte ahora, ¿avanzamos?'"},
+    {q:"Tengo temas económicos / no sé si conserve el plan",a:"'Justamente por eso conviene revisar. Muchas veces la renovación BAJA la mensualidad.' Si es por equipo: 'Puedes llevarte uno sin costo y hasta venderlo para pagar próximos meses — jugada maestra.' Cierre: 'Para que se aplique el ajuste de tu tarifa solo necesito me indiques las apps ilimitadas que quieres.'"},
+    {q:"Por el momento estoy bien con mi plan",a:"No ataques su comodidad. Valida: 'Me da gusto 👍' Micro duda: 'La pregunta no es si funciona, sino si es el que más te conviene hoy.' Pregunta: '¿Qué es lo que más te tiene contento de tu plan?' Su respuesta revela por dónde mejorar (precio→bájalo, GB→súbelos, señal→actualiza). Compara concreto. Cierre: '¿Prefieres aprovechar la mejora ahora o resolvemos alguna duda?' NUNCA digas 'pero este plan es mejor', DI 'puedes optimizar lo que ya tienes'."},
+    {q:"No me interesa, gracias",a:"Casi NUNCA significa eso. Significa: no quiero escuchar, no confío, estoy ocupado. Desarma: 'Perfecto 👍 Solo para no insistirte, ¿es porque estás ocupado o porque tu plan te funciona bien?' Si ocupado→agenda. Si plan funciona→compara. Rompe patrón: 'Por curiosidad, ¿qué tendría que incluir para que sí te interesara?' Último recurso: 'Si pudieras pagar menos o recibir el doble de GB, ¿lo considerarías?'"},
+    {q:"No acostumbro hacer trámites por teléfono",a:"100% confianza y seguridad. Valida fuerte: 'Y haces muy bien, hoy hay que cuidarse 👍' Refuerza: 'Trabajamos con sistema oficial, mismo proceso que sucursal.' Seguridad: confirmación oficial, folio, ATTUID, autenticación facial. Quita fricción: 'Lo hacemos paso a paso y tú confirmas cada parte.' NUNCA digas 'confíe en mí', DI 'es el mismo sistema oficial, recibes confirmación formal'."},
+    {q:"No quiero pagar más (planes bajos)",a:"No vendes actualización, vendes estabilidad. Valida: 'Tu plan funciona bien 👍' Cambio de marco: '¿Normalmente llegas justo de datos o te sobra?' Si llega justo→'Muchos clientes terminan comprando datos extra, cuando sumas eso ya pagan casi lo mismo pero con menos beneficios.' Lógica financiera: desglosa por DÍA ($4 diarios suena mejor que $120 mensuales). 4 preguntas filtro: consumo, hotspot, streaming, historial de datos extra. Si cumple 2+→trabaja upgrade."},
+    {q:"Me falla mucho la cobertura",a:"Objeción compleja, es experiencia real. NUNCA niegues el problema. Valida: 'La señal es lo más importante 👍' Diagnostica: '¿Te pasa en todos lados o en un punto específico?' Si zona específica→puede ser equipo/configuración. Sé transparente: 'Si es limitación estructural, ningún plan lo cambia. Pero sí podemos revisar que estés en la mejor condición posible.' Frase de autoridad: 'Prefiero decirte la realidad que prometer algo que no depende del plan.' NUNCA digas 'ya mejoró la red' o 'con la SIM nueva se arregla'."},
+    {q:"No tengo tiempo / estoy trabajando / ocupado",a:"No es rechazo, es timing. Valida: 'No te quito tiempo 👍' Micro-resumen 10 seg: 'Solo para tu radar: puedes mejorar tu plan por prácticamente lo mismo.' Agenda cerrada: '¿Te marco hoy en la tarde o mañana por la mañana? ¿A qué hora exacta?' Técnica 20 seg: 'Si pudieras pagar lo mismo y recibir más, ¿te interesaría revisarlo después?' NUNCA dejes seguimiento abierto, SIEMPRE día + hora + confirmación."}
   ],
   procesos:[
-    {q:"Proceso renovación",a:"1) Verificar identidad. 2) Revisar plan. 3) Presentar opciones. 4) Confirmar. 5) Procesar. 6) Folio. 7) Recapitular."},
-    {q:"Protocolo llamada",a:"Apertura 30s, Sondeo 60s, Presentación 90s, Objeciones máx 3 intentos, Cierre 60s. Total 5-8 min."}
+    {q:"WhatsApp NO es salida a objeciones",a:"ERROR: Mandar WhatsApp como escape cuando no supiste cerrar. Realidad: la info no vende, la conversación sí. REGLA: 1) No mandes info sin pregunta previa. 2) No mandes info sin agendar seguimiento con hora. 3) WhatsApp siempre termina en pregunta cerrada. Si cliente dice 'mándame la info': 'Con gusto 👍 ¿qué parte quieres revisar con más detalle?' Luego: 'Si los números te cuadran como te expliqué, ¿avanzamos hoy?' PRIMERO cierra intención, LUEGO envía info."},
+    {q:"Protocolo de llamada",a:"Apertura (30s): Saludo + identificación + motivo. Sondeo (60s): Preguntas sobre satisfacción y uso. Presentación (90s): Oferta personalizada con comparativa. Objeciones (variable): Máx 3 intentos, debatir NO escapar a WhatsApp. Cierre (60s): Pregunta cerrada + confirmación. Despedida (15s): Agradecimiento + folio. Total: 5-8 min. REGLA: Cada llamada DEBE terminar en pregunta cerrada."},
+    {q:"Proceso de renovación",a:"1) Verificar identidad (nombre, últimos 4 IMEI o cuenta). 2) Revisar plan actual y vencimiento. 3) Presentar opciones con comparativa concreta. 4) Debatir objeciones (mín 2 intentos antes de enviar info). 5) Confirmar selección con pregunta cerrada. 6) Procesar con doble verificación. 7) Entregar folio. 8) Recapitular beneficios y fecha de activación."}
   ],
   cierres:[
-    {q:"Cierre directo",a:"'¿Procedemos? Solo confirmo datos.' Cierra con acción."},
-    {q:"Cierre alternativo",a:"'¿Prefiere 10GB o 15GB?' Ambas opciones son venta."},
-    {q:"Cierre por resumen",a:"'Recapitulando: datos, apps, todo por $X menos. ¿Confirmo?'"},
-    {q:"Cierre urgencia",a:"'Promoción hasta [fecha]. Después sería $X más. ¿Aprovechamos?'"},
-    {q:"Cierre concesión",a:"'Déjeme ver... Sí, puedo incluir [extra]. ¿Procedemos?'"}
+    {q:"Cierre por Alternativa (el más efectivo en call center)",a:"En vez de '¿Quieres renovar?' pregunta: '¿Te dejo el equipo sin costo o revisamos uno financiado?' '¿La entrega la quieres en casa o trabajo?' '¿El contrato lo firmas digital o impreso?' La mente del cliente deja de decidir SI compra y decide CÓMO compra. Funciona cuando ya explicaste beneficios."},
+    {q:"Cierre por Lógica",a:"Haz que el cliente se responda solo: 'Si puedes pagar lo mismo o menos y recibir más beneficios, ¿tiene sentido quedarte igual?' No afirmas, preguntas. El cliente se autoconvence. Ideal cuando comparas planes."},
+    {q:"Cierre por Micro-compromiso",a:"Para clientes ocupados o tibios. Cierra el siguiente paso, no todo: 'Si los números te cuadran, ¿lo dejamos listo hoy?' '¿Te parece si lo revisamos 2 minutos?' Pequeño sí → conduce al sí grande."},
+    {q:"Cierre por Consecuencia",a:"Para 'luego lo veo': 'Las condiciones actuales pueden cambiar. Mi intención es que aproveches lo que hoy tienes disponible.' No presionas, generas urgencia racional. Elegante, sin amenaza."},
+    {q:"Cierre por Eliminación de Riesgo",a:"Para desconfianza: 'Es el mismo sistema oficial que sucursal y recibes confirmación con folio.' Reduce miedo = aumenta decisión."},
+    {q:"Cierre por Proyección",a:"Para upgrades: 'Hoy estás bien, pero cada vez consumimos más datos. Subir de nivel te evita quedarte corto en unos meses.' Hace que vea upgrade como prevención, no gasto."},
+    {q:"Cierre Directo",a:"SOLO cuando detectas señales claras: hace preguntas técnicas, pregunta fechas, pregunta métodos de pago. Ahí no rodees: 'Perfecto, lo activamos ahora mismo, indícame cuáles son las 6 apps ilimitadas que deseas.' MUCHOS vendedores pierden ventas por no cerrar cuando el cliente ya está listo."}
   ],
-  sysPrompt:"Eres asistente de entrenamiento de ventas de ExpertCell, distribuidor AT&T en México. Ayuda a agentes de call center a mejorar ventas telefónicas. Sé directo, práctico y motivador. Da frases textuales para usar en llamada. Español mexicano."
+  tips:[
+    "Compara SIEMPRE el plan en balanza: ¿qué conviene? ¿$681 por 12GB o $629 por 25GB?",
+    "NUNCA mandes mensaje para salir de una objeción sin sentido ni compromiso.",
+    "No mandes plantillas genéricas — personaliza la propuesta con lo que detectaste del cliente.",
+    "Cree en tu potencial y saca el 100% sin miedo.",
+    "El mejor vendedor es el que más fracasos ha tenido. El 'no' no es parte de ti, aprende de cada experiencia.",
+    "Fórmula maestra: Validar → Beneficio → Comparación → Pregunta cerrada.",
+    "NUNCA digas 'gratis' o 'regalo'. Di 'sin costo', 'incluido' o 'costo cero'.",
+    "Sin pregunta de cierre, no hay venta. Cada llamada debe terminar en pregunta cerrada.",
+    "WhatsApp es para CONFIRMAR lo acordado, no para informar. Primero cierra intención, luego envía.",
+    "Has de tu llamada una charla casual — si conectas sabrás cada detalle y así ganan ambos."
+  ],
+  sysPrompt:"Eres el coach de ventas de ExpertCell, distribuidor autorizado AT&T en México. TUTEA a los agentes. Tono: motivador, directo y estricto — exiges resultados pero con buena vibra. Filosofía: 'Has de tu llamada una charla casual, si conectas sabrás cada detalle y así ganan ambos.' REGLAS ESTRICTAS: 1) NUNCA digas 'gratis' o 'de regalo' — di 'sin costo', 'incluido' o 'costo cero'. 2) NUNCA sugieras al cliente cancelar o dar de baja. 3) SIEMPRE recomienda aplicar cierres, dar seguimiento en tiempo y forma, mandar cotización formal. 4) SIEMPRE motiva a vencer el miedo practicando. 5) WhatsApp NO es salida a objeciones — primero debate, luego envía. 6) ExpertCell es distribuidor autorizado AT&T, operación formal y confiable. Cuando des consejos, da frases textuales que puedan usar en llamada. Sé específico y práctico. Español mexicano."
 };
 var TR_SCENARIOS = [
   {id:1,title:"Cliente indeciso por precio",diff:"Fácil",persona:"María, 35 años, ama de casa. Plan $299.",personality:"Amable pero indecisa. Dice 'déjeme pensarlo'.",goal:"Renovar al plan $499."},
@@ -5693,7 +5710,7 @@ function trInitChat(){
     trChatMsgs=[{role:'bot',text:'¡Hola '+n+'! 👋 Soy tu asistente de ventas con IA. Pregúntame sobre objeciones, procesos, cierres o cualquier situación.'}];
     trRenderChat();
   });
-  var qs=['¿Cómo manejo objeción de precio?','Técnicas de cierre','Protocolo de llamada','Cliente quiere cancelar','Tips de venta'];
+  var qs=['Cliente dice no le interesa el equipo','Prefiere ir a sucursal','Dice deja lo pienso','¿Cómo van mis ventas?','Técnicas de cierre','No acostumbra trámites por teléfono'];
   document.getElementById('trQuickBtns').innerHTML=qs.map(function(q){return'<button class="btn" style="padding:3px 8px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:10px" onclick="document.getElementById(\'trChatInput\').value=\''+q+'\';trSendChat()">'+q+'</button>'}).join('');
 }
 function trRenderChat(){
@@ -5703,11 +5720,119 @@ function trRenderChat(){
   c.scrollTop=c.scrollHeight;
   var rem=trRemaining();document.getElementById('trMsgCount').textContent=rem==='∞'?'':rem+' msgs restantes';
 }
+// ── Fetch agent data context from Supabase ──
+async function trFetchDataContext(msg, agentId, agentRol) {
+  if (!supabase) return '';
+  var lower = msg.toLowerCase();
+  // Detect if question is about data/stats
+  var dataKeywords = ['cotiza','venta','perdid','ganado','cierre','historial','cuánta','cuantas','cuánto','cuantos','estadística','estadistica','rendimiento','resultado','mes','semana','hoy','ayer','promedio','meta','mejor','peor','cliente','estatus','status','enviada','aceleración','aceleracion','recuper','folio','número','numero','dato','reporte','comparar','compara','cayendo','caído','caido','baja','subi','creci','supervisor','equipo','agente'];
+  var isDataQ = dataKeywords.some(function(k){ return lower.indexOf(k) !== -1; });
+  if (!isDataQ) return '';
+  
+  try {
+    var ctx = '\n\n📊 DATOS REALES DEL AGENTE (de Supabase):\n';
+    
+    // Fetch cotizaciones for this agent (or all if admin)
+    var query = supabase.from('cotizaciones').select('*').order('created_at',{ascending:false}).limit(200);
+    if (agentRol !== 'admin') query = query.eq('agente_id', agentId);
+    var res = await query;
+    var cots = res.data || [];
+    
+    if (cots.length === 0) return '\n\n📊 DATOS: El agente no tiene cotizaciones registradas aún.\n';
+    
+    // Calculate stats
+    var total = cots.length;
+    var byStatus = {};
+    var bySubtip = {};
+    var thisMonth = new Date().toISOString().slice(0,7);
+    var thisWeek = new Date(); thisWeek.setDate(thisWeek.getDate() - 7);
+    var thisWeekStr = thisWeek.toISOString();
+    var monthCots = [], weekCots = [];
+    
+    cots.forEach(function(c) {
+      var st = c.estatus || 'enviada';
+      byStatus[st] = (byStatus[st]||0) + 1;
+      if (c.subtipificacion) bySubtip[c.subtipificacion] = (bySubtip[c.subtipificacion]||0) + 1;
+      if (c.created_at && c.created_at.slice(0,7) === thisMonth) monthCots.push(c);
+      if (c.created_at && c.created_at >= thisWeekStr) weekCots.push(c);
+    });
+    
+    ctx += 'Total cotizaciones: ' + total + '\n';
+    ctx += 'Este mes: ' + monthCots.length + '\n';
+    ctx += 'Esta semana: ' + weekCots.length + '\n';
+    ctx += '\nPor estatus:\n';
+    Object.keys(byStatus).forEach(function(k) { ctx += '  - ' + k + ': ' + byStatus[k] + '\n'; });
+    
+    if (Object.keys(bySubtip).length > 0) {
+      ctx += '\nSubtipificaciones (razones de pérdida/estado):\n';
+      Object.keys(bySubtip).forEach(function(k) { ctx += '  - ' + k + ': ' + bySubtip[k] + '\n'; });
+    }
+    
+    // Conversion rate
+    var ventas = byStatus['venta'] || 0;
+    var perdidas = byStatus['perdida'] || 0;
+    var enviadas = byStatus['enviada'] || 0;
+    ctx += '\nResumen:\n';
+    ctx += '  Ventas cerradas: ' + ventas + ' (' + (total>0?(ventas/total*100).toFixed(1):'0') + '%)\n';
+    ctx += '  Perdidas: ' + perdidas + ' (' + (total>0?(perdidas/total*100).toFixed(1):'0') + '%)\n';
+    ctx += '  En proceso (enviadas): ' + enviadas + '\n';
+    
+    // Month breakdown for this month
+    var monthByStatus = {};
+    monthCots.forEach(function(c) { var st=c.estatus||'enviada'; monthByStatus[st]=(monthByStatus[st]||0)+1; });
+    ctx += '\nEste mes por estatus:\n';
+    Object.keys(monthByStatus).forEach(function(k) { ctx += '  - ' + k + ': ' + monthByStatus[k] + '\n'; });
+    
+    // Top plans quoted
+    var planCount = {};
+    cots.forEach(function(c) { if(c.plan) { planCount[c.plan] = (planCount[c.plan]||0)+1; } });
+    var topPlans = Object.keys(planCount).sort(function(a,b){return planCount[b]-planCount[a]}).slice(0,5);
+    if (topPlans.length > 0) {
+      ctx += '\nPlanes más cotizados:\n';
+      topPlans.forEach(function(p) { ctx += '  - ' + p + ': ' + planCount[p] + ' veces\n'; });
+    }
+    
+    // Recent lost deals with reasons
+    var recentLost = cots.filter(function(c){return c.estatus==='perdida'}).slice(0,10);
+    if (recentLost.length > 0) {
+      ctx += '\nÚltimas cotizaciones perdidas:\n';
+      recentLost.forEach(function(c) {
+        ctx += '  - ' + (c.cliente_nombre||'Sin nombre') + ' | Plan: ' + (c.plan||'?') + ' | Razón: ' + (c.subtipificacion||'sin especificar') + ' | Fecha: ' + (c.created_at||'').slice(0,10) + '\n';
+      });
+    }
+    
+    // If admin, add per-agent breakdown
+    if (agentRol === 'admin') {
+      var byAgent = {};
+      cots.forEach(function(c) {
+        var an = c.agente_nombre || 'Desconocido';
+        if (!byAgent[an]) byAgent[an] = {total:0,ventas:0,perdidas:0};
+        byAgent[an].total++;
+        if (c.estatus==='venta') byAgent[an].ventas++;
+        if (c.estatus==='perdida') byAgent[an].perdidas++;
+      });
+      ctx += '\nRendimiento por agente:\n';
+      Object.keys(byAgent).forEach(function(an) {
+        var a = byAgent[an];
+        ctx += '  - ' + an + ': ' + a.total + ' cots, ' + a.ventas + ' ventas, ' + a.perdidas + ' perdidas (' + (a.total>0?(a.ventas/a.total*100).toFixed(1):'0') + '% cierre)\n';
+      });
+    }
+    
+    return ctx;
+  } catch(e) { console.log('Data fetch error:', e); return ''; }
+}
+
 async function trSendChat(){
   var inp=document.getElementById('trChatInput'),msg=inp.value.trim();if(!msg||trLoading)return;
   trChatMsgs.push({role:'user',text:msg});inp.value='';trLoading=true;trRenderChat();
   var n=state.agente?state.agente.nombre:'Agente';
-  var reply=await trCallAI(TR_KB.sysPrompt+'\nEl agente se llama '+n+'. Responde en español, práctico y directo.',msg);
+  var agId=state.agente?state.agente.id:'';
+  var agRol=state.agente?state.agente.rol:'agente';
+  // Fetch data context if question is about stats
+  var dataCtx = await trFetchDataContext(msg, agId, agRol);
+  var sysPrompt = TR_KB.sysPrompt+'\nEl agente se llama '+n+'. Responde en español, práctico y directo.';
+  if (dataCtx) sysPrompt += '\n\nTienes acceso a los datos reales del agente. Úsalos para responder con números concretos. Si detectas patrones de pérdida, da recomendaciones específicas basadas en los datos. No inventes datos, usa solo lo que se te proporciona.' + dataCtx;
+  var reply=await trCallAI(sysPrompt,msg);
   trChatMsgs.push({role:'bot',text:reply});trLoading=false;trRenderChat();
 }
 
