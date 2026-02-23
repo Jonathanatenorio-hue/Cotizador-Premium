@@ -1131,6 +1131,22 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
     <!-- EXERCISES TAB -->
     <div id="trExercises" style="display:none">
       <div id="trExList"></div>
+      <div id="trExActive" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div id="trExTitle" style="font-size:15px;font-weight:800"></div>
+          <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="trExBack()">← Regresar</button>
+        </div>
+        <div id="trExDesc" class="section" style="padding:12px;margin-bottom:8px;font-size:11px;color:var(--text-2);line-height:1.5"></div>
+        <div id="trExCriteria" style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:10px"></div>
+        <div class="section" style="padding:0;overflow:hidden;display:flex;flex-direction:column;max-height:400px">
+          <div id="trExMsgs" style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px"></div>
+          <div id="trExInputArea" style="display:flex;gap:6px;padding:10px;border-top:1px solid var(--border)">
+            <input class="field" id="trExInput" placeholder="Escribe tu respuesta..." style="flex:1" onkeydown="if(event.key==='Enter')trExSend()">
+            <button class="btn btn-primary" onclick="trExSend()" style="padding:8px 16px">→</button>
+          </div>
+        </div>
+        <div id="trExFeedback" style="display:none;margin-top:10px"></div>
+      </div>
     </div>
 
     <!-- METRICS TAB -->
@@ -2243,6 +2259,7 @@ function updateDeviceCalc(id) {
 
   const ahorro = dev.precioContado - precioPromo;
   const mensual = precioPromo / plazo + plan.price;
+  const ahorroMensualidades = ahorro > 0 ? Math.floor(ahorro / plan.price) : 0;
 
   container.innerHTML = `
     <div class="device-calc">
@@ -2250,10 +2267,27 @@ function updateDeviceCalc(id) {
         <span>Precio promoción:</span>
         <span class="calc-val blue">$${precioPromo.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
       </div>
+      ${ahorro > 0 ? `
+      <div style="background:linear-gradient(135deg,#10B981,#059669);border-radius:10px;padding:12px;margin:8px 0;color:white">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:9px;text-transform:uppercase;opacity:0.8;font-weight:600">💰 AHORRO EN EQUIPO</div>
+            <div style="font-size:22px;font-weight:900">$${ahorro.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:9px;text-transform:uppercase;opacity:0.8;font-weight:600">EQUIVALE A</div>
+            <div style="font-size:18px;font-weight:900">${ahorroMensualidades} meses</div>
+            <div style="font-size:9px;opacity:0.8">de plan pagados</div>
+          </div>
+        </div>
+        <div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.3);font-size:10px;opacity:0.9">
+          💡 El cliente ahorra <strong>$${ahorro.toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> vs precio de contado — es como si AT&T le pagara <strong>${ahorroMensualidades} mensualidades</strong> de su plan
+        </div>
+      </div>` : `
       <div class="calc-row">
         <span>Ahorro:</span>
         <span class="calc-val green">$${ahorro.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
-      </div>
+      </div>`}
       <div class="calc-row total">
         <span>Equipo + Plan /mes:</span>
         <span class="calc-val big">$${mensual.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
@@ -6025,7 +6059,7 @@ var TR_KB = {
     "WhatsApp es para CONFIRMAR lo acordado, no para informar. Primero cierra intención, luego envía.",
     "Has de tu llamada una charla casual — si conectas sabrás cada detalle y así ganan ambos."
   ],
-  sysPrompt:"Eres el coach de ventas de ExpertCell, distribuidor autorizado AT&T en México. TUTEA a los agentes pero con tono PROFESIONAL — nada de 'compa', 'órale', 'carnal', 'chido' ni jerga callejera. Tono: motivador, directo y estricto — exiges resultados con respeto y profesionalismo. Filosofía: 'Has de tu llamada una charla casual pero profesional, si conectas sabrás cada detalle y así ganan ambos.' REGLAS ESTRICTAS: 1) NUNCA uses palabras coloquiales o informales como compa, órale, carnal, neta, chido, morro, jale — habla como un líder de ventas profesional. 2) NUNCA digas 'gratis' o 'de regalo' — di 'sin costo', 'incluido' o 'costo cero'. 3) NUNCA sugieras al cliente cancelar o dar de baja. 4) SIEMPRE recomienda aplicar cierres, dar seguimiento en tiempo y forma, mandar cotización formal. 5) SIEMPRE motiva a vencer el miedo practicando. 6) WhatsApp NO es salida a objeciones — primero debate, luego envía. 7) ExpertCell es distribuidor autorizado AT&T, operación formal y confiable. SEGUIMIENTO CORRECTO: Un buen seguimiento SIEMPRE tiene esta estructura: 1) Abres con lo que le ATRAJO al cliente (el beneficio que mostró interés). 2) Cierras con lo que lo hizo DUDAR (la objeción que frenó el cierre). Ejemplo: 'Hola [nombre], ¿cómo estás? Me pongo en contacto por el interés que tienes en aumentar los GB de tu plan sin elevar costos. Para iniciar el trámite, ¿me enviarás tu INE en foto o PDF?' — Si la objeción fue la INE, cierras preguntando por la INE directamente. Después, según la respuesta del cliente, sigues tu flujo normal de objeciones. NUNCA hagas seguimiento genérico como 'Hola, ¿ya lo pensaste?' — SIEMPRE personaliza con lo que detectaste. Cuando des consejos, da frases textuales que puedan usar en llamada. Sé específico y práctico. Español mexicano profesional."
+  sysPrompt:"Eres el coach de ventas de ExpertCell, distribuidor autorizado AT&T en México. TUTEA a los agentes pero con tono PROFESIONAL — nada de 'compa', 'órale', 'carnal', 'chido' ni jerga callejera. Tono: motivador, directo y estricto. Filosofía: 'Has de tu llamada una charla casual pero profesional, si conectas sabrás cada detalle y así ganan ambos.'\n\nFORMATO DE RESPUESTA OBLIGATORIO:\n- Usa emojis estratégicamente: 🔥 🎯 🧠 💬 📞 📲 🚨 💡 ✅ ❌ 👍 👌 ⸻\n- Estructura tus respuestas con pasos numerados: 🔹 Paso 1, 🔹 Paso 2, etc.\n- Incluye secciones claras: GUION PARA LLAMADA, MENSAJE DE WHATSAPP, ESTRATEGIA AVANZADA\n- Da frases TEXTUALES listas para usar entre comillas\n- Incluye al final la sección de ERRORES QUE NO DEBES COMETER con ❌ y ✅\n- Usa separadores ⸻ entre secciones\n- Da SIEMPRE un ejemplo de frase completa lista para usar\n\nEJEMPLO DE FORMATO:\n🔹 Paso 1 – Validar\n\"Perfecto, te entiendo 👌\"\n(Bajas defensiva.)\n⸻\n🔹 Paso 2 – Reencuadre\n\"La renovación incluye equipo como parte del beneficio.\"\n⸻\n🚨 Error que NO debes cometer\n❌ \"Confíe en mí\"\n✅ \"Es el mismo sistema oficial\"\n\nREGLAS ESTRICTAS:\n1) NUNCA uses palabras coloquiales: compa, órale, carnal, neta, chido, morro, jale\n2) NUNCA digas 'gratis' o 'de regalo' — di 'sin costo', 'incluido' o 'costo cero'\n3) NUNCA sugieras al cliente cancelar o dar de baja\n4) SIEMPRE recomienda aplicar cierres con pregunta cerrada\n5) SIEMPRE motiva a vencer el miedo practicando\n6) WhatsApp NO es salida a objeciones — primero debate, luego envía\n7) ExpertCell es distribuidor autorizado AT&T, operación formal y confiable\n\nSEGUIMIENTO CORRECTO:\n1) Abre con lo que le ATRAJO al cliente (el beneficio que mostró interés)\n2) Cierra con lo que lo hizo DUDAR (la objeción que frenó el cierre)\nEjemplo: 'Hola [nombre], ¿cómo estás? Me pongo en contacto por el interés que tienes en aumentar los GB de tu plan sin elevar costos. Para iniciar el trámite, ¿me enviarás tu INE en foto o PDF?'\nNUNCA seguimiento genérico como '¿Ya lo pensaste?'\n\nCuando respondas sobre objeciones, da la respuesta COMPLETA con:\n1) Traducción real de lo que piensa el cliente\n2) Guion para llamada paso a paso\n3) Mensaje de WhatsApp listo para usar (2 versiones)\n4) Estrategia avanzada / tip extra\n5) Errores que no deben cometer\n\nResponde en español mexicano profesional."
 };
 var TR_SCENARIOS = [
   // Uno por cada objeción real
@@ -6357,20 +6391,56 @@ function trRpBack(){trRpScenario=null;trRpMsgs=[];trRpHistory=[];trRenderScenari
 
 // ── EXERCISES ──
 function trRenderExercises(){
+  if(trExActive) return;
   var ti=new Date().getDay()%TR_EXERCISES.length,te=TR_EXERCISES[ti];
-  var h='<div style="font-size:16px;font-weight:800;margin-bottom:4px">Ejercicios</div><p style="font-size:11px;color:var(--text-3);margin-bottom:12px">Práctica diaria para mejorar</p>';
-  h+='<div class="section" style="padding:14px;margin-bottom:12px;border:1px solid var(--att-blue);background:#EBF5FB"><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;background:var(--att-blue);color:white">EJERCICIO DEL DÍA</span><div style="font-size:15px;font-weight:800;margin:5px 0 3px">'+te.title+'</div><p style="font-size:11px;color:var(--text-2);line-height:1.4;margin-bottom:6px">'+te.desc+'</p><div style="display:flex;flex-wrap:wrap;gap:3px">'+te.criteria.map(function(c){return'<span style="padding:2px 6px;border-radius:4px;background:white;color:var(--text-2);font-size:9px;border:1px solid var(--border)">✓ '+c+'</span>'}).join('')+'</div></div>';
+  var h='<div style="font-size:16px;font-weight:800;margin-bottom:4px">Ejercicios</div><p style="font-size:11px;color:var(--text-3);margin-bottom:12px">Practica situaciones reales — la IA te evalúa</p>';
+  h+='<div class="section" style="padding:14px;margin-bottom:12px;border:1px solid var(--att-blue);background:#EBF5FB"><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;background:var(--att-blue);color:white">EJERCICIO DEL DÍA</span><div style="font-size:15px;font-weight:800;margin:5px 0 3px">'+te.title+'</div><p style="font-size:11px;color:var(--text-2);line-height:1.4;margin-bottom:6px">'+te.desc+'</p><div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px">'+te.criteria.map(function(c){return'<span style="padding:2px 6px;border-radius:4px;background:white;color:var(--text-2);font-size:9px;border:1px solid var(--border)">✓ '+c+'</span>'}).join('')+'</div><button class="btn btn-primary" style="font-size:11px;padding:6px 16px" onclick="trExStart('+ti+')">▶ Practicar</button></div>';
   h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">';
-  TR_EXERCISES.forEach(function(ex,i){var d=trExCompleted[i];
-    h+='<div class="section" style="padding:12px;'+(d?'opacity:0.5':'')+'"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:#EBF5FB;color:var(--att-blue)">'+ex.type+'</span><div style="font-size:12px;font-weight:700;margin-top:3px">'+ex.title+'</div></div><button class="btn '+(d?'btn-secondary':'btn-primary')+'" style="font-size:9px;padding:3px 8px" onclick="trMarkEx('+i+')">'+(d?'✓':'Hecho')+'</button></div><p style="font-size:10px;color:var(--text-2);line-height:1.3;margin:4px 0">'+ex.desc+'</p><div style="display:flex;flex-wrap:wrap;gap:2px">'+ex.criteria.map(function(c){return'<span style="padding:1px 5px;border-radius:3px;background:var(--bg-card);color:var(--text-3);font-size:8px;border:1px solid var(--border)">✓ '+c+'</span>'}).join('')+'</div></div>'});
+  TR_EXERCISES.forEach(function(ex,i){
+    h+='<div class="section" style="padding:12px"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:#EBF5FB;color:var(--att-blue)">'+ex.type+'</span><div style="font-size:12px;font-weight:700;margin-top:3px">'+ex.title+'</div></div><button class="btn btn-primary" style="font-size:9px;padding:3px 10px" onclick="trExStart('+i+')">Practicar</button></div><p style="font-size:10px;color:var(--text-2);line-height:1.3;margin:4px 0">'+ex.desc+'</p><div style="display:flex;flex-wrap:wrap;gap:2px">'+ex.criteria.map(function(c){return'<span style="padding:1px 5px;border-radius:3px;background:var(--bg-card);color:var(--text-3);font-size:8px;border:1px solid var(--border)">✓ '+c+'</span>'}).join('')+'</div></div>'});
   h+='</div>';document.getElementById('trExList').innerHTML=h;
 }
-async function trMarkEx(i){
-  trExCompleted[i]=!trExCompleted[i];
-  if(trExCompleted[i]) await trSaveProgress('exercise',TR_EXERCISES[i].title,{score:100,strengths:['Completado'],improvements:[],recommendation:''});
-  trRenderLevelBar();
-  trRenderExercises();
+var trExActive=null,trExMsgs=[];
+function trExStart(i){
+  trExActive=TR_EXERCISES[i]; trExMsgs=[];
+  document.getElementById('trExList').style.display='none';
+  document.getElementById('trExActive').style.display='';
+  document.getElementById('trExFeedback').style.display='none';
+  document.getElementById('trExInputArea').style.display='flex';
+  document.getElementById('trExTitle').textContent='🏋️ '+trExActive.title;
+  document.getElementById('trExDesc').innerHTML='<strong>Instrucción:</strong> '+trExActive.desc;
+  document.getElementById('trExCriteria').innerHTML=trExActive.criteria.map(function(c){return'<span style="padding:2px 6px;border-radius:4px;background:#EBF5FB;color:var(--att-blue);font-size:9px;font-weight:600;border:1px solid #B6D4FE">✓ '+c+'</span>'}).join('');
+  trExMsgs.push({role:'sys',text:'📋 '+trExActive.title+'\n'+trExActive.desc+'\n\nEscribe tu respuesta como si estuvieras en llamada con el cliente.'});
+  trExRenderMsgs();
 }
+function trExRenderMsgs(){
+  var c=document.getElementById('trExMsgs');
+  c.innerHTML=trExMsgs.map(function(m){var cls=m.role==='user'?'tr-msg-user':m.role==='sys'?'tr-msg-sys':'tr-msg-bot';return'<div class="'+cls+'">'+m.text.split('\n').map(function(l){return'<div>'+l+'</div>'}).join('')+'</div>'}).join('');
+  if(trLoading)c.innerHTML+='<div class="tr-typing"><span></span><span></span><span></span></div>';
+  c.scrollTop=c.scrollHeight;
+}
+async function trExSend(){
+  var inp=document.getElementById('trExInput'),msg=inp.value.trim();if(!msg||trLoading||!trExActive)return;
+  trExMsgs.push({role:'user',text:msg});inp.value='';trLoading=true;trExRenderMsgs();
+  var sys='Eres coach de ventas de ExpertCell (distribuidor AT&T). Evalúa la respuesta del agente para el ejercicio "'+trExActive.title+'". Instrucción: '+trExActive.desc+'. Criterios: '+trExActive.criteria.join(', ')+'. Responde SOLO JSON: {"score":85,"feedback":"Tu análisis detallado con emojis","strengths":["..."],"improvements":["..."],"ejemplo":"Frase ejemplo de cómo debería sonar"}';
+  var reply=await trCallAI(sys,'Mi respuesta como agente: '+msg);
+  var fb;
+  try{fb=JSON.parse(reply.replace(/```json|```/g,'').trim())}catch(e){fb={score:70,feedback:reply,strengths:['Completaste el ejercicio'],improvements:['Revisa los criterios'],ejemplo:''}}
+  await trSaveProgress('exercise',trExActive.title,fb);
+  trRenderLevelBar();
+  document.getElementById('trExInputArea').style.display='none';
+  var sc=fb.score>=80?'#10B981':fb.score>=60?'#F59E0B':'#DC3545';
+  var fh='<div class="section" style="padding:14px;border:1px solid '+sc+'40">';
+  fh+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div style="font-size:32px;font-weight:900;color:'+sc+'">'+fb.score+'</div><div><div style="font-size:13px;font-weight:700">Evaluación</div><div style="font-size:10px;color:var(--text-3)">'+(fb.score>=80?'¡Excelente!':fb.score>=60?'Buen trabajo':'Necesitas más práctica')+'</div></div></div>';
+  if(fb.feedback)fh+='<div style="font-size:11px;color:var(--text-2);line-height:1.5;margin-bottom:10px">'+fb.feedback+'</div>';
+  fh+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px"><div><div style="font-size:9px;color:#10B981;font-weight:700;margin-bottom:3px">✓ FORTALEZAS</div>'+(fb.strengths||[]).map(function(s){return'<div style="font-size:10px;color:var(--text-2)">• '+s+'</div>'}).join('')+'</div><div><div style="font-size:9px;color:#F59E0B;font-weight:700;margin-bottom:3px">△ MEJORA</div>'+(fb.improvements||[]).map(function(s){return'<div style="font-size:10px;color:var(--text-2)">• '+s+'</div>'}).join('')+'</div></div>';
+  if(fb.ejemplo)fh+='<div style="font-size:10px;color:var(--att-blue);padding:8px;background:#EBF5FB;border-radius:5px;line-height:1.4">💬 <strong>Ejemplo ideal:</strong> '+fb.ejemplo+'</div>';
+  fh+='<div style="margin-top:10px;display:flex;gap:6px"><button class="btn btn-primary" style="font-size:10px;padding:5px 12px" onclick="trExStart('+TR_EXERCISES.indexOf(trExActive)+')">🔄 Repetir</button><button class="btn btn-secondary" style="font-size:10px;padding:5px 12px" onclick="trExBack()">← Otros ejercicios</button></div>';
+  fh+='</div>';
+  document.getElementById('trExFeedback').innerHTML=fh;document.getElementById('trExFeedback').style.display='';
+  trLoading=false;trExRenderMsgs();
+}
+function trExBack(){trExActive=null;trExMsgs=[];document.getElementById('trExActive').style.display='none';document.getElementById('trExList').style.display='';trRenderExercises()}
 
 // ── LEVEL SYSTEM ──
 var TR_LEVELS = [
