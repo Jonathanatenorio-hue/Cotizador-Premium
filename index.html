@@ -754,12 +754,31 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
         <select class="field" id="dashFilterAgente" onchange="renderDashboard()" style="width:auto;font-size:12px;padding:6px 8px">
           <option value="all">Todos los agentes</option>
         </select>
-        <select class="field" id="dashFilterPeriodo" onchange="renderDashboard()" style="width:auto;font-size:12px;padding:6px 8px">
+        <select class="field" id="dashFilterPeriodo" onchange="onDashPeriodoChange()" style="width:auto;font-size:12px;padding:6px 8px">
           <option value="all">Todo el tiempo</option>
           <option value="hoy">Hoy</option>
           <option value="semana">Última semana</option>
           <option value="mes" selected>Este mes</option>
+          <option value="mes_anterior">Mes anterior</option>
+          <option value="ene">Enero</option>
+          <option value="feb">Febrero</option>
+          <option value="mar">Marzo</option>
+          <option value="abr">Abril</option>
+          <option value="may">Mayo</option>
+          <option value="jun">Junio</option>
+          <option value="jul">Julio</option>
+          <option value="ago">Agosto</option>
+          <option value="sep">Septiembre</option>
+          <option value="oct">Octubre</option>
+          <option value="nov">Noviembre</option>
+          <option value="dic">Diciembre</option>
+          <option value="rango">Rango personalizado...</option>
         </select>
+        <div id="dashRangoFechas" style="display:none;gap:4px;align-items:center">
+          <input type="date" class="field" id="dashFechaDesde" style="width:auto;font-size:12px;padding:5px 8px" onchange="renderDashboard()">
+          <span style="font-size:11px;color:var(--text-3)">a</span>
+          <input type="date" class="field" id="dashFechaHasta" style="width:auto;font-size:12px;padding:5px 8px" onchange="renderDashboard()">
+        </div>
         <button class="btn btn-secondary" style="font-size:11px;padding:6px 10px" onclick="exportDashExcel()">📊 Exportar Excel</button>
         <button class="btn btn-secondary" style="font-size:11px;padding:6px 10px" onclick="exportDashPDF()">📄 Exportar PDF</button>
       </div>
@@ -1228,21 +1247,19 @@ async function updateEstatusInSupabase(folio, estatus) {
 }
 
 async function loadCotizacionesFromSupabase() {
-  if (!supabase || !currentUser) return;
+  if (!supabase || !currentUser) { console.log('loadCots: no supabase or user'); return; }
   try {
-    var query = supabase.from('cotizaciones').select('*, cotizacion_items(*), usuarios!cotizaciones_agente_id_fkey(nombre, attuid, whatsapp)');
+    var query = supabase.from('cotizaciones').select('*, cotizacion_items(*)');
 
     // Filter by role
     if (currentUser.rol === 'agente') {
       query = query.eq('agente_id', currentUser.id);
     } else if (currentUser.rol === 'supervisor') {
-      // Get agents under this supervisor
       var { data: agentes } = await supabase.from('usuarios').select('id').eq('supervisor_id', currentUser.id);
       var ids = (agentes || []).map(function(a) { return a.id; });
       ids.push(currentUser.id);
       query = query.in('agente_id', ids);
     } else if (currentUser.rol === 'coordinador') {
-      // Get all under this coordinator
       var { data: users } = await supabase.from('usuarios').select('id').eq('coordinador_id', currentUser.id);
       var ids = (users || []).map(function(u) { return u.id; });
       ids.push(currentUser.id);
@@ -1253,11 +1270,21 @@ async function loadCotizacionesFromSupabase() {
     query = query.order('created_at', { ascending: false }).limit(500);
     var { data, error } = await query;
 
-    if (error) { console.error('Load error:', error); return; }
-    if (!data) return;
+    if (error) { console.error('Load cotizaciones error:', error); return; }
+    if (!data) { console.log('loadCots: no data returned'); return; }
+    console.log('loadCots: got ' + data.length + ' from Supabase');
+
+    // Load agent names separately
+    var agentIds = [...new Set(data.map(function(c) { return c.agente_id; }))];
+    var agentMap = {};
+    if (agentIds.length > 0) {
+      var { data: agents } = await supabase.from('usuarios').select('id, nombre, attuid, whatsapp').in('id', agentIds);
+      (agents || []).forEach(function(a) { agentMap[a.id] = a; });
+    }
 
     // Convert Supabase format to local format
     var cotizaciones = data.map(function(c) {
+      var ag = agentMap[c.agente_id];
       return {
         folio: c.folio,
         fecha: c.fecha,
@@ -1269,7 +1296,7 @@ async function loadCotizacionesFromSupabase() {
           email: c.cliente_email,
           direccion: c.cliente_direccion,
         },
-        ejecutivo: c.usuarios ? { nombre: c.usuarios.nombre, attuid: c.usuarios.attuid, whatsapp: c.usuarios.whatsapp || '' } : { ...state.agente },
+        ejecutivo: ag ? { nombre: ag.nombre, attuid: ag.attuid, whatsapp: ag.whatsapp || '' } : { ...state.agente },
         items: (c.cotizacion_items || []).map(function(it) {
           return {
             equipo: it.equipo,
@@ -1288,6 +1315,8 @@ async function loadCotizacionesFromSupabase() {
         estatus: c.estatus,
         sub_estatus: c.sub_estatus,
         folio_att: c.folio_att,
+        fecha_fin_plazo: c.fecha_fin_plazo,
+        tiene_ine: c.tiene_ine,
         createdAt: c.created_at,
         editedAt: c.edited_at,
         agente_id: c.agente_id,
@@ -1453,6 +1482,27 @@ function updateHome() {
   var noConf = state.cotizaciones.filter(function(c) { return c.estatus === 'venta' && c.sub_estatus === 'no_confirmada'; });
   if (noConf.length > 0) {
     alerts.push('<div style="background:#F8D7DA;border:1px solid #DC3545;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">⚠️</span><div><div style="font-weight:700;font-size:12px;color:#721C24">' + noConf.length + ' venta(s) no confirmada(s)</div><div style="font-size:11px;color:#721C24">Requieren revisión en el Dashboard</div></div></div>');
+  }
+
+  // Aceleraciones vencidas (fecha ya pasó y no está como perdida ni venta)
+  var aceleracionesVencidas = state.cotizaciones.filter(function(c) {
+    if (c.sub_estatus !== 'aceleracion' || !c.fecha_fin_plazo) return false;
+    if (c.estatus === 'perdida' || c.estatus === 'venta') return false;
+    return new Date(c.fecha_fin_plazo + 'T00:00:00') <= now;
+  });
+  if (aceleracionesVencidas.length > 0) {
+    alerts.push('<div style="background:#F8D7DA;border:1px solid #DC3545;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">🚨</span><div><div style="font-weight:700;font-size:12px;color:#721C24">' + aceleracionesVencidas.length + ' aceleración(es) con plazo VENCIDO</div><div style="font-size:11px;color:#721C24">¡Estos clientes ya están libres! Contactar de inmediato: ' + aceleracionesVencidas.slice(0,3).map(function(c){return c.cliente.nombre + ' (venció ' + c.fecha_fin_plazo + ')'}).join(', ') + (aceleracionesVencidas.length > 3 ? '...' : '') + '</div></div></div>');
+  }
+
+  // Aceleraciones próximas a vencer (dentro de 7 días)
+  var proxAceleraciones = state.cotizaciones.filter(function(c) {
+    if (c.sub_estatus !== 'aceleracion' || !c.fecha_fin_plazo) return false;
+    if (c.estatus === 'perdida' || c.estatus === 'venta') return false;
+    var fechaFin = new Date(c.fecha_fin_plazo + 'T00:00:00');
+    return fechaFin > now && (fechaFin - now) <= 7 * 86400000;
+  });
+  if (proxAceleraciones.length > 0) {
+    alerts.push('<div style="background:#FFF3CD;border:1px solid #E6A200;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">📅</span><div><div style="font-weight:700;font-size:12px;color:#856404">' + proxAceleraciones.length + ' aceleración(es) próximas a vencer (7 días)</div><div style="font-size:11px;color:#856404">' + proxAceleraciones.map(function(c){return c.cliente.nombre + ' (' + c.fecha_fin_plazo + ')'}).join(', ') + '</div></div></div>');
   }
 
   if (alerts.length > 0) {
@@ -2803,6 +2853,7 @@ var SUB_ESTATUS_LABELS = {
   falta_biometrico: 'Falta biométrico',
   falta_ine: 'Falta INE',
   falta_contrato: 'Falta contrato firmado',
+  aceleracion: 'Aceleración pendiente',
   renovo_otro: 'Renovó en otro lado',
   no_responde: 'Ya no responde',
   prefiere_tienda: 'Prefiere ir a tienda',
@@ -2866,7 +2917,7 @@ function renderHistorial() {
       <div class="historial-body">
         <span class="historial-client">${cot.cliente.nombre}</span>
         <span class="historial-meta">${cot.cliente.telefono || ''} · ${cot.items.length} equipo(s) · ${cot.fecha}</span>
-        <span class="historial-meta">Ejecutivo: ${cot.ejecutivo ? cot.ejecutivo.nombre : 'N/A'}${cot.sub_estatus ? ' · ' + subEstatusLabel(cot.sub_estatus) : ''}${cot.folio_att ? ' · Folio ATT: ' + cot.folio_att : ''}</span>
+        <span class="historial-meta">Ejecutivo: ${cot.ejecutivo ? cot.ejecutivo.nombre : 'N/A'}${cot.sub_estatus ? ' · ' + subEstatusLabel(cot.sub_estatus) : ''}${cot.folio_att ? ' · Folio ATT: ' + cot.folio_att : ''}${cot.sub_estatus==='aceleracion' && cot.fecha_fin_plazo ? ' · Plazo: ' + cot.fecha_fin_plazo + (new Date(cot.fecha_fin_plazo+'T00:00:00') <= new Date() ? ' 🚨 VENCIDO' : '') : ''}</span>
       </div>
     </div>
   `).join('') + '</div>';
@@ -2909,13 +2960,30 @@ function showDetalle(folio) {
           <div id="subEstatusRow_${cot.folio}" style="display:none;flex-direction:column;gap:6px">
             <div id="subSeguimiento_${cot.folio}" style="display:none">
               <label class="field-label">Motivo seguimiento:</label>
-              <select class="field" id="subSeg_${cot.folio}" style="width:100%">
+              <select class="field" id="subSeg_${cot.folio}" style="width:100%" onchange="onSubSegChange('${cot.folio}')">
                 <option value="">Selecciona...</option>
                 <option value="espera_pago" ${cot.sub_estatus==='espera_pago'?'selected':''}>En espera de pago inicial</option>
                 <option value="falta_biometrico" ${cot.sub_estatus==='falta_biometrico'?'selected':''}>Falta biométrico</option>
                 <option value="falta_ine" ${cot.sub_estatus==='falta_ine'?'selected':''}>Falta INE</option>
                 <option value="falta_contrato" ${cot.sub_estatus==='falta_contrato'?'selected':''}>Falta contrato firmado</option>
+                <option value="aceleracion" ${cot.sub_estatus==='aceleracion'?'selected':''}>Aceleración pendiente</option>
               </select>
+              <div id="subAceleracion_${cot.folio}" style="display:${cot.sub_estatus==='aceleracion'?'block':'none'};margin-top:8px;background:var(--surface-2);padding:10px;border-radius:8px">
+                <div style="background:#FFF3CD;border:1px solid #E6A200;border-radius:6px;padding:8px;margin-bottom:8px">
+                  <div style="font-size:11px;color:#856404;line-height:1.4">
+                    <strong>⚠️ Recuerda:</strong> La fecha en que tu cliente quedará libre en AVS es la fecha de su corte posterior al día en que terminó su contrato.<br>
+                    <strong>Ejemplo:</strong> Si un cliente terminó contrato el 14/02/26 y su corte son los días 2, entonces su fecha real de finalización de plazo será el 02/03/26.
+                  </div>
+                </div>
+                <label class="field-label">Fecha de finalización de plazo:</label>
+                <input type="date" class="field" id="fechaFinPlazo_${cot.folio}" value="${cot.fecha_fin_plazo||''}" style="width:100%">
+                <label class="field-label" style="margin-top:6px">Estatus de INE:</label>
+                <select class="field" id="tieneIne_${cot.folio}" style="width:100%">
+                  <option value="">Selecciona...</option>
+                  <option value="con_ine" ${cot.tiene_ine==='con_ine'?'selected':''}>Ya cuento con el INE</option>
+                  <option value="sin_ine" ${cot.tiene_ine==='sin_ine'?'selected':''}>Prospecto sin INE</option>
+                </select>
+              </div>
             </div>
             <div id="subPerdida_${cot.folio}" style="display:none">
               <label class="field-label">Motivo de pérdida:</label>
@@ -2981,14 +3049,28 @@ function onEstatusChange(folio, init) {
   if (est === 'enviada') subRow.style.display = 'none';
 }
 
+function onSubSegChange(folio) {
+  var val = document.getElementById('subSeg_' + folio).value;
+  var acDiv = document.getElementById('subAceleracion_' + folio);
+  if (acDiv) acDiv.style.display = val === 'aceleracion' ? 'block' : 'none';
+}
+
 async function guardarEstatus(folio) {
   var est = document.getElementById('detalleEstatus_' + folio).value;
   var subEstatus = '';
   var folioAtt = '';
+  var fechaFinPlazo = '';
+  var tieneIne = '';
 
   if (est === 'seguimiento') {
     subEstatus = document.getElementById('subSeg_' + folio).value;
     if (!subEstatus) { alert('Selecciona el motivo de seguimiento.'); return; }
+    if (subEstatus === 'aceleracion') {
+      fechaFinPlazo = document.getElementById('fechaFinPlazo_' + folio).value;
+      tieneIne = document.getElementById('tieneIne_' + folio).value;
+      if (!fechaFinPlazo) { alert('La fecha de finalización de plazo es obligatoria para aceleración.'); return; }
+      if (!tieneIne) { alert('Selecciona el estatus de INE.'); return; }
+    }
   } else if (est === 'perdida') {
     subEstatus = document.getElementById('subPer_' + folio).value;
     if (!subEstatus) { alert('Selecciona el motivo de pérdida.'); return; }
@@ -3003,6 +3085,8 @@ async function guardarEstatus(folio) {
     cot.estatus = est;
     cot.sub_estatus = subEstatus;
     cot.folio_att = folioAtt;
+    cot.fecha_fin_plazo = fechaFinPlazo;
+    cot.tiene_ine = tieneIne;
     saveState();
   }
 
@@ -3013,6 +3097,8 @@ async function guardarEstatus(folio) {
         estatus: est,
         sub_estatus: subEstatus || null,
         folio_att: folioAtt || null,
+        fecha_fin_plazo: fechaFinPlazo || null,
+        tiene_ine: tieneIne || null,
       }).eq('folio', folio);
       console.log('Estatus updated:', folio, est, subEstatus, folioAtt);
     } catch(e) { console.error(e); }
@@ -3171,21 +3257,48 @@ function getDashFilteredCots() {
   // Period filter
   if (periodo !== 'all') {
     var now = new Date();
-    var cutoff;
+    var cutoff, cutoffEnd;
     if (periodo === 'hoy') {
       cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     } else if (periodo === 'semana') {
       cutoff = new Date(now.getTime() - 7 * 86400000);
     } else if (periodo === 'mes') {
       cutoff = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (periodo === 'mes_anterior') {
+      cutoff = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      cutoffEnd = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (periodo === 'rango') {
+      var desde = document.getElementById('dashFechaDesde').value;
+      var hasta = document.getElementById('dashFechaHasta').value;
+      if (desde) cutoff = new Date(desde + 'T00:00:00');
+      if (hasta) cutoffEnd = new Date(hasta + 'T23:59:59');
+    } else {
+      // Month names: ene=0, feb=1, etc
+      var meses = { ene:0, feb:1, mar:2, abr:3, may:4, jun:5, jul:6, ago:7, sep:8, oct:9, nov:10, dic:11 };
+      if (meses[periodo] !== undefined) {
+        var m = meses[periodo];
+        var yr = m <= now.getMonth() ? now.getFullYear() : now.getFullYear() - 1;
+        cutoff = new Date(yr, m, 1);
+        cutoffEnd = new Date(yr, m + 1, 1);
+      }
     }
     cots = cots.filter(function(c) {
       var d = c.createdAt ? new Date(c.createdAt) : null;
-      return d && d >= cutoff;
+      if (!d) return false;
+      if (cutoff && d < cutoff) return false;
+      if (cutoffEnd && d >= cutoffEnd) return false;
+      return true;
     });
   }
 
   return cots;
+}
+
+function onDashPeriodoChange() {
+  var val = document.getElementById('dashFilterPeriodo').value;
+  var rangoDiv = document.getElementById('dashRangoFechas');
+  rangoDiv.style.display = val === 'rango' ? 'flex' : 'none';
+  if (val !== 'rango') renderDashboard();
 }
 
 function renderDashboard() {
