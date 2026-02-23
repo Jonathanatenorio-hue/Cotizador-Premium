@@ -1060,11 +1060,13 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
 <div class="view" id="viewTraining">
   <div class="container">
     <!-- Tabs -->
-    <div style="display:flex;gap:4px;margin-bottom:14px;background:var(--bg-card);padding:4px;border-radius:10px;border:1px solid var(--border)">
-      <button class="btn trTab" id="trTabChat" onclick="trTab('chat')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:var(--att-blue);color:white;border:none">💬 Asistente</button>
-      <button class="btn trTab" id="trTabRoleplay" onclick="trTab('roleplay')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">🎭 Roleplay</button>
-      <button class="btn trTab" id="trTabExercises" onclick="trTab('exercises')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">🏋️ Ejercicios</button>
-      <button class="btn trTab" id="trTabMetrics" onclick="trTab('metrics')" style="flex:1;font-size:12px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">📊 Métricas</button>
+    <div style="display:flex;gap:4px;margin-bottom:14px;background:var(--bg-card);padding:4px;border-radius:10px;border:1px solid var(--border);flex-wrap:wrap">
+      <button class="btn trTab" id="trTabChat" onclick="trTab('chat')" style="flex:1;font-size:11px;padding:8px 4px;border-radius:8px;background:var(--att-blue);color:white;border:none;min-width:70px">💬 Asistente</button>
+      <button class="btn trTab" id="trTabGuia" onclick="trTab('guia')" style="flex:1;font-size:11px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);min-width:70px">📚 Guía</button>
+      <button class="btn trTab" id="trTabRoleplay" onclick="trTab('roleplay')" style="flex:1;font-size:11px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);min-width:70px">🎭 Roleplay</button>
+      <button class="btn trTab" id="trTabExercises" onclick="trTab('exercises')" style="flex:1;font-size:11px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);min-width:70px">🏋️ Ejercicios</button>
+      <button class="btn trTab" id="trTabEval" onclick="trTab('eval')" style="flex:1;font-size:11px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);min-width:70px">📝 Evaluación</button>
+      <button class="btn trTab" id="trTabMetrics" onclick="trTab('metrics')" style="flex:1;font-size:11px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);min-width:70px">📊 Métricas</button>
     </div>
 
     <!-- LEVEL BAR -->
@@ -1106,6 +1108,25 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
           <button class="btn btn-primary" onclick="trSendChat()" style="padding:8px 16px">→</button>
         </div>
       </div>
+    </div>
+
+    <!-- GUIA TAB (no API, pre-loaded) -->
+    <div id="trGuia" style="display:none">
+      <div style="font-size:16px;font-weight:800;margin-bottom:4px">📚 Guía de objeciones y procesos</div>
+      <p style="font-size:11px;color:var(--text-3);margin-bottom:10px">Respuestas listas sin gastar IA — selecciona un tema</p>
+      <div id="trGuiaMenu" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+      <div id="trGuiaContent" class="section" style="padding:14px;display:none">
+        <button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;margin-bottom:8px" onclick="trGuiaBack()">← Regresar</button>
+        <div id="trGuiaBody" style="font-size:12px;line-height:1.6;color:var(--text-1)"></div>
+      </div>
+    </div>
+
+    <!-- EVALUACION TAB -->
+    <div id="trEval" style="display:none">
+      <div style="font-size:16px;font-weight:800;margin-bottom:4px">📝 Evaluación del agente</div>
+      <p style="font-size:11px;color:var(--text-3);margin-bottom:10px">Evaluación basada en tus consultas, roleplays y ejercicios</p>
+      <div id="trEvalContent"></div>
+      <button class="btn btn-primary" style="margin-top:10px;font-size:11px;padding:8px 16px" onclick="trGenerateEval()">🔄 Generar evaluación con IA</button>
     </div>
 
     <!-- ROLEPLAY TAB -->
@@ -2972,6 +2993,7 @@ function buildAndDownloadPDF(cot) {
   }
 
   // ═══════ PLANS TABLE (half width like original) ═══════
+  var usedPlans = [];
   var seen = {};
   cot.items.forEach(function(i) { if (!seen[i.planId]) { seen[i.planId]=true; usedPlans.push(i.planId); } });
   var pD = usedPlans.map(function(pid) {
@@ -6308,15 +6330,19 @@ async function trCallAIMulti(sys, msgs) {
 
 // ── Tab switching ──
 function trTab(tab){
-  document.getElementById('trChat').style.display=tab==='chat'?'':'none';
-  document.getElementById('trRoleplay').style.display=tab==='roleplay'?'':'none';
-  document.getElementById('trExercises').style.display=tab==='exercises'?'':'none';
-  document.getElementById('trMetrics').style.display=tab==='metrics'?'':'none';
-  ['Chat','Roleplay','Exercises','Metrics'].forEach(function(t){var el=document.getElementById('trTab'+t);if(!el)return;var a=t.toLowerCase()===tab;el.style.background=a?'var(--att-blue)':'transparent';el.style.color=a?'white':'var(--text-2)'});
+  ['Chat','Guia','Roleplay','Exercises','Eval','Metrics'].forEach(function(t){
+    var id=t.charAt(0).toLowerCase()+t.slice(1);
+    var el=document.getElementById('tr'+t);
+    if(el) el.style.display=id===tab?'':'none';
+    var btn=document.getElementById('trTab'+t);
+    if(btn){btn.style.background=id===tab?'var(--att-blue)':'transparent';btn.style.color=id===tab?'white':'var(--text-2)'}
+  });
   if(tab==='chat'&&trChatMsgs.length===0)trInitChat();
   if(tab==='roleplay')trRenderScenarios();
   if(tab==='exercises')trRenderExercises();
   if(tab==='metrics')trLoadMetrics();
+  if(tab==='guia')trRenderGuia();
+  if(tab==='eval')trRenderEvalSummary();
 }
 
 // ── CHAT ──
@@ -6565,6 +6591,141 @@ async function trExSend(){
   trLoading=false;trExRenderMsgs();
 }
 function trExBack(){trExActive=null;trExMsgs=[];document.getElementById('trExActive').style.display='none';document.getElementById('trExList').style.display='';trRenderExercises()}
+
+// ── GUIA (pre-loaded, no API) ──
+var TR_GUIA = [
+  {cat:'objecion',icon:'🚫',title:'No quiere el equipo',answer:'🎯 <b>Traducción real:</b> "No necesito nada más, estoy bien así"\n\n🔹 <b>Paso 1 – Validar</b>\n"Perfecto, te entiendo 👌"\n(Bajas la defensiva del cliente)\n\n🔹 <b>Paso 2 – Reencuadre</b>\n"La renovación incluye equipo como parte del beneficio, no es obligación, es un PLUS que tienes por ser cliente AT&T."\n\n🔹 <b>Paso 3 – Opciones</b>\n"Tienes 3 opciones: quedártelo sin costo adicional, financiarlo a meses, o incluso venderlo y recuperar dinero."\n\n🔹 <b>Paso 4 – Cierre</b>\n"¿Cuál de las 3 te conviene más?"\n\n🚨 <b>Errores que NO debes cometer:</b>\n❌ Decir "gratis" o "de regalo"\n✅ Decir "sin costo", "incluido" o "costo cero"'},
+  {cat:'objecion',icon:'🏪',title:'Prefiere ir a sucursal',answer:'🎯 <b>Traducción real:</b> "No confío en trámites por teléfono"\n\n🔹 <b>Paso 1 – Validar</b>\n"Haces muy bien en ser cuidadoso 👍"\n\n🔹 <b>Paso 2 – Equiparar</b>\n"Usamos el mismo sistema oficial que la sucursal, la diferencia es que aquí no haces fila y yo te doy seguimiento personal."\n\n🔹 <b>Paso 3 – Seguridad</b>\n"Recibes folio oficial, confirmación por SMS y puedes validar con AT&T directamente."\n\n🔹 <b>Paso 4 – Cierre</b>\n"¿Te parece si avanzamos y si en algún punto no te sientes cómodo, paramos?"\n\n🚨 <b>Errores:</b>\n❌ Atacar la sucursal\n✅ Resaltar las ventajas adicionales del canal telefónico'},
+  {cat:'objecion',icon:'🤔',title:'Deja lo pienso',answer:'🎯 <b>Traducción real:</b> "Algo no me convence pero no sé qué"\n\n🔹 <b>Paso 1 – NO dejar ir</b>\n"Claro, es importante tomar buenas decisiones."\n\n🔹 <b>Paso 2 – Descubrir</b>\n"Solo para no insistirte después, ¿qué parte es la que quieres analizar? ¿El equipo, el precio, el plazo...?"\n\n🔹 <b>Paso 3 – Resolver</b>\nSegún lo que diga, resuelve esa objeción específica.\n\n🔹 <b>Paso 4 – Cierre</b>\n"Si resolvemos eso, ¿avanzamos hoy?"\n\n🚨 <b>Errores:</b>\n❌ "Ok, llámame cuando decidas"\n✅ Siempre descubrir QUÉ frena al cliente'},
+  {cat:'objecion',icon:'💸',title:'Problemas económicos',answer:'🎯 <b>Traducción real:</b> "Me preocupa gastar más"\n\n🔹 <b>Paso 1 – Empatía</b>\n"Te entiendo perfecto, justamente por eso te contacto."\n\n🔹 <b>Paso 2 – Reencuadre</b>\n"¿Sabías que renovando puedes BAJAR tu mensualidad? Hoy pagas $X y con el plan nuevo pagarías $Y."\n\n🔹 <b>Paso 3 – Desglose diario</b>\n"Son solo $X pesos al día, menos que un café."\n\n🔹 <b>Paso 4 – Cierre</b>\n"¿Prefieres el plan que te baja la renta o el que te da más GB por lo mismo?"\n\n🚨 <b>Errores:</b>\n❌ Ignorar la preocupación\n✅ Demostrar que renovar AHORRA dinero'},
+  {cat:'objecion',icon:'😌',title:'Estoy bien con mi plan',answer:'🎯 <b>Traducción real:</b> "No veo razón para cambiar"\n\n🔹 <b>Paso 1 – Validar</b>\n"Qué bueno que te funciona 👌"\n\n🔹 <b>Paso 2 – Comparativa</b>\n"Déjame mostrarte algo: hoy tienes X GB por $X. Con la renovación tendrías X GB por $Y — son X veces más datos."\n\n🔹 <b>Paso 3 – Pregunta de impacto</b>\n"¿Alguna vez te has quedado sin datos antes de que termine el mes?"\n\n🔹 <b>Paso 4 – Cierre</b>\n"Con estos GB extra ya no te pasaría, ¿lo activamos?"'},
+  {cat:'objecion',icon:'🙅',title:'No me interesa, gracias',answer:'🎯 <b>Traducción real:</b> "Respuesta automática, ni me escuchó"\n\n🔹 <b>Paso 1 – Romper el automático</b>\n"Entiendo perfecto, y no te quiero quitar tiempo."\n\n🔹 <b>Paso 2 – Clasificar</b>\n"Solo para no insistirte, ¿es porque estás ocupado ahorita o porque tu plan ya te funciona bien?"\n\n🔹 <b>Paso 3 – Actuar según respuesta</b>\n• Si está ocupado → agendar\n• Si el plan funciona → comparativa\n\n🚨 <b>Errores:</b>\n❌ Colgar y pasar al siguiente\n✅ Siempre clasificar la razón real'},
+  {cat:'objecion',icon:'📵',title:'No hago trámites por teléfono',answer:'🎯 <b>Traducción real:</b> "Desconfío, me da miedo un fraude"\n\n🔹 <b>Paso 1 – Validar fuerte</b>\n"Y haces muy bien, hoy hay que cuidarse 👍"\n\n🔹 <b>Paso 2 – Elementos de seguridad</b>\n"Trabajamos con sistema oficial AT&T. Recibes:\n• Folio oficial de transacción\n• Confirmación por SMS\n• Mi ATTUID para que valides\n• Autenticación facial"\n\n🔹 <b>Paso 3 – Cierre</b>\n"Lo hacemos paso a paso y tú confirmas cada parte, ¿te parece?"\n\n🚨 <b>Errores:</b>\n❌ "Confíe en mí"\n✅ "Es el mismo sistema oficial, recibes confirmación formal"'},
+  {cat:'objecion',icon:'💰',title:'No quiero pagar más (plan bajo)',answer:'🎯 <b>Traducción real:</b> "Cada peso cuenta para mí"\n\n🔹 <b>Paso 1 – Empatía</b>\n"Totalmente, y por eso busco la mejor opción para ti."\n\n🔹 <b>Paso 2 – Detectar necesidad</b>\n"¿Te ha pasado que se te acaban los datos antes de fin de mes? ¿Usas mucho TikTok, YouTube?"\n\n🔹 <b>Paso 3 – Desglose</b>\n"La diferencia son solo $X pesos al día, pero pasas de X GB a Y GB."\n\n🔹 <b>Paso 4 – Cierre</b>\n"¿Prefieres quedarte corto de datos o invertir $X diarios extra y navegar sin límite?"'},
+  {cat:'objecion',icon:'📶',title:'Me falla la cobertura',answer:'🎯 <b>Traducción real:</b> "Quiero soluciones, no excusas"\n\n🔹 <b>Paso 1 – NUNCA negar</b>\n"Entiendo tu frustración, vamos a revisarlo."\n\n🔹 <b>Paso 2 – Diagnosticar</b>\n"¿Te falla en todos lados o en una zona específica? ¿Interior o exterior?"\n\n🔹 <b>Paso 3 – Transparencia</b>\n"Prefiero decirte la realidad que prometer algo que no depende del plan."\n\n🔹 <b>Paso 4 – Retener</b>\n"Independiente de eso, con la renovación obtienes [beneficios]. ¿Avanzamos?"'},
+  {cat:'objecion',icon:'⏰',title:'Estoy ocupado / no tengo tiempo',answer:'🎯 <b>Traducción real:</b> "No es prioridad ahorita"\n\n🔹 <b>Paso 1 – Respetar</b>\n"Perfecto, te tomo solo 10 segundos."\n\n🔹 <b>Paso 2 – Micro-resumen</b>\n"Tienes un beneficio de renovación que te da [X]. Solo necesito agendar 5 min contigo."\n\n🔹 <b>Paso 3 – Agenda cerrada</b>\n"¿Te funciona mejor mañana a las 10 o a las 3?"\n\n🚨 <b>Errores:</b>\n❌ "Ok, yo te marco después" (sin fecha)\n✅ SIEMPRE día + hora + confirmación'},
+  {cat:'cierre',icon:'🎯',title:'Cierre Alternativa',answer:'<b>¿Cuándo usarlo?</b> Cuando el cliente ya mostró interés.\n\n<b>Frase:</b>\n"¿Prefieres el plan Plata o el Oro?"\n"¿Lo activas con enganche o sin enganche?"\n\n<b>Por qué funciona:</b> Le das 2 opciones donde AMBAS son venta. No hay opción de "no".'},
+  {cat:'cierre',icon:'🧠',title:'Cierre Lógica',answer:'<b>¿Cuándo usarlo?</b> Con clientes racionales que hacen cuentas.\n\n<b>Frase:</b>\n"Si hoy pagas $599 por 10 GB y por $629 tienes 30 GB, ¿tiene sentido quedarte con menos por casi lo mismo?"\n\n<b>Por qué funciona:</b> Los números no mienten.'},
+  {cat:'cierre',icon:'📎',title:'Cierre Micro-compromiso',answer:'<b>¿Cuándo usarlo?</b> Cuando el cliente duda pero no dice que no.\n\n<b>Frase:</b>\n"Solo para revisarlo, ¿me confirmas tu nombre completo?"\n"¿Tu INE la tienes en foto o en PDF?"\n\n<b>Por qué funciona:</b> Pequeñas acciones llevan a la venta completa.'},
+  {cat:'cierre',icon:'⚠️',title:'Cierre Consecuencia',answer:'<b>¿Cuándo usarlo?</b> Cuando el cliente posterga.\n\n<b>Frase:</b>\n"Esta promoción solo está vigente este mes. Si la dejamos pasar, el equipo sube de precio."\n\n<b>Por qué funciona:</b> Urgencia real = decisión rápida.'},
+  {cat:'cierre',icon:'🛡️',title:'Cierre Eliminación de riesgo',answer:'<b>¿Cuándo usarlo?</b> Cuando el cliente desconfía.\n\n<b>Frase:</b>\n"Es el mismo sistema oficial que sucursal, recibes confirmación con folio. Si algo no te convence, paramos."\n\n<b>Por qué funciona:</b> Reduce miedo = aumenta decisión.'},
+  {cat:'cierre',icon:'🔮',title:'Cierre Proyección',answer:'<b>¿Cuándo usarlo?</b> Para que visualice el beneficio.\n\n<b>Frase:</b>\n"Imagina que mañana te llega tu equipo nuevo, con el triple de datos, pagando menos. ¿Suena bien?"\n\n<b>Por qué funciona:</b> Visualizar = desear.'},
+  {cat:'cierre',icon:'✅',title:'Cierre Directo',answer:'<b>¿Cuándo usarlo?</b> Cuando el cliente ya preguntó precio, fecha y forma de pago (señales de compra).\n\n<b>Frase:</b>\n"Perfecto, entonces lo activamos. ¿Me envías tu INE para iniciar?"\n\n<b>Por qué funciona:</b> Ya está listo, solo necesita que lo guíes.'},
+  {cat:'proceso',icon:'📞',title:'Protocolo de llamada',answer:'<b>Estructura de 5-8 minutos:</b>\n\n🔹 <b>Apertura (30s):</b> Saludo + identificación + motivo\n"Hola [nombre], soy [tu nombre] de AT&T, ATTUID [X]. Te contacto por un beneficio de renovación."\n\n🔹 <b>Sondeo (60s):</b> Preguntas sobre satisfacción y uso\n"¿Cómo te ha ido con tu plan? ¿Te alcanza la información?"\n\n🔹 <b>Presentación (90s):</b> Oferta personalizada con comparativa\n\n🔹 <b>Objeciones (variable):</b> Máx 3 intentos. Debatir, NO escapar a WhatsApp.\n\n🔹 <b>Cierre (60s):</b> Pregunta cerrada + confirmación\n\n🔹 <b>Despedida (15s):</b> Agradecimiento + folio\n\n🚨 REGLA: Cada llamada DEBE terminar en pregunta cerrada.'},
+  {cat:'proceso',icon:'📲',title:'Seguimiento profesional',answer:'<b>Estructura correcta:</b>\n\n🔹 <b>1) Abre con lo que le ATRAJO</b>\nEl beneficio que mostró interés.\n\n🔹 <b>2) Cierra con lo que lo hizo DUDAR</b>\nLa objeción que frenó el cierre.\n\n<b>Ejemplo:</b>\n"Hola [nombre], ¿cómo estás? Me pongo en contacto por el interés que tienes en aumentar los GB de tu plan sin elevar costos. Para iniciar el trámite, ¿me enviarás tu INE en foto o PDF?"\n\n🚨 <b>Errores:</b>\n❌ "Hola, ¿ya lo pensaste?"\n❌ "Le llamo para dar seguimiento"\n✅ SIEMPRE personalizar con lo que detectaste'},
+  {cat:'proceso',icon:'💬',title:'WhatsApp estratégico',answer:'<b>REGLA #1:</b> WhatsApp NO es salida a objeciones.\n\n<b>Antes de enviar info:</b>\n1) Pregunta qué quiere revisar específicamente\n2) Cierra intención primero\n3) Si envías: comparativa + cierre\n\n<b>Estructura del mensaje:</b>\n• Saludo personalizado\n• Beneficio principal (lo que le atrajo)\n• Comparativa de plan/equipo\n• Pregunta de cierre\n\n🚨 <b>Errores:</b>\n❌ Mandar plantilla genérica\n❌ "Te mando info y me dices"\n✅ "¿Qué parte quieres revisar? Así te mando justo eso"'},
+];
+
+function trRenderGuia(){
+  var menu=document.getElementById('trGuiaMenu');
+  var cats=[{id:'objecion',label:'🚫 Objeciones',color:'#DC3545'},{id:'cierre',label:'🎯 Cierres',color:'#10B981'},{id:'proceso',label:'📋 Procesos',color:'#0057B8'}];
+  var h='';
+  cats.forEach(function(cat){
+    h+='<div style="margin-bottom:8px;width:100%"><div style="font-size:12px;font-weight:700;margin-bottom:4px;color:'+cat.color+'">'+cat.label+'</div><div style="display:flex;flex-wrap:wrap;gap:4px">';
+    TR_GUIA.filter(function(g){return g.cat===cat.id}).forEach(function(g,i){
+      var idx=TR_GUIA.indexOf(g);
+      h+='<button class="btn" style="padding:5px 10px;border-radius:8px;border:1px solid var(--border);background:white;color:var(--text-1);font-size:11px;font-weight:600" onclick="trShowGuia('+idx+')">'+g.icon+' '+g.title+'</button>';
+    });
+    h+='</div></div>';
+  });
+  menu.innerHTML=h;
+  document.getElementById('trGuiaContent').style.display='none';
+  menu.style.display='';
+}
+function trShowGuia(idx){
+  var g=TR_GUIA[idx];
+  document.getElementById('trGuiaMenu').style.display='none';
+  document.getElementById('trGuiaContent').style.display='';
+  document.getElementById('trGuiaBody').innerHTML='<div style="font-size:15px;font-weight:800;margin-bottom:8px">'+g.icon+' '+g.title+'</div>'+g.answer.split('\n').map(function(l){return'<div>'+l+'</div>'}).join('');
+}
+function trGuiaBack(){
+  document.getElementById('trGuiaContent').style.display='none';
+  document.getElementById('trGuiaMenu').style.display='';
+}
+
+// ── EVALUACION ──
+async function trRenderEvalSummary(){
+  var el=document.getElementById('trEvalContent');
+  if(!supabase||!currentUser){el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-3)">Inicia sesión para ver tu evaluación</div>';return}
+  var uid=currentUser.id;
+  var pr=await supabase.from('training_progress').select('*').eq('user_id',uid).order('created_at',{ascending:false});
+  var prog=pr.data||[];
+  var ur=await supabase.from('training_usage').select('*').eq('user_id',uid);
+  var usage=ur.data||[];
+  var totalMsgs=0; usage.forEach(function(u){totalMsgs+=u.total_count||0});
+  var rps=prog.filter(function(p){return p.type==='roleplay'});
+  var exs=prog.filter(function(p){return p.type==='exercise'});
+  var avgRp=0; if(rps.length){var s=0;rps.forEach(function(r){s+=(r.result&&r.result.score)||0});avgRp=Math.round(s/rps.length)}
+  var avgEx=0; if(exs.length){var s=0;exs.forEach(function(r){s+=(r.result&&r.result.score)||0});avgEx=Math.round(s/exs.length)}
+  var daysActive=usage.filter(function(u){return(u.total_count||0)>0}).length;
+
+  var h='<div class="section" style="padding:14px;margin-bottom:10px">';
+  h+='<div style="font-size:13px;font-weight:700;margin-bottom:10px">Resumen de actividad</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px">';
+  h+='<div style="text-align:center;padding:10px;background:var(--bg-main);border-radius:8px"><div style="font-size:22px;font-weight:900;color:var(--att-blue)">'+totalMsgs+'</div><div style="font-size:9px;color:var(--text-3)">Msgs IA</div></div>';
+  h+='<div style="text-align:center;padding:10px;background:var(--bg-main);border-radius:8px"><div style="font-size:22px;font-weight:900;color:#8B5CF6">'+rps.length+'</div><div style="font-size:9px;color:var(--text-3)">Roleplays</div></div>';
+  h+='<div style="text-align:center;padding:10px;background:var(--bg-main);border-radius:8px"><div style="font-size:22px;font-weight:900;color:#10B981">'+exs.length+'</div><div style="font-size:9px;color:var(--text-3)">Ejercicios</div></div>';
+  h+='<div style="text-align:center;padding:10px;background:var(--bg-main);border-radius:8px"><div style="font-size:22px;font-weight:900;color:#F59E0B">'+daysActive+'</div><div style="font-size:9px;color:var(--text-3)">Días activo</div></div>';
+  var sc=avgRp>=80?'#10B981':avgRp>=60?'#F59E0B':'#DC3545';
+  h+='<div style="text-align:center;padding:10px;background:var(--bg-main);border-radius:8px"><div style="font-size:22px;font-weight:900;color:'+sc+'">'+avgRp+'</div><div style="font-size:9px;color:var(--text-3)">Score roleplay</div></div>';
+  var sc2=avgEx>=80?'#10B981':avgEx>=60?'#F59E0B':'#DC3545';
+  h+='<div style="text-align:center;padding:10px;background:var(--bg-main);border-radius:8px"><div style="font-size:22px;font-weight:900;color:'+sc2+'">'+avgEx+'</div><div style="font-size:9px;color:var(--text-3)">Score ejercicios</div></div>';
+  h+='</div></div>';
+
+  // Recent roleplays with scores
+  if(rps.length>0){
+    h+='<div class="section" style="padding:14px;margin-bottom:10px"><div style="font-size:13px;font-weight:700;margin-bottom:8px">Últimos roleplays</div>';
+    rps.slice(0,8).forEach(function(rp){
+      var s=rp.result?rp.result.score:0;
+      var c=s>=80?'#10B981':s>=60?'#F59E0B':'#DC3545';
+      var str=(rp.result&&rp.result.strengths)?rp.result.strengths[0]:'';
+      var imp=(rp.result&&rp.result.improvements)?rp.result.improvements[0]:'';
+      h+='<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">';
+      h+='<div style="font-size:16px;font-weight:900;color:'+c+';min-width:35px;text-align:center">'+s+'</div>';
+      h+='<div style="flex:1"><div style="font-size:11px;font-weight:600">'+rp.scenario+'</div>';
+      if(str)h+='<div style="font-size:9px;color:#10B981">✓ '+str+'</div>';
+      if(imp)h+='<div style="font-size:9px;color:#F59E0B">△ '+imp+'</div>';
+      h+='</div><div style="font-size:9px;color:var(--text-3)">'+new Date(rp.created_at).toLocaleDateString('es-MX')+'</div></div>';
+    });
+    h+='</div>';
+  }
+  h+='<div id="trEvalAI"></div>';
+  el.innerHTML=h;
+}
+
+async function trGenerateEval(){
+  var el=document.getElementById('trEvalAI');
+  if(!el)return;
+  el.innerHTML='<div class="section" style="padding:14px;text-align:center"><div class="tr-typing" style="display:inline-flex"><span></span><span></span><span></span></div><div style="font-size:11px;color:var(--text-3);margin-top:6px">Generando evaluación con IA...</div></div>';
+  var uid=currentUser.id;
+  var pr=await supabase.from('training_progress').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(20);
+  var prog=pr.data||[];
+  var summary='Historial del agente '+currentUser.nombre+':\n';
+  prog.forEach(function(p){
+    summary+=p.type+': '+p.scenario+' - Score:'+(p.result?p.result.score:'N/A');
+    if(p.result&&p.result.strengths)summary+=' Fortalezas:'+p.result.strengths.join(', ');
+    if(p.result&&p.result.improvements)summary+=' Mejoras:'+p.result.improvements.join(', ');
+    summary+='\n';
+  });
+  var sys='Eres evaluador de ventas de ExpertCell (AT&T). Genera una evaluación PROFESIONAL del agente basada en su historial de entrenamiento. Responde en JSON: {"general":85,"fortalezas":["...","...","..."],"areas_mejora":["...","...","..."],"recomendaciones":["...","...","..."],"nivel_objeciones":"Bueno/Regular/Necesita práctica","nivel_cierres":"Bueno/Regular/Necesita práctica","nivel_seguimiento":"Bueno/Regular/Necesita práctica","resumen":"2-3 frases de evaluación general"}';
+  var reply=await trCallAI(sys,summary);
+  var ev;
+  try{ev=JSON.parse(reply.replace(/```json|```/g,'').trim())}catch(e){ev={general:0,fortalezas:['No hay datos suficientes'],areas_mejora:['Realiza más ejercicios y roleplays'],recomendaciones:['Completa al menos 5 roleplays'],nivel_objeciones:'Sin datos',nivel_cierres:'Sin datos',nivel_seguimiento:'Sin datos',resumen:'Necesitas más actividad para generar una evaluación precisa.'}}
+  var gc=ev.general>=80?'#10B981':ev.general>=60?'#F59E0B':'#DC3545';
+  var h='<div class="section" style="padding:14px;border:2px solid '+gc+'40">';
+  h+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px"><div style="width:60px;height:60px;border-radius:50%;background:'+gc+'20;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:'+gc+'">'+ev.general+'</div>';
+  h+='<div><div style="font-size:15px;font-weight:800">Evaluación General</div><div style="font-size:11px;color:var(--text-3)">'+ev.resumen+'</div></div></div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">';
+  var niveles=[{l:'Objeciones',v:ev.nivel_objeciones},{l:'Cierres',v:ev.nivel_cierres},{l:'Seguimiento',v:ev.nivel_seguimiento}];
+  niveles.forEach(function(n){var nc=n.v==='Bueno'?'#10B981':n.v==='Regular'?'#F59E0B':'#DC3545';h+='<div style="text-align:center;padding:8px;background:var(--bg-main);border-radius:8px"><div style="font-size:12px;font-weight:700;color:'+nc+'">'+n.v+'</div><div style="font-size:9px;color:var(--text-3)">'+n.l+'</div></div>'});
+  h+='</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">';
+  h+='<div><div style="font-size:10px;font-weight:700;color:#10B981;margin-bottom:4px">✓ FORTALEZAS</div>';(ev.fortalezas||[]).forEach(function(f){h+='<div style="font-size:10px;color:var(--text-2);margin-bottom:2px">• '+f+'</div>'});h+='</div>';
+  h+='<div><div style="font-size:10px;font-weight:700;color:#F59E0B;margin-bottom:4px">△ ÁREAS DE MEJORA</div>';(ev.areas_mejora||[]).forEach(function(f){h+='<div style="font-size:10px;color:var(--text-2);margin-bottom:2px">• '+f+'</div>'});h+='</div></div>';
+  h+='<div><div style="font-size:10px;font-weight:700;color:var(--att-blue);margin-bottom:4px">💡 RECOMENDACIONES</div>';(ev.recomendaciones||[]).forEach(function(f){h+='<div style="font-size:10px;color:var(--text-2);margin-bottom:2px">• '+f+'</div>'});h+='</div>';
+  h+='</div>';
+  el.innerHTML=h;
+}
 
 // ── LEVEL SYSTEM ──
 var TR_LEVELS = [
