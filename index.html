@@ -2928,9 +2928,31 @@ function buildAndDownloadPDF(cot) {
     alternateRowStyles: { fillColor: GBG },
     theme: 'grid',
   });
-  y = doc.lastAutoTable.finalY + 8;
+  y = doc.lastAutoTable.finalY + 4;
 
-  // ═══════ PLANS TABLE (half width like original) ═══════
+  // ═══════ AHORRO HIGHLIGHT BOX ═══════
+  var totalAhorro = 0;
+  cot.items.forEach(function(it) { totalAhorro += (it.precioLista - it.precioPromo); });
+  if (totalAhorro > 0) {
+    var avgPlanPrice = 0;
+    cot.items.forEach(function(it) { avgPlanPrice += it.planPrecio; });
+    avgPlanPrice = avgPlanPrice / cot.items.length;
+    var mesesEquiv = avgPlanPrice > 0 ? Math.floor(totalAhorro / avgPlanPrice) : 0;
+    var boxH = 18;
+    doc.setFillColor(16, 185, 129);
+    doc.roundedRect(mg, y, cW, boxH, 2, 2, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(10);
+    doc.setFont('helvetica','bold');
+    doc.text('💰 AHORRO TOTAL EN EQUIPO: $' + totalAhorro.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}), mg + 6, y + 7);
+    doc.setFontSize(8);
+    doc.setFont('helvetica','normal');
+    doc.text('Equivale a ' + mesesEquiv + ' mensualidades de tu plan — es como si AT&T te pagara ' + mesesEquiv + ' meses', mg + 6, y + 13);
+    y += boxH + 4;
+  } else {
+    y += 4;
+  }
+
   var usedPlans = [];
   var seen = {};
   cot.items.forEach(function(i) { if (!seen[i.planId]) { seen[i.planId]=true; usedPlans.push(i.planId); } });
@@ -3237,7 +3259,30 @@ function buildAndDownloadPDF_v2(cot) {
       }
     },
   });
-  y = doc.lastAutoTable.finalY + 6;
+  y = doc.lastAutoTable.finalY + 4;
+
+  // ═══════ AHORRO HIGHLIGHT BOX ═══════
+  var totalAhorro2 = 0;
+  cot.items.forEach(function(it) { totalAhorro2 += (it.precioLista - it.precioPromo); });
+  if (totalAhorro2 > 0) {
+    var avgPP2 = 0;
+    cot.items.forEach(function(it) { avgPP2 += it.planPrecio; });
+    avgPP2 = avgPP2 / cot.items.length;
+    var mE2 = avgPP2 > 0 ? Math.floor(totalAhorro2 / avgPP2) : 0;
+    var bH2 = 16;
+    doc.setFillColor(16, 185, 129);
+    doc.roundedRect(mg, y, cW, bH2, 2, 2, 'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(9);
+    doc.setFont('helvetica','bold');
+    doc.text('AHORRO TOTAL EN EQUIPO: $' + totalAhorro2.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}), mg + 5, y + 6);
+    doc.setFontSize(7);
+    doc.setFont('helvetica','normal');
+    doc.text('Equivale a ' + mE2 + ' mensualidades de tu plan', mg + 5, y + 12);
+    y += bH2 + 4;
+  } else {
+    y += 2;
+  }
 
   // ===== SECTION: PLANES =====
   var usedPlans = [];
@@ -3737,6 +3782,29 @@ function showDetalle(folio) {
 
   showView('detalle', 'Cotización ' + cot.folio);
   setTimeout(function() { onEstatusChange(cot.folio, true); }, 50);
+  // Admin-only delete button
+  if (currentUser && currentUser.rol === 'admin') {
+    var delBtn = document.createElement('div');
+    delBtn.style.cssText = 'text-align:right;margin-top:12px;padding:0 14px';
+    delBtn.innerHTML = '<button class="btn btn-secondary" style="font-size:10px;padding:5px 12px;color:#DC3545;border-color:#DC3545" onclick="eliminarCotizacion(\''+cot.folio+'\')">🗑️ Eliminar cotización</button>';
+    container.appendChild(delBtn);
+  }
+}
+
+async function eliminarCotizacion(folio) {
+  if (!currentUser || currentUser.rol !== 'admin') { alert('Solo el administrador puede eliminar cotizaciones.'); return; }
+  if (!confirm('¿Eliminar la cotización '+folio+'?\n\nEsta acción es permanente.')) return;
+  if (!confirm('Última confirmación: ¿Realmente eliminar '+folio+'?')) return;
+  try {
+    if (supabase) {
+      await supabase.from('cotizacion_items').delete().eq('cotizacion_id', folio);
+      await supabase.from('cotizaciones').delete().eq('folio', folio);
+    }
+    state.cotizaciones = state.cotizaciones.filter(function(c){return c.folio !== folio});
+    saveState();
+    showView('historial','Historial de Cotizaciones');
+    alert('✅ Cotización '+folio+' eliminada.');
+  } catch(e) { alert('Error: '+e.message); }
 }
 
 function onEstatusChange(folio, init) {
@@ -3782,6 +3850,7 @@ async function guardarEstatus(folio) {
   } else if (est === 'venta') {
     folioAtt = document.getElementById('folioAtt_' + folio).value.trim();
     if (!folioAtt) { alert('El folio AT&T es obligatorio para ventas exitosas.'); return; }
+    if (!/^\d{10}$/.test(folioAtt)) { alert('El folio AT&T debe ser de exactamente 10 dígitos numéricos.'); return; }
   }
 
   // Update local
@@ -4698,14 +4767,18 @@ function renderAdminUsers() {
 
     // Don't show actions for self or admin users (except for admin)
     if (u.id !== currentUser.id && u.rol !== 'admin') {
-      // Edit button
-      html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px" onclick="editarUsuario(\''+u.id+'\')">✏️</button>';
-      if (u.activo) {
-        // Dar de baja - available to admin, coordinador, supervisor
-        html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;color:#DC3545;border-color:#DC3545" onclick="darDeBaja(\''+u.id+'\')">Dar de baja</button>';
+      // Edit button - supervisor can only edit WhatsApp
+      if (currentUser.rol === 'supervisor') {
+        html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px" onclick="editarUsuarioWA(\''+u.id+'\')">📲 WhatsApp</button>';
       } else {
-        // Reactivar - available to admin, coordinador, supervisor
-        html += '<button class="btn btn-primary" style="font-size:10px;padding:3px 8px" onclick="reactivarUsuario(\''+u.id+'\')">Reactivar</button>';
+        html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px" onclick="editarUsuario(\''+u.id+'\')">✏️</button>';
+      }
+      if (currentUser.rol === 'admin' || currentUser.rol === 'coordinador') {
+        if (u.activo) {
+          html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;color:#DC3545;border-color:#DC3545" onclick="darDeBaja(\''+u.id+'\')">Dar de baja</button>';
+        } else {
+          html += '<button class="btn btn-primary" style="font-size:10px;padding:3px 8px" onclick="reactivarUsuario(\''+u.id+'\')">Reactivar</button>';
+        }
       }
       // Eliminar - ONLY admin
       if (currentUser.rol === 'admin') {
@@ -5252,6 +5325,20 @@ async function moverCotsARecuperacion(userId) {
   return (data || []).length;
 }
 
+// WhatsApp-only edit for supervisors
+async function editarUsuarioWA(userId) {
+  var user = adminUsers.find(function(u){return u.id===userId});
+  if (!user) return;
+  var newWA = prompt('WhatsApp de ' + user.nombre + ':', user.whatsapp || '');
+  if (newWA === null) return;
+  try {
+    await supabase.from('usuarios').update({whatsapp: newWA.trim()}).eq('id', userId);
+    await loadAdminData();
+    renderAdminUsers();
+    alert('✅ WhatsApp actualizado');
+  } catch(e) { alert('Error: '+e.message); }
+}
+
 async function darDeBaja(userId) {
   var cotsCount = await moverCotsARecuperacion(userId);
   var msg = '¿Dar de baja a este usuario?';
@@ -5780,10 +5867,10 @@ async function metasRender() {
     var opPct = opMeta>0 ? Math.round(opVentas/opMeta*100) : 0;
     var opColor = opPct>=100?'#10B981':opPct>=70?'#F59E0B':'#DC3545';
     var opName = op==='PUE'?'Puebla':'CDMX / Sub Yelitza';
-    opsH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px;background:var(--bg-main);border-radius:8px">';
-    opsH += '<div style="min-width:100px"><div style="font-size:12px;font-weight:700">'+opName+'</div><div style="font-size:10px;color:var(--text-3)">'+opVentas+' / '+opMeta+'</div></div>';
+    opsH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 12px;background:var(--bg-main);border-radius:8px">';
+    opsH += '<div style="min-width:160px"><div style="font-size:13px;font-weight:700">'+opName+'</div><div style="font-size:10px;color:var(--text-3)">'+opVentas+' / '+opMeta+'</div></div>';
     opsH += '<div style="flex:1"><div style="height:10px;border-radius:5px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(opPct,100)+'%;background:'+opColor+';border-radius:5px;transition:width 0.5s"></div></div></div>';
-    opsH += '<div style="font-size:14px;font-weight:800;color:'+opColor+';min-width:45px;text-align:right">'+opPct+'%</div></div>';
+    opsH += '<div style="font-size:14px;font-weight:800;color:'+opColor+';min-width:55px;text-align:right">'+opPct+'%</div></div>';
     // Centros within operation
     Object.keys(METAS_CENTROS).forEach(function(ck) {
       if (METAS_CENTROS[ck].op !== op) return;
@@ -5792,10 +5879,10 @@ async function metasRender() {
       var cm = metasGetMeta('centro', ck);
       var cp = cm>0?Math.round(cv/cm*100):0;
       var cc = cp>=100?'#10B981':cp>=70?'#F59E0B':'#DC3545';
-      opsH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;padding:5px 8px 5px 24px">';
-      opsH += '<div style="min-width:100px;font-size:11px;font-weight:600">'+METAS_CENTROS[ck].name+'</div>';
+      opsH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;padding:6px 12px 6px 28px">';
+      opsH += '<div style="min-width:160px;font-size:11px;font-weight:600">'+METAS_CENTROS[ck].name+'</div>';
       opsH += '<div style="flex:1"><div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+cc+';border-radius:3px"></div></div></div>';
-      opsH += '<div style="font-size:11px;font-weight:700;color:'+cc+';min-width:65px;text-align:right">'+cv+'/'+cm+' ('+cp+'%)</div></div>';
+      opsH += '<div style="font-size:11px;font-weight:700;color:'+cc+';min-width:55px;text-align:right">'+cv+'/'+cm+' ('+cp+'%)</div></div>';
     });
   });
   opsH += '</div>';
