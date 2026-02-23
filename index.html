@@ -799,6 +799,22 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
     <!-- KPI Cards -->
     <div id="dashKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px"></div>
 
+    <!-- Charts Row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <div class="section" style="padding:14px">
+        <div class="section-title">Distribución de Estatus</div>
+        <div style="position:relative;height:220px;margin-top:8px">
+          <canvas id="chartEstatus"></canvas>
+        </div>
+      </div>
+      <div class="section" style="padding:14px">
+        <div class="section-title">Ventas por Agente</div>
+        <div style="position:relative;height:220px;margin-top:8px">
+          <canvas id="chartAgentes"></canvas>
+        </div>
+      </div>
+    </div>
+
     <!-- Conversion Funnel -->
     <div class="section" style="padding:14px;margin-bottom:8px">
       <div class="section-title">Embudo de Conversión</div>
@@ -810,10 +826,16 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
       <div class="section" style="padding:14px">
         <div class="section-title">Motivos de Pérdida</div>
         <div id="dashPerdidas" style="margin-top:8px"></div>
+        <div style="position:relative;height:180px;margin-top:8px">
+          <canvas id="chartPerdidas"></canvas>
+        </div>
       </div>
       <div class="section" style="padding:14px">
         <div class="section-title">Seguimiento Pendiente</div>
         <div id="dashSeguimiento" style="margin-top:8px"></div>
+        <div style="position:relative;height:180px;margin-top:8px">
+          <canvas id="chartSeguimiento"></canvas>
+        </div>
       </div>
     </div>
 
@@ -901,6 +923,7 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 
 <script>
 // ============================================================
@@ -1444,7 +1467,6 @@ function showView(name, title) {
   }
   if (name === 'historial') { initHistorialFilters(); renderHistorial(); }
   if (name === 'cotizar' && !title) {
-    // Clear form for new cotización (not editing)
     try {
       document.getElementById('cliNombre').value = '';
       document.getElementById('cliTelefono').value = '';
@@ -1455,17 +1477,6 @@ function showView(name, title) {
       state.editingFolio = null;
       renderItems();
     } catch(e) {}
-  }
-  if (name === 'cotizar' && !title) {
-    // Clear form for new cotización (not edit mode)
-    document.getElementById('cliNombre').value = '';
-    document.getElementById('cliTelefono').value = '';
-    document.getElementById('cliEmail').value = '';
-    document.getElementById('cliDireccion').value = '';
-    document.getElementById('cliPlanActual').value = '';
-    state.items = [];
-    state.editingFolio = null;
-    try { renderItems(); } catch(e) {}
   }
   if (name === 'home') {
     state.viewStack = ['home'];
@@ -1543,26 +1554,22 @@ function updateHome() {
 
   // Show recuperacion card for admin/coordinator
   var recupCard = document.getElementById('cardRecuperacion');
+  recupCard.style.display = 'none';
   if (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador')) {
-    recupCard.style.display = '';
-    // Count pending recovery async
     if (supabase) {
       supabase.from('usuarios').select('id').eq('activo', false).then(function(res) {
         var inactiveIds = (res.data || []).map(function(u) { return u.id; });
-        if (inactiveIds.length === 0) {
-          recupCard.style.display = 'none';
-          return;
-        }
+        if (inactiveIds.length === 0) return;
         supabase.from('cotizaciones').select('id', { count: 'exact', head: true })
           .in('agente_id', inactiveIds).neq('estatus', 'venta').then(function(r2) {
             var cnt = r2.count || 0;
-            document.getElementById('recupDesc').textContent = cnt > 0 ? cnt + ' cotización(es) por reasignar' : 'Todo reasignado';
-            if (cnt === 0) recupCard.style.display = 'none';
+            if (cnt > 0) {
+              document.getElementById('recupDesc').textContent = cnt + ' cotización(es) por reasignar';
+              recupCard.style.display = '';
+            }
           });
       });
     }
-  } else {
-    recupCard.style.display = 'none';
   }
 
   // Show aceleraciones card
@@ -3845,6 +3852,149 @@ function renderDashboard() {
     rankHtml += '</div></div>';
   });
   document.getElementById('dashRanking').innerHTML = rankHtml;
+
+  // ═══════ CHARTS ═══════
+  renderDashCharts(cots, enviadas, seguimiento, ventas, perdidas, perdidaCounts, segCounts, ranking);
+}
+
+// ============================================================
+// DASHBOARD CHARTS
+// ============================================================
+var dashCharts = {};
+
+function renderDashCharts(cots, enviadas, seguimiento, ventas, perdidas, perdidaCounts, segCounts, ranking) {
+  if (typeof Chart === 'undefined') return;
+
+  // Destroy previous charts
+  Object.keys(dashCharts).forEach(function(k) {
+    if (dashCharts[k]) { dashCharts[k].destroy(); dashCharts[k] = null; }
+  });
+
+  var chartFont = { family: "'Segoe UI', system-ui, sans-serif", size: 11 };
+
+  // 1. Pie - Distribución de estatus
+  var ctxEstatus = document.getElementById('chartEstatus');
+  if (ctxEstatus) {
+    dashCharts.estatus = new Chart(ctxEstatus, {
+      type: 'doughnut',
+      data: {
+        labels: ['Enviadas', 'Seguimiento', 'Ventas', 'Perdidas'],
+        datasets: [{
+          data: [enviadas, seguimiento, ventas, perdidas],
+          backgroundColor: ['#009FDB', '#E6A200', '#0FA958', '#DC3545'],
+          borderWidth: 2,
+          borderColor: '#fff',
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: chartFont, padding: 12, usePointStyle: true, pointStyleWidth: 10 } },
+          tooltip: { callbacks: { label: function(ctx) {
+            var total = ctx.dataset.data.reduce(function(a,b){return a+b},0);
+            var pct = total > 0 ? ((ctx.raw / total) * 100).toFixed(1) : 0;
+            return ctx.label + ': ' + ctx.raw + ' (' + pct + '%)';
+          }}}
+        },
+        cutout: '55%',
+      }
+    });
+  }
+
+  // 2. Bar - Ventas por agente
+  var ctxAgentes = document.getElementById('chartAgentes');
+  if (ctxAgentes && ranking.length > 0) {
+    var topAgentes = ranking.slice(0, 8);
+    dashCharts.agentes = new Chart(ctxAgentes, {
+      type: 'bar',
+      data: {
+        labels: topAgentes.map(function(a) {
+          var parts = a.nombre.split(' ');
+          return parts[0] + (parts[1] ? ' ' + parts[1].charAt(0) + '.' : '');
+        }),
+        datasets: [
+          {
+            label: 'Ventas',
+            data: topAgentes.map(function(a) { return a.ventas; }),
+            backgroundColor: '#0FA958',
+            borderRadius: 4,
+            barPercentage: 0.6,
+          },
+          {
+            label: 'Cotizaciones',
+            data: topAgentes.map(function(a) { return a.total - a.ventas; }),
+            backgroundColor: '#009FDB',
+            borderRadius: 4,
+            barPercentage: 0.6,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: chartFont, padding: 12, usePointStyle: true, pointStyleWidth: 10 } },
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false }, ticks: { font: { size: 9 } } },
+          y: { stacked: true, beginAtZero: true, grid: { color: '#F0F0F0' }, ticks: { font: { size: 10 }, stepSize: 1 } },
+        },
+      }
+    });
+  }
+
+  // 3. Horizontal bar - Motivos de pérdida
+  var ctxPerdidas = document.getElementById('chartPerdidas');
+  var perKeys = Object.keys(perdidaCounts);
+  if (ctxPerdidas && perKeys.length > 0) {
+    var perLabels = perKeys.sort(function(a,b){return perdidaCounts[b]-perdidaCounts[a]}).map(function(k){return subEstatusLabel(k)});
+    var perData = perKeys.map(function(k){return perdidaCounts[k]});
+    var perColors = ['#DC3545','#E25663','#E8717C','#EE8C95','#F4A7AE','#FAC2C7','#FDDDE0'];
+    dashCharts.perdidas = new Chart(ctxPerdidas, {
+      type: 'bar',
+      data: {
+        labels: perLabels,
+        datasets: [{ data: perData, backgroundColor: perColors.slice(0, perLabels.length), borderRadius: 4, barPercentage: 0.7 }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, grid: { color: '#F0F0F0' }, ticks: { font: { size: 9 }, stepSize: 1 } },
+          y: { grid: { display: false }, ticks: { font: { size: 9 } } },
+        },
+      }
+    });
+  }
+
+  // 4. Horizontal bar - Seguimiento
+  var ctxSeg = document.getElementById('chartSeguimiento');
+  var segKeys = Object.keys(segCounts);
+  if (ctxSeg && segKeys.length > 0) {
+    var segLabels = segKeys.sort(function(a,b){return segCounts[b]-segCounts[a]}).map(function(k){return subEstatusLabel(k)});
+    var segData = segKeys.map(function(k){return segCounts[k]});
+    var segColors = ['#E6A200','#EDB520','#F4C840','#FBDB60','#FFE680','#FFF0B0','#FFF8D6'];
+    dashCharts.seguimiento = new Chart(ctxSeg, {
+      type: 'bar',
+      data: {
+        labels: segLabels,
+        datasets: [{ data: segData, backgroundColor: segColors.slice(0, segLabels.length), borderRadius: 4, barPercentage: 0.7 }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, grid: { color: '#F0F0F0' }, ticks: { font: { size: 9 }, stepSize: 1 } },
+          y: { grid: { display: false }, ticks: { font: { size: 9 } } },
+        },
+      }
+    });
+  }
 }
 
 // ============================================================
