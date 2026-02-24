@@ -5149,62 +5149,73 @@ async function openRecuperacion() {
   showView('recuperacion', 'Recuperación');
   if (!supabase) return;
   try {
-    // Load ALL non-venta cotizaciones
-    var { data: allCots } = await supabase.from('cotizaciones')
-      .select('*, cotizacion_items(*)')
-      .neq('estatus', 'venta')
-      .order('created_at', { ascending: false });
-
-    // Load all users (active + inactive)
-    var { data: allUsers } = await supabase.from('usuarios').select('id, nombre, attuid, activo, centro, rol, supervisor_attuid');
+    // Load all users first
+    var { data: allUsers } = await supabase.from('usuarios').select('*');
+    console.log('Recup: users loaded:', (allUsers||[]).length);
     var userMap = {};
     (allUsers || []).forEach(function(u) { userMap[u.id] = u; });
 
-    // Determine stale threshold: enviadas > 3 days without update
+    // Load ALL non-venta cotizaciones
+    var { data: allCots } = await supabase.from('cotizaciones')
+      .select('*')
+      .neq('estatus', 'venta')
+      .order('created_at', { ascending: false });
+    console.log('Recup: cots loaded:', (allCots||[]).length);
+
+    // Count items per cotizacion
+    var { data: allItems } = await supabase.from('cotizacion_items').select('cotizacion_id');
+    var itemCount = {};
+    (allItems||[]).forEach(function(it){ itemCount[it.cotizacion_id] = (itemCount[it.cotizacion_id]||0) + 1; });
+
+    // Stale threshold: >3 days
     var staleDate = new Date(); staleDate.setDate(staleDate.getDate() - 3);
 
     recupCots = (allCots || []).map(function(c) {
       var ag = userMap[c.agente_id];
-      var isInactive = ag ? !ag.activo : true;
+      var agActivo = ag ? (ag.activo === true || ag.activo === 'true') : false;
+      var isInactive = !agActivo;
       var isLost = c.estatus === 'perdida';
-      var isStaleEnv = c.estatus === 'enviada' && new Date(c.updated_at || c.created_at) < staleDate;
-      var isStaleSeg = c.estatus === 'seguimiento' && new Date(c.updated_at || c.created_at) < staleDate;
-      var dias = Math.floor((Date.now() - new Date(c.updated_at || c.created_at).getTime()) / 86400000);
+      var updDate = c.updated_at || c.created_at || c.fecha || new Date().toISOString();
+      var isStaleEnv = c.estatus === 'enviada' && new Date(updDate) < staleDate;
+      var isStaleSeg = c.estatus === 'seguimiento' && new Date(updDate) < staleDate;
+      var dias = Math.max(0, Math.floor((Date.now() - new Date(updDate).getTime()) / 86400000));
       return {
         id: c.id, folio: c.folio, agente_id: c.agente_id,
         agente_nombre: ag ? ag.nombre : 'Desconocido',
         agente_attuid: ag ? ag.attuid : '',
-        agente_activo: ag ? ag.activo : false,
-        centro: ag ? ag.centro : '',
+        agente_activo: agActivo,
+        centro: ag ? (ag.centro || '') : '',
         cliente: c.cliente_nombre, telefono: c.cliente_telefono,
         estatus: c.estatus, sub_estatus: c.sub_estatus || '',
         fecha: c.fecha, dias_sin_mov: dias,
-        items: (c.cotizacion_items || []).length,
+        items: itemCount[c.id] || 0,
         isRecuperable: isLost || isStaleEnv || isStaleSeg,
         isExAgent: isInactive,
         tipo: isInactive ? 'exagente' : isLost ? 'perdida' : isStaleEnv ? 'enviada' : isStaleSeg ? 'seguimiento' : 'otro',
       };
     }).filter(function(c) { return c.isRecuperable || c.isExAgent; });
+    console.log('Recup: filtered:', recupCots.length);
 
-    // Populate filters
+    // Populate centro filter
     var centros = {}; recupCots.forEach(function(c){if(c.centro)centros[c.centro]=1});
     var centroSel = document.getElementById('recFilterCentro');
     centroSel.innerHTML = '<option value="all">Todos los centros</option>';
     Object.keys(centros).sort().forEach(function(c){ centroSel.innerHTML += '<option value="'+c+'">'+c+'</option>'; });
-
     recFilterCentroChange();
 
-    // Active agents for reasign dropdown
-    var { data: activeAgents } = await supabase.from('usuarios').select('id, nombre, attuid, centro, rol')
-      .eq('activo', true).order('nombre');
-    recupAllAgents = activeAgents || [];
+    // Reasign dropdown — ALL users, no server filter
+    var activeList = (allUsers || []).filter(function(u){ return u.activo === true || u.activo === 'true'; });
+    recupAllAgents = activeList;
     var agSel = document.getElementById('recupAgente');
     agSel.innerHTML = '<option value="">Selecciona agente...</option>';
-    recupAllAgents.forEach(function(u){ agSel.innerHTML += '<option value="'+u.id+'">'+u.nombre+' ('+u.attuid+') — '+u.centro+'</option>'; });
+    activeList.sort(function(a,b){return(a.nombre||'').localeCompare(b.nombre||'')}).forEach(function(u){
+      agSel.innerHTML += '<option value="'+u.id+'">'+u.nombre+' ('+(u.attuid||'')+')</option>';
+    });
+    console.log('Recup: dropdown agents:', activeList.length);
 
     recTab(recupTab);
   } catch(e) {
-    console.error(e);
+    console.error('Recup ERROR:', e);
     document.getElementById('recupList').innerHTML = '<div style="color:var(--danger)">Error: '+e.message+'</div>';
   }
 }
