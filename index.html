@@ -916,14 +916,39 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
 <div class="view" id="viewRecuperacion">
   <div class="container">
     <div class="section" style="padding:14px;margin-bottom:8px">
-      <div class="section-title">Cotizaciones por Reasignar</div>
-      <p style="font-size:12px;color:var(--text-3);margin:4px 0 10px">Cotizaciones de agentes dados de baja que aún pueden convertirse en ventas.</p>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-        <label class="field-label" style="margin:0">Reasignar a:</label>
-        <select class="field" id="recupAgente" style="width:auto;min-width:200px;font-size:12px"></select>
-        <button class="btn btn-primary" style="font-size:12px" onclick="reasignarSeleccionadas()">Reasignar seleccionadas</button>
-        <button class="btn btn-secondary" style="font-size:12px" onclick="seleccionarTodasRecup()">Seleccionar todas</button>
+      <div class="section-title">🔄 Recuperación de Leads</div>
+      <p style="font-size:12px;color:var(--text-3);margin:4px 0 10px">Cotizaciones recuperables: perdidas, sin seguimiento y de ex-agentes.</p>
+      <!-- Tabs -->
+      <div style="display:flex;gap:4px;margin-bottom:10px">
+        <button class="btn" id="recTabRecup" onclick="recTab('recuperables')" style="flex:1;font-size:11px;padding:6px;border-radius:8px;background:var(--att-blue);color:white;border:none">📋 Recuperables</button>
+        <button class="btn" id="recTabExag" onclick="recTab('exagentes')" style="flex:1;font-size:11px;padding:6px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">👤 Ex-agentes</button>
       </div>
+      <!-- Filters -->
+      <div id="recFilters" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <select class="field" id="recFilterEstatus" onchange="renderRecuperacion()" style="width:auto;font-size:11px;padding:5px 8px">
+          <option value="all">Todos los estatus</option>
+          <option value="perdida">Perdidas</option>
+          <option value="enviada">Enviadas sin seguimiento</option>
+          <option value="seguimiento">En seguimiento estancadas</option>
+        </select>
+        <select class="field" id="recFilterCentro" onchange="recFilterCentroChange();renderRecuperacion()" style="width:auto;font-size:11px;padding:5px 8px">
+          <option value="all">Todos los centros</option>
+        </select>
+        <select class="field" id="recFilterAgente" onchange="renderRecuperacion()" style="width:auto;font-size:11px;padding:5px 8px">
+          <option value="all">Todos los agentes</option>
+        </select>
+      </div>
+      <!-- Reasignar bar -->
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)">
+        <span style="font-size:11px;font-weight:600">Reasignar a:</span>
+        <select class="field" id="recupAgente" style="width:auto;min-width:180px;font-size:11px;padding:5px 8px"></select>
+        <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="reasignarSeleccionadas()">✅ Reasignar</button>
+        <button class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="seleccionarTodasRecup()">☑️ Todas</button>
+        <span id="recSelCount" style="font-size:10px;color:var(--text-3)"></span>
+      </div>
+      <!-- KPIs -->
+      <div id="recKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:6px;margin-bottom:10px"></div>
+      <!-- List -->
       <div id="recupList"></div>
     </div>
   </div>
@@ -1826,24 +1851,12 @@ function updateHome() {
     dashCard.style.display = 'none';
   }
 
-  // Show recuperacion card for admin/coordinator
+  // Show recuperacion card for admin/coordinator — always visible
   var recupCard = document.getElementById('cardRecuperacion');
   recupCard.style.display = 'none';
-  if (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador')) {
-    if (supabase) {
-      supabase.from('usuarios').select('id').eq('activo', false).then(function(res) {
-        var inactiveIds = (res.data || []).map(function(u) { return u.id; });
-        if (inactiveIds.length === 0) return;
-        supabase.from('cotizaciones').select('id', { count: 'exact', head: true })
-          .in('agente_id', inactiveIds).neq('estatus', 'venta').then(function(r2) {
-            var cnt = r2.count || 0;
-            if (cnt > 0) {
-              document.getElementById('recupDesc').textContent = cnt + ' cotización(es) por reasignar';
-              recupCard.style.display = '';
-            }
-          });
-      });
-    }
+  if (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) {
+    recupCard.style.display = '';
+    document.getElementById('recupDesc').textContent = 'Leads recuperables y reasignación';
   }
 
   // Show aceleraciones card
@@ -5130,92 +5143,165 @@ async function cargaMasivaUsuarios(input) {
 // ============================================================
 // RECUPERACIÓN DE COTIZACIONES
 // ============================================================
-var recupCots = [];
+var recupCots=[], recupTab='recuperables', recupAllAgents=[];
 
 async function openRecuperacion() {
   showView('recuperacion', 'Recuperación');
   if (!supabase) return;
-
-  // Load cotizaciones from inactive users that are NOT ventas
   try {
-    var { data: inactiveUsers } = await supabase.from('usuarios').select('id, nombre, attuid').eq('activo', false);
-    var inactiveIds = (inactiveUsers || []).map(function(u) { return u.id; });
-    var inactiveMap = {};
-    (inactiveUsers || []).forEach(function(u) { inactiveMap[u.id] = u; });
-
-    if (inactiveIds.length === 0) {
-      document.getElementById('recupList').innerHTML = '<div style="font-size:12px;color:var(--text-3)">No hay cotizaciones por recuperar.</div>';
-      return;
-    }
-
-    var { data: cots } = await supabase.from('cotizaciones')
+    // Load ALL non-venta cotizaciones
+    var { data: allCots } = await supabase.from('cotizaciones')
       .select('*, cotizacion_items(*)')
-      .in('agente_id', inactiveIds)
       .neq('estatus', 'venta')
       .order('created_at', { ascending: false });
 
-    recupCots = (cots || []).map(function(c) {
-      var ag = inactiveMap[c.agente_id];
+    // Load all users (active + inactive)
+    var { data: allUsers } = await supabase.from('usuarios').select('id, nombre, attuid, activo, centro, rol, supervisor_attuid');
+    var userMap = {};
+    (allUsers || []).forEach(function(u) { userMap[u.id] = u; });
+
+    // Determine stale threshold: enviadas > 3 days without update
+    var staleDate = new Date(); staleDate.setDate(staleDate.getDate() - 3);
+
+    recupCots = (allCots || []).map(function(c) {
+      var ag = userMap[c.agente_id];
+      var isInactive = ag ? !ag.activo : true;
+      var isLost = c.estatus === 'perdida';
+      var isStaleEnv = c.estatus === 'enviada' && new Date(c.updated_at || c.created_at) < staleDate;
+      var isStaleSeg = c.estatus === 'seguimiento' && new Date(c.updated_at || c.created_at) < staleDate;
+      var dias = Math.floor((Date.now() - new Date(c.updated_at || c.created_at).getTime()) / 86400000);
       return {
-        id: c.id,
-        folio: c.folio,
-        agente_id: c.agente_id,
-        agente_nombre: ag ? ag.nombre + ' (' + ag.attuid + ')' : 'Desconocido',
-        cliente: c.cliente_nombre,
-        telefono: c.cliente_telefono,
-        estatus: c.estatus,
-        fecha: c.fecha,
+        id: c.id, folio: c.folio, agente_id: c.agente_id,
+        agente_nombre: ag ? ag.nombre : 'Desconocido',
+        agente_attuid: ag ? ag.attuid : '',
+        agente_activo: ag ? ag.activo : false,
+        centro: ag ? ag.centro : '',
+        cliente: c.cliente_nombre, telefono: c.cliente_telefono,
+        estatus: c.estatus, sub_estatus: c.sub_estatus || '',
+        fecha: c.fecha, dias_sin_mov: dias,
         items: (c.cotizacion_items || []).length,
+        isRecuperable: isLost || isStaleEnv || isStaleSeg,
+        isExAgent: isInactive,
+        tipo: isInactive ? 'exagente' : isLost ? 'perdida' : isStaleEnv ? 'enviada' : isStaleSeg ? 'seguimiento' : 'otro',
       };
-    });
+    }).filter(function(c) { return c.isRecuperable || c.isExAgent; });
 
-    // Load active agents for reassignment dropdown
-    var { data: activeAgents } = await supabase.from('usuarios').select('id, nombre, attuid').eq('activo', true).order('nombre');
-    var agenteSel = document.getElementById('recupAgente');
-    agenteSel.innerHTML = '<option value="">Selecciona agente...</option>';
-    (activeAgents || []).forEach(function(u) {
-      agenteSel.innerHTML += '<option value="' + u.id + '">' + u.nombre + ' (' + u.attuid + ')</option>';
-    });
+    // Populate filters
+    var centros = {}; recupCots.forEach(function(c){if(c.centro)centros[c.centro]=1});
+    var centroSel = document.getElementById('recFilterCentro');
+    centroSel.innerHTML = '<option value="all">Todos los centros</option>';
+    Object.keys(centros).sort().forEach(function(c){ centroSel.innerHTML += '<option value="'+c+'">'+c+'</option>'; });
 
-    renderRecuperacion();
+    recFilterCentroChange();
+
+    // Active agents for reasign dropdown
+    var { data: activeAgents } = await supabase.from('usuarios').select('id, nombre, attuid, centro, rol')
+      .eq('activo', true).in('rol',['agente','supervisor']).order('nombre');
+    recupAllAgents = activeAgents || [];
+    var agSel = document.getElementById('recupAgente');
+    agSel.innerHTML = '<option value="">Selecciona agente...</option>';
+    recupAllAgents.forEach(function(u){ agSel.innerHTML += '<option value="'+u.id+'">'+u.nombre+' ('+u.attuid+') — '+u.centro+'</option>'; });
+
+    recTab(recupTab);
   } catch(e) {
     console.error(e);
-    document.getElementById('recupList').innerHTML = '<div style="color:var(--danger)">Error al cargar.</div>';
+    document.getElementById('recupList').innerHTML = '<div style="color:var(--danger)">Error: '+e.message+'</div>';
   }
 }
 
+function recFilterCentroChange(){
+  var centro = document.getElementById('recFilterCentro').value;
+  var agSel = document.getElementById('recFilterAgente');
+  var agentes = {};
+  recupCots.forEach(function(c){
+    if(centro !== 'all' && c.centro !== centro) return;
+    agentes[c.agente_id] = c.agente_nombre;
+  });
+  agSel.innerHTML = '<option value="all">Todos los agentes</option>';
+  Object.keys(agentes).sort(function(a,b){return agentes[a].localeCompare(agentes[b])}).forEach(function(id){
+    agSel.innerHTML += '<option value="'+id+'">'+agentes[id]+'</option>';
+  });
+}
+
+function recTab(tab){
+  recupTab = tab;
+  ['Recup','Exag'].forEach(function(t){
+    var btn=document.getElementById('recTab'+t);
+    var isActive=(t==='Recup'&&tab==='recuperables')||(t==='Exag'&&tab==='exagentes');
+    btn.style.background=isActive?'var(--att-blue)':'transparent';
+    btn.style.color=isActive?'white':'var(--text-2)';
+  });
+  document.getElementById('recFilters').style.display=tab==='recuperables'?'flex':'none';
+  renderRecuperacion();
+}
+
 function renderRecuperacion() {
-  if (recupCots.length === 0) {
-    document.getElementById('recupList').innerHTML = '<div style="font-size:12px;color:var(--text-3)">No hay cotizaciones por recuperar. ¡Todo limpio!</div>';
-    // Update home card
-    var card = document.getElementById('cardRecuperacion');
-    if (card) card.style.display = 'none';
+  var tab = recupTab;
+  var estFilter = document.getElementById('recFilterEstatus').value;
+  var centroFilter = document.getElementById('recFilterCentro').value;
+  var agenteFilter = document.getElementById('recFilterAgente').value;
+
+  var list = recupCots.filter(function(c){
+    if(tab==='exagentes') return c.isExAgent;
+    if(!c.isRecuperable) return false;
+    if(estFilter !== 'all' && c.estatus !== estFilter) return false;
+    if(centroFilter !== 'all' && c.centro !== centroFilter) return false;
+    if(agenteFilter !== 'all' && c.agente_id !== agenteFilter) return false;
+    return true;
+  });
+
+  // KPIs
+  var kpis = document.getElementById('recKpis');
+  var totalPerdidas = recupCots.filter(function(c){return c.tipo==='perdida'}).length;
+  var totalEnviadas = recupCots.filter(function(c){return c.tipo==='enviada'}).length;
+  var totalSeguimiento = recupCots.filter(function(c){return c.tipo==='seguimiento'}).length;
+  var totalExag = recupCots.filter(function(c){return c.isExAgent}).length;
+  kpis.innerHTML = '<div style="text-align:center;padding:8px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)"><div style="font-size:18px;font-weight:900;color:#DC3545">'+totalPerdidas+'</div><div style="font-size:9px;color:var(--text-3)">Perdidas</div></div>'
+    +'<div style="text-align:center;padding:8px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)"><div style="font-size:18px;font-weight:900;color:var(--att-blue)">'+totalEnviadas+'</div><div style="font-size:9px;color:var(--text-3)">Enviadas estancadas</div></div>'
+    +'<div style="text-align:center;padding:8px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)"><div style="font-size:18px;font-weight:900;color:#E6A200">'+totalSeguimiento+'</div><div style="font-size:9px;color:var(--text-3)">Seguimiento estancado</div></div>'
+    +'<div style="text-align:center;padding:8px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)"><div style="font-size:18px;font-weight:900;color:#8B5CF6">'+totalExag+'</div><div style="font-size:9px;color:var(--text-3)">Ex-agentes</div></div>';
+
+  if (list.length === 0) {
+    document.getElementById('recupList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3)">No hay cotizaciones en esta categoría 🎉</div>';
     return;
   }
 
-  var estatusLabels = { enviada:'Enviada', seguimiento:'Seguimiento', perdida:'Perdida' };
-  var estatusColors = { enviada:'var(--att-blue)', seguimiento:'#E6A200', perdida:'#DC3545' };
+  var estatusLabels = {enviada:'📩 Enviada',seguimiento:'🔄 Seguimiento',perdida:'❌ Perdida'};
+  var estatusColors = {enviada:'#0057B8',seguimiento:'#E6A200',perdida:'#DC3545'};
 
-  var html = '<div style="font-size:11px;color:var(--text-3);margin-bottom:8px">' + recupCots.length + ' cotizaciones por reasignar</div>';
+  var html = '<div style="font-size:11px;color:var(--text-3);margin-bottom:6px">'+list.length+' cotización(es)</div>';
   html += '<div style="display:flex;flex-direction:column;gap:4px">';
-  recupCots.forEach(function(c) {
-    html += '<div style="background:white;padding:10px 12px;border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;gap:10px">';
-    html += '<input type="checkbox" class="recup-check" value="' + c.id + '" style="width:16px;height:16px">';
-    html += '<div style="flex:1">';
+  list.forEach(function(c) {
+    var bgColor = c.isExAgent ? '#F3E8FF' : c.estatus==='perdida' ? '#FEE2E2' : c.estatus==='enviada' ? '#DBEAFE' : '#FEF3C7';
+    html += '<div style="background:'+bgColor+';padding:10px 12px;border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;gap:8px">';
+    html += '<input type="checkbox" class="recup-check" value="'+c.id+'" onchange="recUpdateCount()" style="width:16px;height:16px;flex-shrink:0">';
+    html += '<div style="flex:1;min-width:0">';
     html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
-    html += '<span style="font-weight:700;font-size:12px">' + c.folio + '</span>';
-    html += '<span style="font-size:10px;background:' + (estatusColors[c.estatus]||'#888') + ';color:white;padding:1px 6px;border-radius:4px">' + (estatusLabels[c.estatus]||c.estatus) + '</span>';
+    html += '<span style="font-weight:700;font-size:12px">'+c.folio+'</span>';
+    html += '<span style="font-size:9px;background:'+(estatusColors[c.estatus]||'#888')+';color:white;padding:1px 6px;border-radius:4px">'+(estatusLabels[c.estatus]||c.estatus)+'</span>';
+    if(c.sub_estatus) html += '<span style="font-size:9px;color:var(--text-3)">('+c.sub_estatus.replace(/_/g,' ')+')</span>';
+    html += '<span style="font-size:9px;color:#DC3545;font-weight:600">'+c.dias_sin_mov+' días sin movimiento</span>';
     html += '</div>';
-    html += '<div style="font-size:11px;color:var(--text-2);margin-top:2px">' + c.cliente + ' · ' + (c.telefono||'Sin tel') + ' · ' + c.items + ' equipo(s) · ' + c.fecha + '</div>';
-    html += '<div style="font-size:10px;color:var(--text-3)">Ex-agente: ' + c.agente_nombre + '</div>';
+    html += '<div style="font-size:11px;color:var(--text-2);margin-top:2px">👤 '+c.cliente+' · 📞 '+(c.telefono||'Sin tel')+' · 📦 '+c.items+' equipo(s) · '+c.fecha+'</div>';
+    html += '<div style="font-size:10px;color:var(--text-3)">Agente: <b>'+c.agente_nombre+'</b>'+(c.agente_activo?'':' <span style="color:#DC3545">(BAJA)</span>')+' · '+c.centro+'</div>';
     html += '</div></div>';
   });
   html += '</div>';
   document.getElementById('recupList').innerHTML = html;
+  recUpdateCount();
+}
+
+function recUpdateCount(){
+  var n=document.querySelectorAll('.recup-check:checked').length;
+  document.getElementById('recSelCount').textContent=n>0?n+' seleccionada(s)':'';
 }
 
 function seleccionarTodasRecup() {
-  document.querySelectorAll('.recup-check').forEach(function(cb) { cb.checked = !cb.checked; });
+  var checks = document.querySelectorAll('.recup-check');
+  var allChecked = true;
+  checks.forEach(function(cb){if(!cb.checked) allChecked=false});
+  checks.forEach(function(cb){cb.checked=!allChecked});
+  recUpdateCount();
 }
 
 async function reasignarSeleccionadas() {
@@ -5225,19 +5311,24 @@ async function reasignarSeleccionadas() {
   var checks = document.querySelectorAll('.recup-check:checked');
   if (checks.length === 0) { alert('Selecciona al menos una cotización.'); return; }
 
+  var newAg = recupAllAgents.find(function(a){return a.id===newAgenteId});
+  var newName = newAg ? newAg.nombre : 'agente';
+
   var ids = [];
   checks.forEach(function(cb) { ids.push(cb.value); });
 
-  if (!confirm('¿Reasignar ' + ids.length + ' cotización(es) al agente seleccionado?')) return;
+  if (!confirm('¿Reasignar '+ids.length+' cotización(es) a '+newName+'?\n\nEl estatus cambiará a "enviada" para reiniciar el seguimiento.')) return;
 
   try {
     for (var i = 0; i < ids.length; i++) {
-      await supabase.from('cotizaciones').update({ agente_id: newAgenteId }).eq('id', ids[i]);
+      await supabase.from('cotizaciones').update({
+        agente_id: newAgenteId,
+        estatus: 'enviada',
+        sub_estatus: 'reasignada'
+      }).eq('id', ids[i]);
     }
-    alert('✅ ' + ids.length + ' cotización(es) reasignadas exitosamente.');
-    // Reload
+    alert('✅ '+ids.length+' cotización(es) reasignadas a '+newName+'.\nEstatus cambiado a "Enviada" para reiniciar seguimiento.');
     await openRecuperacion();
-    // Refresh main data
     await loadCotizacionesFromSupabase();
   } catch(e) {
     alert('Error: ' + e.message);
