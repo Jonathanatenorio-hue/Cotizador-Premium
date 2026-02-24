@@ -2709,14 +2709,14 @@ function addPlanComparison(doc, cot, mg, y, cW, H) {
   });
 
   // Impact phrase
-  y += 3;
+  y += 5;
   doc.setFillColor(0, 57, 93);
-  doc.roundedRect(mg, y, cW, 10, 1.5, 1.5, 'F');
+  doc.roundedRect(mg, y, cW, 13, 2, 2, 'F');
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(7);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica','bold');
-  doc.text('Más datos, más velocidad, más beneficios — al mejor precio. ¡Es el momento ideal para renovar!', mg + cW/2, y + 6.5, { align: 'center' });
-  y += 14;
+  doc.text('Más datos, más velocidad, más beneficios — al mejor precio. ¡Es el momento ideal para renovar!', mg + cW/2, y + 8, { align: 'center' });
+  y += 17;
 
   return y;
 }
@@ -2964,26 +2964,27 @@ function buildAndDownloadPDF(cot) {
       var ah = it.precioLista - it.precioPromo;
       var meses = it.planPrecio > 0 ? Math.floor(ah / it.planPrecio) : 0;
       var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
-      return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), meses + ' meses de plan'];
+      return [it.equipo, it.planNombre+'\n'+it.plazo+'m', f(it.precioLista), f(it.precioPromo), f(ah), meses + ' meses'];
     });
     doc.autoTable({
       startY: y,
-      head: [['EQUIPO','PRECIO LISTA','PROMOCION','AHORRO','EQUIVALE A']],
+      head: [['EQUIPO','PLAN / PLAZO','PRECIO\nLISTA','PROMOCION','AHORRO','EQUIVALE A']],
       body: aD,
       margin: { left: mg, right: mg },
       tableWidth: cW,
       styles: { fontSize:7.5, cellPadding:3, textColor:DARK, lineColor:[220,220,220], lineWidth:0.2 },
-      headStyles: { fillColor:[16,185,129], textColor:WHT, fontStyle:'bold', fontSize:7, halign:'center' },
+      headStyles: { fillColor:[16,185,129], textColor:WHT, fontStyle:'bold', fontSize:6.5, halign:'center' },
       columnStyles: {
-        0:{cellWidth:cW*0.30},
-        1:{halign:'right',cellWidth:cW*0.17},
-        2:{halign:'right',cellWidth:cW*0.17},
-        3:{halign:'right',cellWidth:cW*0.17, fontStyle:'bold'},
-        4:{halign:'center',cellWidth:cW*0.19, fontStyle:'bold'},
+        0:{cellWidth:cW*0.24},
+        1:{cellWidth:cW*0.16, halign:'center'},
+        2:{halign:'right',cellWidth:cW*0.14},
+        3:{halign:'right',cellWidth:cW*0.14},
+        4:{halign:'right',cellWidth:cW*0.16, fontStyle:'bold'},
+        5:{halign:'center',cellWidth:cW*0.16, fontStyle:'bold'},
       },
       didParseCell: function(data) {
-        if (data.section === 'body' && data.column.index === 3) { data.cell.styles.textColor = [16,185,129]; }
         if (data.section === 'body' && data.column.index === 4) { data.cell.styles.textColor = [16,185,129]; }
+        if (data.section === 'body' && data.column.index === 5) { data.cell.styles.textColor = [16,185,129]; }
       },
       theme: 'grid',
     });
@@ -3316,25 +3317,26 @@ function buildAndDownloadPDF_v2(cot) {
       var ah = it.precioLista - it.precioPromo;
       var meses = it.planPrecio > 0 ? Math.floor(ah / it.planPrecio) : 0;
       var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
-      return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), meses + ' meses'];
+      return [it.equipo, it.planNombre+'\n'+it.plazo+'m', f(it.precioLista), f(it.precioPromo), f(ah), meses + ' meses'];
     });
     doc.autoTable({
       startY: y,
-      head: [['EQUIPO','PRECIO LISTA','PROMOCION','AHORRO','EQUIVALE A']],
+      head: [['EQUIPO','PLAN / PLAZO','PRECIO\nLISTA','PROMOCION','AHORRO','EQUIVALE A']],
       body: aD2,
       margin: { left: mg, right: mg },
       tableWidth: cW,
       styles: { fontSize:7, cellPadding:2.5, textColor:D1, lineColor:G2, lineWidth:0.15 },
-      headStyles: { fillColor:[16,185,129], textColor:WH, fontStyle:'bold', fontSize:6.5, halign:'center' },
+      headStyles: { fillColor:[16,185,129], textColor:WH, fontStyle:'bold', fontSize:6, halign:'center' },
       columnStyles: {
-        0:{cellWidth:cW*0.30},
-        1:{halign:'right',cellWidth:cW*0.17},
-        2:{halign:'right',cellWidth:cW*0.17},
-        3:{halign:'right',cellWidth:cW*0.17, fontStyle:'bold'},
-        4:{halign:'center',cellWidth:cW*0.19, fontStyle:'bold'},
+        0:{cellWidth:cW*0.24},
+        1:{cellWidth:cW*0.16, halign:'center'},
+        2:{halign:'right',cellWidth:cW*0.14},
+        3:{halign:'right',cellWidth:cW*0.14},
+        4:{halign:'right',cellWidth:cW*0.16, fontStyle:'bold'},
+        5:{halign:'center',cellWidth:cW*0.16, fontStyle:'bold'},
       },
       didParseCell: function(data) {
-        if (data.section === 'body' && (data.column.index === 3 || data.column.index === 4)) { data.cell.styles.textColor = [16,185,129]; }
+        if (data.section === 'body' && (data.column.index === 4 || data.column.index === 5)) { data.cell.styles.textColor = [16,185,129]; }
       },
       theme: 'grid',
     });
@@ -3962,6 +3964,12 @@ function editCotizacion(folio) {
   document.getElementById('cliEmail').value = cot.cliente.email || '';
   document.getElementById('cliDireccion').value = cot.cliente.direccion || '';
   document.getElementById('cliValidez').value = cot.diasValidez || 7;
+
+  // Restore plan actual
+  if (cot.planActual && cot.planActual.id) {
+    var paSel = document.getElementById('cliPlanActual');
+    if (paSel) paSel.value = cot.planActual.id;
+  }
 
   // Load items
   state.items = cot.items.map(function(it) { return {...it}; });
