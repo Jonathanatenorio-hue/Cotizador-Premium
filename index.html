@@ -5196,7 +5196,7 @@ async function openRecuperacion() {
 
     // Active agents for reasign dropdown
     var { data: activeAgents } = await supabase.from('usuarios').select('id, nombre, attuid, centro, rol')
-      .eq('activo', true).in('rol',['agente','supervisor']).order('nombre');
+      .eq('activo', true).order('nombre');
     recupAllAgents = activeAgents || [];
     var agSel = document.getElementById('recupAgente');
     agSel.innerHTML = '<option value="">Selecciona agente...</option>';
