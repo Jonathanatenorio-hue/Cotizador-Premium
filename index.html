@@ -443,6 +443,7 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
 @media (max-width: 400px) {
   .home-grid { grid-template-columns: 1fr; }
 }
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 /* Bottom Nav */
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;background:var(--bg-card);border-top:1px solid var(--border);display:flex;justify-content:space-around;padding:4px 0 max(4px, env(safe-area-inset-bottom));z-index:999;box-shadow:0 -2px 10px rgba(0,0,0,0.06)}
 .bottom-nav button{display:flex;flex-direction:column;align-items:center;gap:1px;background:none;border:none;color:var(--text-3);font-size:9px;padding:4px 2px;cursor:pointer;min-width:50px;transition:color 0.2s}
@@ -492,7 +493,8 @@ body{padding-bottom:60px}
   </div>
   <span class="header-title" id="headerTitle"></span>
   <span class="header-right" id="headerAgent"></span>
-  <button onclick="doLogout()" style="background:none;border:1px solid #DDE4ED;color:#8899AA;font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer;margin-left:8px" title="Cerrar sesión">Salir</button>
+  <button onclick="refreshData()" style="background:none;border:1px solid #DDE4ED;color:#0057B8;font-size:12px;padding:4px 8px;border-radius:6px;cursor:pointer;margin-left:4px" title="Actualizar datos" id="btnRefresh">🔄</button>
+  <button onclick="doLogout()" style="background:none;border:1px solid #DDE4ED;color:#8899AA;font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer;margin-left:4px" title="Cerrar sesión">Salir</button>
 </div>
 
 <!-- ===== VIEW: HOME ===== -->
@@ -573,6 +575,26 @@ body{padding-bottom:60px}
         <div class="card-title">Metas</div>
         <div class="card-desc">Avance de ventas vs meta mensual</div>
       </div>
+      <div class="home-card clickable" id="cardInformes" style="display:none" onclick="openInformes()">
+        <div class="card-icon">📊</div>
+        <div class="card-title">Informes</div>
+        <div class="card-desc" id="informesDesc">Reporte diario de operación</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== VIEW: INFORMES ===== -->
+<div class="view" id="viewInformes">
+  <div class="container">
+    <div class="section" style="padding:14px;margin-bottom:8px">
+      <div class="section-title">📊 Informe Diario de Operación</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <input type="date" class="field" id="infFecha" style="width:auto;font-size:11px;padding:5px 8px" onchange="renderInforme()">
+        <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="renderInforme()">📋 Generar</button>
+        <button class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="infVerHistorico()">📚 Histórico</button>
+      </div>
+      <div id="informeContent"></div>
     </div>
   </div>
 </div>
@@ -1379,6 +1401,22 @@ document.getElementById('loginAttuid').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') document.getElementById('loginPin').focus();
 });
 
+async function refreshData() {
+  var btn = document.getElementById('btnRefresh');
+  btn.style.animation = 'spin 0.8s linear';
+  btn.disabled = true;
+  try {
+    await loadCotizacionesFromSupabase();
+    updateHome();
+    // If on specific views, refresh them too
+    if (state.currentView === 'historial') { initHistorialFilters(); renderHistorial(); }
+    if (state.currentView === 'recuperacion') { await openRecuperacion(); }
+    if (state.currentView === 'dashboard') { openDashboard(); }
+  } catch(e) { console.error('Refresh error:', e); }
+  btn.disabled = false;
+  btn.style.animation = '';
+}
+
 function doLogout() {
   currentUser = null;
   localStorage.removeItem('cotizador_session');
@@ -1787,7 +1825,7 @@ function showView(name, title) {
 
   const titles = {
     home: '', config: 'Mi Perfil', cotizar: 'Nueva Cotización',
-    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas',
+    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes',
   };
   headerTitle.textContent = title || titles[name] || '';
 
@@ -1889,6 +1927,12 @@ function updateHome() {
   if (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) {
     recupCard.style.display = '';
     document.getElementById('recupDesc').textContent = 'Leads recuperables y reasignación';
+  }
+
+  // Show informes card for admin/coordinador/supervisor
+  var infCard = document.getElementById('cardInformes');
+  if (infCard) {
+    infCard.style.display = (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) ? '' : 'none';
   }
 
   // Show aceleraciones card
@@ -3144,7 +3188,7 @@ function buildAndDownloadPDF(cot) {
       doc.setFont('helvetica','bold');
       doc.text(it.equipo + '  \u00b7  Plan ' + it.planNombre + '  \u00b7  ' + it.plazo + 'm  \u00b7  $' + Math.round(ep*100)/100 + '/mes', mg + 4, y + 5.2);
       // Link
-      var waMsg = 'Hola ' + cot.ejecutivo.nombre + ', me interesa la cotizaci\u00f3n ' + cot.folio + '.\n\nQuiero iniciar el tr\u00e1mite con:\n\n\u2705 ' + it.equipo + '\nPlan: ' + it.planNombre + '\nPlazo: ' + it.plazo + ' meses\nMensual: $' + Math.round(ep*100)/100 + '\n\nTe comparto mi INE \ud83d\udcf7 (' + cot.ejecutivo.nombre + ')';
+      var agFirstName = cot.ejecutivo.nombre.split(' ')[0]; var waMsg = 'Hola ' + agFirstName + ' \u{1F44B}, me interesa la cotizaci\u00f3n ' + cot.folio + '.\n\nQuiero iniciar el tr\u00e1mite con:\n\n\u2705 ' + it.equipo + '\n\u{1F4CB} Plan: ' + it.planNombre + '\n\u{1F4C5} Plazo: ' + it.plazo + ' meses\n\u{1F4B0} Mensual: $' + Math.round(ep*100)/100 + '\n\nTe comparto mi INE \u{1F4F8}';
       doc.link(mg, y, btnW, btnH, {url: 'https://wa.me/52' + wa + '?text=' + encodeURIComponent(waMsg)});
       y += btnH + 2;
     });
@@ -3159,7 +3203,7 @@ function buildAndDownloadPDF(cot) {
     doc.setFontSize(7);
     doc.setFont('helvetica','bold');
     doc.text('Me interesa otro modelo, \u00bfqu\u00e9 opciones tienes?', mg + 4, y + 5.2);
-    var waOtro = 'Hola ' + cot.ejecutivo.nombre + ', vi la cotizaci\u00f3n ' + cot.folio + ' pero me gustar\u00eda ver otras opciones de equipos. \u00bfQu\u00e9 m\u00e1s me puedes ofrecer?';
+    var agFirst = cot.ejecutivo.nombre.split(' ')[0]; var waOtro = 'Hola ' + agFirst + ' \u{1F44B}, vi la cotizaci\u00f3n ' + cot.folio + ' pero me gustar\u00eda ver otras opciones de equipos. \u00bfQu\u00e9 m\u00e1s me puedes ofrecer?';
     doc.link(mg, y, btnW, btnH, {url: 'https://wa.me/52' + wa + '?text=' + encodeURIComponent(waOtro)});
     y += btnH + 4;
   }
@@ -3498,7 +3542,7 @@ function buildAndDownloadPDF_v2(cot) {
       doc.setFontSize(7);
       doc.setFont('helvetica','bold');
       doc.text(it.equipo + '  \u00b7  Plan ' + it.planNombre + '  \u00b7  ' + it.plazo + 'm  \u00b7  $' + Math.round(ep*100)/100 + '/mes', mg + 4, y + 5.2);
-      var waMsg = 'Hola ' + cot.ejecutivo.nombre + ', me interesa la cotizaci\u00f3n ' + cot.folio + '.\n\nQuiero iniciar el tr\u00e1mite con:\n\n\u2705 ' + it.equipo + '\nPlan: ' + it.planNombre + '\nPlazo: ' + it.plazo + ' meses\nMensual: $' + Math.round(ep*100)/100 + '\n\nTe comparto mi INE \ud83d\udcf7 (' + cot.ejecutivo.nombre + ')';
+      var agFirstName = cot.ejecutivo.nombre.split(' ')[0]; var waMsg = 'Hola ' + agFirstName + ' \u{1F44B}, me interesa la cotizaci\u00f3n ' + cot.folio + '.\n\nQuiero iniciar el tr\u00e1mite con:\n\n\u2705 ' + it.equipo + '\n\u{1F4CB} Plan: ' + it.planNombre + '\n\u{1F4C5} Plazo: ' + it.plazo + ' meses\n\u{1F4B0} Mensual: $' + Math.round(ep*100)/100 + '\n\nTe comparto mi INE \u{1F4F8}';
       doc.link(mg, y, btnW, btnH, {url: 'https://wa.me/52' + wa + '?text=' + encodeURIComponent(waMsg)});
       y += btnH + 2;
     });
@@ -3513,7 +3557,7 @@ function buildAndDownloadPDF_v2(cot) {
     doc.setFontSize(7);
     doc.setFont('helvetica','bold');
     doc.text('Me interesa otro modelo, \u00bfqu\u00e9 opciones tienes?', mg + 4, y + 5.2);
-    var waOtro = 'Hola ' + cot.ejecutivo.nombre + ', vi la cotizaci\u00f3n ' + cot.folio + ' pero me gustar\u00eda ver otras opciones de equipos. \u00bfQu\u00e9 m\u00e1s me puedes ofrecer?';
+    var agFirst = cot.ejecutivo.nombre.split(' ')[0]; var waOtro = 'Hola ' + agFirst + ' \u{1F44B}, vi la cotizaci\u00f3n ' + cot.folio + ' pero me gustar\u00eda ver otras opciones de equipos. \u00bfQu\u00e9 m\u00e1s me puedes ofrecer?';
     doc.link(mg, y, btnW, btnH, {url: 'https://wa.me/52' + wa + '?text=' + encodeURIComponent(waOtro)});
     y += btnH + 4;
   }
@@ -6341,6 +6385,192 @@ async function metasSaveAll() {
 }
 
 // ============================================================
+// INFORMES DIARIOS
+// ============================================================
+function openInformes() {
+  showView('informes', 'Informes');
+  document.getElementById('infFecha').value = new Date().toISOString().split('T')[0];
+  renderInforme();
+}
+
+async function renderInforme() {
+  var el = document.getElementById('informeContent');
+  if (!supabase) { el.innerHTML = '<div style="color:var(--text-3)">Sin conexión</div>'; return; }
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3)">Generando informe...</div>';
+
+  var fecha = document.getElementById('infFecha').value;
+  if (!fecha) return;
+  var fechaStart = fecha + 'T00:00:00';
+  var fechaEnd = fecha + 'T23:59:59';
+
+  try {
+    // All cotizaciones for the day (created)
+    var { data: creadas } = await supabase.from('cotizaciones').select('*, cotizacion_items(*)').gte('created_at', fechaStart).lte('created_at', fechaEnd);
+    // All that changed status today
+    var { data: actualizadas } = await supabase.from('cotizaciones').select('*').gte('updated_at', fechaStart).lte('updated_at', fechaEnd);
+    // All ventas ever (for efficiency calc)
+    var { data: allVentas } = await supabase.from('cotizaciones').select('id, created_at, updated_at, folio, agente_id, cliente_nombre').eq('estatus', 'venta');
+    // All users
+    var { data: allUsers } = await supabase.from('usuarios').select('id, nombre, attuid, rol');
+    var userMap = {};
+    (allUsers||[]).forEach(function(u){ userMap[u.id] = u; });
+
+    creadas = creadas || [];
+    actualizadas = actualizadas || [];
+    allVentas = allVentas || [];
+
+    var nuevas = creadas.length;
+    var ventasHoy = (actualizadas).filter(function(c){ return c.estatus === 'venta'; });
+    var perdidasHoy = (actualizadas).filter(function(c){ return c.estatus === 'perdida'; });
+    var segHoy = (actualizadas).filter(function(c){ return c.estatus === 'seguimiento'; });
+
+    // Efficiency: time from creation to venta
+    var effData = { fast: [], medium: [], slow: [] };
+    var effDetails = [];
+    allVentas.forEach(function(v) {
+      var created = new Date(v.created_at);
+      var closed = new Date(v.updated_at);
+      var hrs = (closed - created) / 3600000;
+      var dias = Math.round(hrs / 24 * 10) / 10;
+      var ag = userMap[v.agente_id];
+      var entry = { folio: v.folio, cliente: v.cliente_nombre, agente: ag ? ag.nombre : '?', hrs: Math.round(hrs), dias: dias };
+      if (hrs <= 48) { effData.fast.push(entry); }
+      else if (hrs <= 120) { effData.medium.push(entry); }
+      else { effData.slow.push(entry); }
+      effDetails.push(entry);
+    });
+
+    var totalVentas = allVentas.length;
+    var pctFast = totalVentas > 0 ? Math.round(effData.fast.length / totalVentas * 100) : 0;
+    var pctMed = totalVentas > 0 ? Math.round(effData.medium.length / totalVentas * 100) : 0;
+    var pctSlow = totalVentas > 0 ? Math.round(effData.slow.length / totalVentas * 100) : 0;
+
+    // Revenue estimate from today's sales
+    var revHoy = 0;
+    ventasHoy.forEach(function(v){
+      var items = creadas.find(function(c){return c.id===v.id});
+      if(items && items.cotizacion_items) items.cotizacion_items.forEach(function(it){ revHoy += parseFloat(it.mensual || 0); });
+    });
+
+    // Top agents today
+    var agentCounts = {};
+    creadas.forEach(function(c){
+      var ag = userMap[c.agente_id];
+      var name = ag ? ag.nombre.split(' ').slice(0,2).join(' ') : '?';
+      agentCounts[name] = (agentCounts[name]||0) + 1;
+    });
+    var topAgents = Object.keys(agentCounts).sort(function(a,b){return agentCounts[b]-agentCounts[a]}).slice(0,5);
+
+    // Conversion rate
+    var allClosed = ventasHoy.length + perdidasHoy.length;
+    var convRate = allClosed > 0 ? Math.round(ventasHoy.length / allClosed * 100) : 0;
+
+    // Build report
+    var h = '';
+    // Header
+    h += '<div style="background:linear-gradient(135deg,#001A2F,#00395D);color:white;padding:14px;border-radius:10px;margin-bottom:10px">';
+    h += '<div style="font-size:14px;font-weight:800">📊 Informe del ' + fecha + '</div>';
+    h += '<div style="font-size:10px;opacity:0.8;margin-top:2px">ExpertCell · AT&T Authorized Distributor</div>';
+    h += '</div>';
+
+    // KPIs row
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:6px;margin-bottom:10px">';
+    var kpis = [
+      {v:nuevas,l:'Cotizaciones nuevas',c:'#0057B8',i:'📝'},
+      {v:ventasHoy.length,l:'Ventas del día',c:'#10B981',i:'✅'},
+      {v:perdidasHoy.length,l:'Perdidas',c:'#DC3545',i:'❌'},
+      {v:segHoy.length,l:'En seguimiento',c:'#E6A200',i:'🔄'},
+      {v:convRate+'%',l:'Tasa de cierre',c:'#8B5CF6',i:'🎯'},
+    ];
+    kpis.forEach(function(k){
+      h += '<div style="text-align:center;padding:10px 4px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)">';
+      h += '<div style="font-size:10px">'+k.i+'</div>';
+      h += '<div style="font-size:20px;font-weight:900;color:'+k.c+'">'+k.v+'</div>';
+      h += '<div style="font-size:8px;color:var(--text-3)">'+k.l+'</div></div>';
+    });
+    h += '</div>';
+
+    // Efficiency section
+    h += '<div style="background:var(--bg-card);padding:12px;border-radius:10px;border:1px solid var(--border);margin-bottom:10px">';
+    h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">⚡ Eficiencia de Cierre (todas las ventas)</div>';
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">';
+    h += '<div style="text-align:center;padding:8px;background:#D1FAE5;border-radius:8px"><div style="font-size:18px;font-weight:900;color:#065F46">'+effData.fast.length+'</div><div style="font-size:9px;color:#065F46">< 48 hrs ('+pctFast+'%)</div></div>';
+    h += '<div style="text-align:center;padding:8px;background:#FEF3C7;border-radius:8px"><div style="font-size:18px;font-weight:900;color:#92400E">'+effData.medium.length+'</div><div style="font-size:9px;color:#92400E">48-120 hrs ('+pctMed+'%)</div></div>';
+    h += '<div style="text-align:center;padding:8px;background:#FEE2E2;border-radius:8px"><div style="font-size:18px;font-weight:900;color:#991B1B">'+effData.slow.length+'</div><div style="font-size:9px;color:#991B1B">> 120 hrs ('+pctSlow+'%)</div></div>';
+    h += '</div>';
+    // Bar chart visual
+    var maxEff = Math.max(effData.fast.length, effData.medium.length, effData.slow.length, 1);
+    h += '<div style="display:flex;gap:4px;height:20px;border-radius:4px;overflow:hidden">';
+    if(effData.fast.length) h += '<div style="flex:'+effData.fast.length+';background:#10B981;border-radius:3px" title="< 48hrs"></div>';
+    if(effData.medium.length) h += '<div style="flex:'+effData.medium.length+';background:#F59E0B;border-radius:3px" title="48-120hrs"></div>';
+    if(effData.slow.length) h += '<div style="flex:'+effData.slow.length+';background:#DC3545;border-radius:3px" title="> 120hrs"></div>';
+    h += '</div></div>';
+
+    // Top agents
+    if (topAgents.length > 0) {
+      h += '<div style="background:var(--bg-card);padding:12px;border-radius:10px;border:1px solid var(--border);margin-bottom:10px">';
+      h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">🏆 Top Cotizadores del Día</div>';
+      topAgents.forEach(function(ag, i){
+        var medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+        h += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px">';
+        h += '<span>'+medals[i]+' '+ag+'</span><span style="font-weight:700">'+agentCounts[ag]+' cotización(es)</span></div>';
+      });
+      h += '</div>';
+    }
+
+    // Recent ventas with efficiency
+    if (ventasHoy.length > 0) {
+      h += '<div style="background:var(--bg-card);padding:12px;border-radius:10px;border:1px solid var(--border);margin-bottom:10px">';
+      h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">✅ Ventas del Día — Detalle</div>';
+      ventasHoy.forEach(function(v){
+        var created = new Date(v.created_at);
+        var closed = new Date(v.updated_at);
+        var hrs = Math.round((closed - created) / 3600000);
+        var dias = Math.round(hrs / 24 * 10) / 10;
+        var speedColor = hrs <= 48 ? '#10B981' : hrs <= 120 ? '#F59E0B' : '#DC3545';
+        var speedLabel = hrs <= 48 ? 'Rápido' : hrs <= 120 ? 'Normal' : 'Lento';
+        var ag = userMap[v.agente_id];
+        h += '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">';
+        h += '<div style="display:flex;justify-content:space-between"><span style="font-weight:700">'+v.folio+'</span><span style="color:'+speedColor+';font-weight:600">'+speedLabel+' ('+dias+' días)</span></div>';
+        h += '<div style="color:var(--text-3)">'+v.cliente_nombre+' · '+(ag?ag.nombre.split(' ').slice(0,2).join(' '):'?')+'</div></div>';
+      });
+      h += '</div>';
+    }
+
+    // Alerts / insights
+    h += '<div style="background:#FFF7ED;padding:12px;border-radius:10px;border:1px solid #FED7AA;margin-bottom:10px">';
+    h += '<div style="font-size:13px;font-weight:700;margin-bottom:6px">💡 Insights</div>';
+    var insights = [];
+    if (pctSlow > 40) insights.push('⚠️ '+pctSlow+'% de ventas tardaron más de 5 días en cerrarse. Reforzar seguimiento.');
+    if (perdidasHoy.length > ventasHoy.length) insights.push('🔴 Más perdidas que ventas hoy. Revisar objeciones y técnicas de cierre.');
+    if (ventasHoy.length > 0 && pctFast > 50) insights.push('🟢 '+pctFast+'% de ventas históricas se cierran en < 48hrs. ¡El equipo es ágil!');
+    if (nuevas > 0 && ventasHoy.length === 0) insights.push('🟡 Se generaron '+nuevas+' cotizaciones pero 0 ventas. ¿Se está haciendo seguimiento?');
+    if (nuevas === 0) insights.push('ℹ️ No se generaron cotizaciones hoy.');
+    if (insights.length === 0) insights.push('✅ Operación estable. Seguir monitoreando.');
+    insights.forEach(function(ins){ h += '<div style="font-size:11px;margin-bottom:4px">'+ins+'</div>'; });
+    h += '</div>';
+
+    el.innerHTML = h;
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--danger)">Error: '+e.message+'</div>';
+    console.error('Informe error:', e);
+  }
+}
+
+function infVerHistorico() {
+  // Show last 7 days selector
+  var el = document.getElementById('informeContent');
+  var h = '<div style="font-size:13px;font-weight:700;margin-bottom:8px">📚 Últimos 7 días</div>';
+  for (var i = 0; i < 7; i++) {
+    var d = new Date(); d.setDate(d.getDate() - i);
+    var ds = d.toISOString().split('T')[0];
+    var label = i === 0 ? 'Hoy' : i === 1 ? 'Ayer' : ds;
+    h += '<button class="btn btn-secondary" style="margin:2px;font-size:11px;padding:5px 12px" onclick="document.getElementById(\'infFecha\').value=\''+ds+'\';renderInforme()">'+label+'</button>';
+  }
+  el.innerHTML = h;
+}
+
+// ============================================================
 // SALES ACADEMY — AI Training Platform (Supabase-backed)
 // ============================================================
 var TR_KB = {
@@ -6813,7 +7043,14 @@ function trShowGuia(idx){
   var g=TR_GUIA[idx];
   document.getElementById('trGuiaMenu').style.display='none';
   document.getElementById('trGuiaContent').style.display='';
-  document.getElementById('trGuiaBody').innerHTML='<div style="font-size:15px;font-weight:800;margin-bottom:10px">'+g.icon+' '+g.title+'</div><div style="font-size:12px;line-height:1.6;color:var(--text-1)">'+g.answer.split('\\n').map(function(l){return l===''?'<div style="height:6px"></div>':'<div>'+l+'</div>'}).join('')+'</div>';
+  var lines = g.answer.split('\n');
+  var html = '<div style="font-size:15px;font-weight:800;margin-bottom:10px">'+g.icon+' '+g.title+'</div><div style="font-size:12px;line-height:1.7;color:var(--text-1)">';
+  lines.forEach(function(l){
+    if(l==='') html += '<div style="height:8px"></div>';
+    else html += '<div style="margin-bottom:2px">'+l+'</div>';
+  });
+  html += '</div>';
+  document.getElementById('trGuiaBody').innerHTML = html;
 }
 function trGuiaBack(){
   document.getElementById('trGuiaContent').style.display='none';
