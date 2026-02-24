@@ -3871,8 +3871,12 @@ async function eliminarCotizacion(folio) {
   if (!confirm('Última confirmación: ¿Realmente eliminar '+folio+'?')) return;
   try {
     if (supabase) {
-      await supabase.from('cotizacion_items').delete().eq('cotizacion_id', folio);
-      await supabase.from('cotizaciones').delete().eq('folio', folio);
+      // Get the UUID first
+      var { data: cotRow } = await supabase.from('cotizaciones').select('id').eq('folio', folio).single();
+      if (cotRow) {
+        await supabase.from('cotizacion_items').delete().eq('cotizacion_id', cotRow.id);
+        await supabase.from('cotizaciones').delete().eq('id', cotRow.id);
+      }
     }
     state.cotizaciones = state.cotizaciones.filter(function(c){return c.folio !== folio});
     saveState();
