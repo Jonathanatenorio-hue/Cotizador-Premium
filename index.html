@@ -2670,14 +2670,33 @@ async function handleFileUpload(event) {
 // Push locally loaded file to central storage
 async function pushLocalListToCentral() {
   if (!supabase) return;
-  var inp = document.getElementById('fileInput2') || document.getElementById('fileInput');
-  if (!inp || !inp.files || !inp.files[0]) {
-    alert('Sube el archivo primero antes de publicarlo.');
+  // Try all possible file inputs
+  var file = null;
+  var inputs = document.querySelectorAll('input[type="file"]');
+  for (var i = 0; i < inputs.length; i++) {
+    if (inputs[i].files && inputs[i].files[0]) { file = inputs[i].files[0]; break; }
+  }
+  if (!file) {
+    // Fallback: ask user to select file again for upload
+    var inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.xlsx,.xlsm';
+    inp.onchange = async function() {
+      if (!inp.files[0]) return;
+      if (!confirm('¿Publicar esta lista como oficial para TODOS los usuarios?')) return;
+      try {
+        var { error } = await supabase.storage.from(PRICE_LIST_BUCKET).upload(PRICE_LIST_FILE, inp.files[0], { upsert: true, contentType: inp.files[0].type || 'application/octet-stream' });
+        if (error) throw error;
+        var newVersion = 'PL.' + new Date().toISOString().substring(0,19).replace(/[-:T]/g,'');
+        await supabase.from('app_config').upsert({ key: 'price_list_version', value: newVersion });
+        alert('✅ Lista publicada para todos.');
+      } catch(e) { alert('Error: ' + e.message); }
+    };
+    inp.click();
     return;
   }
   if (!confirm('¿Publicar esta lista como oficial para TODOS los usuarios?')) return;
   try {
-    var file = inp.files[0];
     var { error } = await supabase.storage.from(PRICE_LIST_BUCKET).upload(PRICE_LIST_FILE, file, { upsert: true, contentType: file.type || 'application/octet-stream' });
     if (error) throw error;
     var newVersion = 'PL.' + new Date().toISOString().substring(0,19).replace(/[-:T]/g,'');
