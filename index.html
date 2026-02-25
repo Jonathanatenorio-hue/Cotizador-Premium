@@ -648,8 +648,8 @@ body{padding-bottom:60px}
       </div>
 
       <div class="home-card clickable" id="cardAceleraciones" style="display:none" onclick="openAceleraciones()">
-        <div class="card-icon">⚡</div>
-        <div class="card-title">Aceleraciones</div>
+        <div class="card-icon">📋</div>
+        <div class="card-title">Mis Pendientes</div>
         <div class="card-desc" id="acelDesc">Seguimiento diario</div>
       </div>
 
@@ -1220,7 +1220,7 @@ body{padding-bottom:60px}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div>
           <div style="font-size:16px;font-weight:800;color:var(--att-dark)">📅 Calendario de Gestión</div>
-          <div style="font-size:11px;color:var(--text-3)">Aceleraciones y seguimientos pendientes</div>
+          <div style="font-size:11px;color:var(--text-3)">Seguimientos y aceleraciones pendientes</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <button class="btn btn-secondary" onclick="acelCalNavMonth(-1)" style="font-size:14px;padding:4px 10px">‹</button>
@@ -1853,6 +1853,7 @@ async function doLogin() {
     if (ws) ws.textContent = 'ExpertCell CRM · ' + ({admin:'Administrador',coordinador:'Coordinador',supervisor:'Supervisor',agente:'Ejecutivo'}[state.agente.rol]||'');
     mnShowHomeBanner();
     loadCentralPriceList();
+    loadYelitzaCheck();
 
   } catch(e) {
     errEl.textContent = 'Error de conexión. Intenta de nuevo.';
@@ -1900,6 +1901,8 @@ async function tryAutoLogin() {
       updateHome();
     }
       mnShowHomeBanner();
+      loadCentralPriceList();
+      loadYelitzaCheck();
   } catch(e) { console.error('Auto-login error:', e); }
 }
 
@@ -2461,16 +2464,16 @@ function updateHome() {
     infCard.style.display = (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) ? '' : 'none';
   }
 
-  // Show aceleraciones card
+  // Show aceleraciones card - always visible for all roles
   var acelCard = document.getElementById('cardAceleraciones');
   var acelCount = state.cotizaciones.filter(function(c) {
     return c.sub_estatus === 'aceleracion' && c.estatus !== 'perdida' && c.estatus !== 'venta';
   }).length;
+  acelCard.style.display = '';
   if (acelCount > 0) {
-    acelCard.style.display = '';
     document.getElementById('acelDesc').textContent = acelCount + ' cliente(s) en seguimiento';
   } else {
-    acelCard.style.display = 'none';
+    document.getElementById('acelDesc').textContent = 'Sin pendientes activos';
   }
 
   // Alerts/Notifications
@@ -6689,7 +6692,7 @@ function renderAceleraciones() {
   var html = '';
 
   if (acels.length === 0) {
-    html = '<div style="text-align:center;color:var(--text-3);font-size:12px;padding:20px">No hay aceleraciones pendientes.</div>';
+    html = '<div style="text-align:center;color:var(--text-3);font-size:12px;padding:20px">No hay pendientes por el momento. 🎉</div>';
     document.getElementById('acelList').innerHTML = html;
     return;
   }
@@ -7232,19 +7235,52 @@ var MN_COMISIONES_YELITZA = {
   'Diamante':{n1:200,n2:225,n3:275,n4:400}
 };
 // Detect which scheme to use
+var _isYelitzaCache = null;
 function mnIsYelitza() {
-  if (!currentUser) return false;
-  // By coordinador ATTUID JI4668
-  if (currentUser.coordinador_id) {
-    var coord = (adminUsers||[]).find(function(u){return u.id === currentUser.coordinador_id;});
-    if (coord && coord.attuid === 'JI4668') return true;
+  if (_isYelitzaCache !== null) return _isYelitzaCache;
+  // Fallback: check from state.agente or currentUser
+  if (!currentUser && !state.agente) return false;
+  var user = currentUser || {};
+  
+  // Method 1: Check coordinador from adminUsers if loaded
+  if (user.coordinador_id && adminUsers && adminUsers.length > 0) {
+    var coord = adminUsers.find(function(u){return u.id === user.coordinador_id;});
+    if (coord && coord.attuid === 'JI4668') { _isYelitzaCache = true; return true; }
   }
-  // By centro name containing Yelitza
-  if (currentUser.centro_id) {
-    var centro = (adminCentros||[]).find(function(c){return c.id === currentUser.centro_id;});
-    if (centro && centro.nombre && centro.nombre.toLowerCase().indexOf('yelitza') >= 0) return true;
+  
+  // Method 2: Check centro from adminCentros if loaded
+  if (user.centro_id && adminCentros && adminCentros.length > 0) {
+    var centro = adminCentros.find(function(c){return c.id === user.centro_id;});
+    if (centro && centro.nombre && centro.nombre.toLowerCase().indexOf('yelitza') >= 0) { _isYelitzaCache = true; return true; }
   }
+  
+  // Method 3: Use _yelitzaData loaded at login
+  if (window._yelitzaData) {
+    if (window._yelitzaData.coordAttuid === 'JI4668') { _isYelitzaCache = true; return true; }
+    if (window._yelitzaData.centroNombre && window._yelitzaData.centroNombre.toLowerCase().indexOf('yelitza') >= 0) { _isYelitzaCache = true; return true; }
+  }
+  
+  _isYelitzaCache = false;
   return false;
+}
+
+// Load Yelitza detection data at login
+async function loadYelitzaCheck() {
+  if (!supabase || !currentUser) return;
+  try {
+    window._yelitzaData = {};
+    // Load coordinator attuid
+    if (currentUser.coordinador_id) {
+      var {data: coord} = await supabase.from('usuarios').select('attuid').eq('id', currentUser.coordinador_id).maybeSingle();
+      if (coord) window._yelitzaData.coordAttuid = coord.attuid;
+    }
+    // Load centro name
+    if (currentUser.centro_id) {
+      var {data: centro} = await supabase.from('centros').select('nombre').eq('id', currentUser.centro_id).maybeSingle();
+      if (centro) window._yelitzaData.centroNombre = centro.nombre;
+    }
+    _isYelitzaCache = null; // Reset cache to re-evaluate
+  } catch(e) { console.log('Yelitza check error:', e); }
 }
 function mnGetComisiones() { return mnIsYelitza() ? MN_COMISIONES_YELITZA : MN_COMISIONES_PUEBLA; }
 function mnGetBase() { return mnIsYelitza() ? 9580 : 9400; }
@@ -7714,19 +7750,42 @@ async function metasRender() {
   var opVal = document.getElementById('metasFilterOp').value;
   var centroVal = document.getElementById('metasFilterCentro').value;
   var supVal = document.getElementById('metasFilterSup').value;
+  var rol = currentUser ? currentUser.rol : 'agente';
 
-  // Filter ventas
-  var fv = metasVentas.filter(function(v) {
-    if (opVal !== 'all' && METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op !== opVal) return false;
-    if (centroVal !== 'all' && v.centro_key !== centroVal) return false;
-    if (supVal !== 'all' && v.supervisor !== supVal) return false;
-    return true;
-  });
+  // Role-based filtering of ventas
+  var fv = metasVentas;
+  if (rol === 'agente') {
+    // Agent only sees their own
+    var myName = currentUser ? currentUser.nombre : '';
+    fv = metasVentas.filter(function(v) { return v.ejecutivo && v.ejecutivo.toUpperCase() === myName.toUpperCase(); });
+  } else if (rol === 'supervisor') {
+    // Supervisor sees their team
+    var myName = currentUser ? currentUser.nombre : '';
+    fv = metasVentas.filter(function(v) { return v.supervisor && v.supervisor.toUpperCase() === myName.toUpperCase(); });
+  } else if (rol === 'coordinador') {
+    // Coordinator sees their sups + agents
+    var mySups = (adminUsers||[]).filter(function(u){ return u.coordinador_id === currentUser.id && u.rol === 'supervisor'; }).map(function(u){ return u.nombre.toUpperCase(); });
+    fv = metasVentas.filter(function(v) { return v.supervisor && mySups.indexOf(v.supervisor.toUpperCase()) >= 0; });
+  }
+  // Apply dropdown filters (for admin/coord)
+  if (rol === 'admin' || rol === 'coordinador') {
+    fv = fv.filter(function(v) {
+      if (opVal !== 'all' && METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op !== opVal) return false;
+      if (centroVal !== 'all' && v.centro_key !== centroVal) return false;
+      if (supVal !== 'all' && v.supervisor !== supVal) return false;
+      return true;
+    });
+  }
+
   var totalVentas = fv.length;
 
-  // Calculate meta for current filter
+  // Calculate meta
   var totalMeta = 0;
-  if (supVal !== 'all') { totalMeta = metasGetMeta('supervisor', supVal); }
+  if (rol === 'agente') {
+    totalMeta = metasGetMeta('agente', currentUser ? currentUser.nombre : '');
+  } else if (rol === 'supervisor') {
+    totalMeta = metasGetMeta('supervisor', currentUser ? currentUser.nombre : '');
+  } else if (supVal !== 'all') { totalMeta = metasGetMeta('supervisor', supVal); }
   else if (centroVal !== 'all') { totalMeta = metasGetMeta('centro', centroVal); }
   else if (opVal !== 'all') { totalMeta = metasGetMeta('operacion', opVal); }
   else {
@@ -7743,88 +7802,115 @@ async function metasRender() {
   var projected = daysPassed > 0 ? Math.round(totalVentas / daysPassed * daysInMonth) : totalVentas;
   var projPct = totalMeta > 0 ? Math.round(projected/totalMeta*100) : 0;
 
-  // KPIs
-  document.getElementById('metasKPIs').innerHTML =
-    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:28px;font-weight:900;color:var(--att-blue)">'+totalVentas+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Ventas</div></div>'+
-    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:28px;font-weight:900;color:var(--text-2)">'+totalMeta+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Meta</div></div>'+
-    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:28px;font-weight:900;color:'+pctColor+'">'+pct+'%</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Cumplimiento</div></div>'+
-    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:28px;font-weight:900;color:#8B5CF6">'+projected+'</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Proyección</div></div>'+
-    '<div class="section" style="padding:12px;text-align:center"><div style="font-size:28px;font-weight:900;color:'+(projPct>=100?'#10B981':'#F59E0B')+'">'+projPct+'%</div><div style="font-size:9px;color:var(--text-3);text-transform:uppercase">Proy. vs meta</div></div>';
+  // KPIs - redesigned as progress card
+  var kH = '';
+  kH += '<div class="section" style="padding:16px;margin-bottom:10px">';
+  kH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+  kH += '<div style="font-size:14px;font-weight:800">📊 Resumen del Mes</div>';
+  kH += '<span style="font-size:11px;padding:4px 12px;border-radius:12px;font-weight:700;background:'+pctColor+'15;color:'+pctColor+'">'+pct+'% cumplimiento</span>';
+  kH += '</div>';
+  // Main progress bar
+  kH += '<div style="position:relative;height:14px;border-radius:7px;background:var(--border);overflow:hidden;margin-bottom:12px">';
+  kH += '<div style="height:100%;width:'+Math.min(pct,100)+'%;background:linear-gradient(90deg,'+pctColor+','+pctColor+'CC);border-radius:7px;transition:width 0.6s cubic-bezier(.4,0,.2,1)"></div>';
+  if (totalMeta > 0) kH += '<div style="position:absolute;top:0;bottom:0;left:'+Math.min(100, Math.round(projected/totalMeta*100))+'%;width:2px;background:#8B5CF6" title="Proyección"></div>';
+  kH += '</div>';
+  // Stats row
+  kH += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">';
+  kH += '<div><div style="font-size:24px;font-weight:900;color:var(--att-blue)">'+totalVentas+'</div><div style="font-size:9px;color:var(--text-3)">VENTAS</div></div>';
+  kH += '<div><div style="font-size:24px;font-weight:900;color:var(--text-2)">'+totalMeta+'</div><div style="font-size:9px;color:var(--text-3)">META</div></div>';
+  kH += '<div><div style="font-size:24px;font-weight:900;color:#8B5CF6">'+projected+'</div><div style="font-size:9px;color:var(--text-3)">PROYECCIÓN</div></div>';
+  kH += '<div><div style="font-size:24px;font-weight:900;color:'+(projPct>=100?'#10B981':'#F59E0B')+'">'+projPct+'%</div><div style="font-size:9px;color:var(--text-3)">PROY. VS META</div></div>';
+  kH += '</div></div>';
+  document.getElementById('metasKPIs').innerHTML = kH;
 
-  // Operations view
-  var opsH = '<div class="section" style="padding:14px"><div style="font-size:13px;font-weight:700;margin-bottom:10px">Operaciones</div>';
-  ['PUE','CDMX'].forEach(function(op) {
-    if (opVal !== 'all' && opVal !== op) return;
-    var opVentas = metasVentas.filter(function(v){return METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op===op}).length;
-    var opMeta = metasGetMeta('operacion', op);
-    var opPct = opMeta>0 ? Math.round(opVentas/opMeta*100) : 0;
-    var opColor = opPct>=100?'#10B981':opPct>=70?'#F59E0B':'#DC3545';
-    var opName = op==='PUE'?'Puebla':'CDMX / Sub Yelitza';
-    opsH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:10px 12px;background:var(--bg-main);border-radius:8px">';
-    opsH += '<div style="min-width:160px"><div style="font-size:13px;font-weight:700">'+opName+'</div><div style="font-size:10px;color:var(--text-3)">'+opVentas+' / '+opMeta+'</div></div>';
-    opsH += '<div style="flex:1"><div style="height:10px;border-radius:5px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(opPct,100)+'%;background:'+opColor+';border-radius:5px;transition:width 0.5s"></div></div></div>';
-    opsH += '<div style="font-size:14px;font-weight:800;color:'+opColor+';min-width:55px;text-align:right">'+opPct+'%</div></div>';
-    // Centros within operation
-    Object.keys(METAS_CENTROS).forEach(function(ck) {
-      if (METAS_CENTROS[ck].op !== op) return;
-      if (centroVal !== 'all' && centroVal !== ck) return;
-      var cv = metasVentas.filter(function(v){return v.centro_key===ck}).length;
-      var cm = metasGetMeta('centro', ck);
-      var cp = cm>0?Math.round(cv/cm*100):0;
-      var cc = cp>=100?'#10B981':cp>=70?'#F59E0B':'#DC3545';
-      opsH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;padding:6px 12px 6px 28px">';
-      opsH += '<div style="min-width:160px;font-size:11px;font-weight:600">'+METAS_CENTROS[ck].name+'</div>';
-      opsH += '<div style="flex:1"><div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+cc+';border-radius:3px"></div></div></div>';
-      opsH += '<div style="font-size:11px;font-weight:700;color:'+cc+';min-width:55px;text-align:right">'+cv+'/'+cm+' ('+cp+'%)</div></div>';
+  // ── OPERATIONS VIEW (admin/coord only) ──
+  var opsH = '';
+  if (rol === 'admin' || rol === 'coordinador') {
+    opsH += '<div class="section" style="padding:16px">';
+    opsH += '<div style="font-size:14px;font-weight:800;margin-bottom:12px">🏢 Operaciones</div>';
+    opsH += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">';
+    ['PUE','CDMX'].forEach(function(op) {
+      if (opVal !== 'all' && opVal !== op) return;
+      var opVentas = metasVentas.filter(function(v){return METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op===op}).length;
+      var opMeta = metasGetMeta('operacion', op);
+      var opPct = opMeta>0 ? Math.round(opVentas/opMeta*100) : 0;
+      var opColor = opPct>=100?'#10B981':opPct>=70?'#F59E0B':'#DC3545';
+      var opName = op==='PUE'?'Puebla':'CDMX / Sub Yelitza';
+      var opIcon = op==='PUE'?'🏛️':'🌆';
+      opsH += '<div style="background:var(--bg-main);border-radius:12px;padding:14px;border:1px solid var(--border)">';
+      opsH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+      opsH += '<div style="font-size:14px;font-weight:800">'+opIcon+' '+opName+'</div>';
+      opsH += '<span style="font-size:20px;font-weight:900;color:'+opColor+'">'+opPct+'%</span>';
+      opsH += '</div>';
+      opsH += '<div style="height:8px;border-radius:4px;background:var(--border);overflow:hidden;margin-bottom:8px"><div style="height:100%;width:'+Math.min(opPct,100)+'%;background:'+opColor+';border-radius:4px;transition:width 0.5s"></div></div>';
+      opsH += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-3);margin-bottom:8px"><span>'+opVentas+' ventas</span><span>Meta: '+opMeta+'</span></div>';
+      // Centros
+      Object.keys(METAS_CENTROS).forEach(function(ck) {
+        if (METAS_CENTROS[ck].op !== op) return;
+        if (centroVal !== 'all' && centroVal !== ck) return;
+        var cv = metasVentas.filter(function(v){return v.centro_key===ck}).length;
+        var cm = metasGetMeta('centro', ck);
+        var cp = cm>0?Math.round(cv/cm*100):0;
+        var cc = cp>=100?'#10B981':cp>=70?'#F59E0B':'#DC3545';
+        opsH += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-top:1px solid var(--border)">';
+        opsH += '<span style="font-size:11px;font-weight:600;min-width:120px">'+METAS_CENTROS[ck].name+'</span>';
+        opsH += '<div style="flex:1;height:5px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+cc+';border-radius:3px"></div></div>';
+        opsH += '<span style="font-size:10px;font-weight:700;color:'+cc+';min-width:60px;text-align:right">'+cv+'/'+cm+'</span>';
+        opsH += '</div>';
+      });
+      opsH += '</div>';
     });
-  });
-  opsH += '</div>';
+    opsH += '</div></div>';
+  }
   document.getElementById('metasOpsView').innerHTML = opsH;
 
-  // Supervisor breakdown
-  var supData = {};
-  fv.forEach(function(v) { if (!v.supervisor) return; if (!supData[v.supervisor]) supData[v.supervisor]={count:0,centro:v.centro_key}; supData[v.supervisor].count++; });
-  var supKeys = Object.keys(supData).sort(function(a,b){return supData[b].count-supData[a].count});
-  var supH = '<div class="section" style="padding:14px"><div style="font-size:13px;font-weight:700;margin-bottom:10px">Por supervisor</div>';
-  if (supKeys.length === 0) { supH += '<div style="text-align:center;padding:15px;color:var(--text-3);font-size:12px">Sin datos</div>'; }
-  else {
-    supKeys.forEach(function(s) {
-      var sv = supData[s].count, sm = metasGetMeta('supervisor',s);
-      var sp = sm>0?Math.round(sv/sm*100):0;
-      var sc = sp>=100?'#10B981':sp>=70?'#F59E0B':'#DC3545';
-      supH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:6px 8px;background:var(--bg-main);border-radius:6px">';
-      supH += '<div style="min-width:180px"><div style="font-size:11px;font-weight:600">'+s+'</div><div style="font-size:9px;color:var(--text-3)">'+METAS_CENTROS[supData[s].centro].name+'</div></div>';
-      supH += '<div style="flex:1"><div style="height:8px;border-radius:4px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(sp,100)+'%;background:'+sc+';border-radius:4px"></div></div></div>';
-      supH += '<div style="font-size:12px;font-weight:700;color:'+sc+';min-width:70px;text-align:right">'+sv+'/'+sm+' ('+sp+'%)</div></div>';
-    });
+  // ── SUPERVISOR VIEW (admin/coord/sup) ──
+  var supH = '';
+  if (rol !== 'agente') {
+    var supData = {};
+    fv.forEach(function(v) { if (!v.supervisor) return; if (!supData[v.supervisor]) supData[v.supervisor]={count:0,centro:v.centro_key}; supData[v.supervisor].count++; });
+    var supKeys = Object.keys(supData).sort(function(a,b){return supData[b].count-supData[a].count});
+    if (supKeys.length > 0) {
+      supH += '<div class="section" style="padding:16px">';
+      supH += '<div style="font-size:14px;font-weight:800;margin-bottom:10px">👥 Por Supervisor</div>';
+      supKeys.forEach(function(s) {
+        var sv = supData[s].count, sm = metasGetMeta('supervisor',s);
+        var sp = sm>0?Math.round(sv/sm*100):0;
+        var sc = sp>=100?'#10B981':sp>=70?'#F59E0B':'#DC3545';
+        supH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:8px 10px;background:var(--bg-main);border-radius:8px">';
+        supH += '<div style="min-width:160px"><div style="font-size:12px;font-weight:700">'+s+'</div><div style="font-size:9px;color:var(--text-3)">'+(METAS_CENTROS[supData[s].centro]?METAS_CENTROS[supData[s].centro].name:'')+'</div></div>';
+        supH += '<div style="flex:1"><div style="height:8px;border-radius:4px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(sp,100)+'%;background:'+sc+';border-radius:4px"></div></div></div>';
+        supH += '<div style="font-size:12px;font-weight:700;color:'+sc+';min-width:75px;text-align:right">'+sv+'/'+sm+' ('+sp+'%)</div></div>';
+      });
+      supH += '</div>';
+    }
   }
-  supH += '</div>';
   document.getElementById('metasSupView').innerHTML = supH;
 
-  // Agent breakdown
+  // ── AGENT VIEW (everyone sees this) ──
   var agData = {};
   fv.forEach(function(v) { if (!v.ejecutivo) return; if (!agData[v.ejecutivo]) agData[v.ejecutivo]={count:0,sup:v.supervisor}; agData[v.ejecutivo].count++; });
   var agKeys = Object.keys(agData).sort(function(a,b){return agData[b].count-agData[a].count});
-  var agH = '<div class="section" style="padding:14px"><div style="font-size:13px;font-weight:700;margin-bottom:10px">Por agente</div>';
-  if (agKeys.length === 0) { agH += '<div style="text-align:center;padding:15px;color:var(--text-3);font-size:12px">Sin datos</div>'; }
+  var agH = '<div class="section" style="padding:16px">';
+  agH += '<div style="font-size:14px;font-weight:800;margin-bottom:10px">'+(rol==='agente'?'📈 Mi Avance':'👤 Por Agente')+'</div>';
+  if (agKeys.length === 0) { agH += '<div style="text-align:center;padding:15px;color:var(--text-3);font-size:12px">Sin datos para este período</div>'; }
   else {
-    agH += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:separate;border-spacing:0 3px"><thead><tr>';
-    ['#','Agente','Supervisor','Ventas','Meta','%','Barra'].forEach(function(h){agH+='<th style="padding:4px 6px;text-align:left;font-size:9px;color:var(--text-3);text-transform:uppercase">'+h+'</th>'});
-    agH += '</tr></thead><tbody>';
-    agKeys.forEach(function(ag,idx) {
+    agKeys.forEach(function(ag, idx) {
       var av = agData[ag].count, am = metasGetMeta('agente',ag);
       var ap = am>0?Math.round(av/am*100):0;
       var ac = ap>=100?'#10B981':ap>=70?'#F59E0B':'#DC3545';
-      var medal = idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':'';
-      agH += '<tr><td style="padding:5px 6px;background:white;border-radius:6px 0 0 6px;font-size:12px;text-align:center">'+medal+(medal?'':String(idx+1))+'</td>';
-      agH += '<td style="padding:5px 6px;background:white;font-size:11px;font-weight:600">'+ag+'</td>';
-      agH += '<td style="padding:5px 6px;background:white;font-size:10px;color:var(--text-3)">'+agData[ag].sup+'</td>';
-      agH += '<td style="padding:5px 6px;background:white;font-size:12px;font-weight:700;color:var(--att-blue)">'+av+'</td>';
-      agH += '<td style="padding:5px 6px;background:white;font-size:11px">'+am+'</td>';
-      agH += '<td style="padding:5px 6px;background:white;font-size:12px;font-weight:700;color:'+ac+'">'+ap+'%</td>';
-      agH += '<td style="padding:5px 6px;background:white;border-radius:0 6px 6px 0;min-width:80px"><div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(ap,100)+'%;background:'+ac+';border-radius:3px"></div></div></td></tr>';
+      var medal = idx===0?'🥇 ':idx===1?'🥈 ':idx===2?'🥉 ':'';
+      agH += '<div style="background:var(--bg-main);border-radius:10px;padding:10px 12px;margin-bottom:6px;border-left:4px solid '+ac+'">';
+      agH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+      agH += '<div style="font-size:12px;font-weight:700">'+medal+ag+'</div>';
+      agH += '<span style="font-size:14px;font-weight:900;color:'+ac+'">'+ap+'%</span>';
+      agH += '</div>';
+      agH += '<div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden;margin-bottom:4px"><div style="height:100%;width:'+Math.min(ap,100)+'%;background:'+ac+';border-radius:3px;transition:width 0.4s"></div></div>';
+      agH += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3)">';
+      agH += '<span>'+av+' ventas / '+am+' meta</span>';
+      if (rol !== 'agente') agH += '<span>Sup: '+agData[ag].sup+'</span>';
+      agH += '</div></div>';
     });
-    agH += '</tbody></table></div>';
   }
   agH += '</div>';
   document.getElementById('metasAgentView').innerHTML = agH;
