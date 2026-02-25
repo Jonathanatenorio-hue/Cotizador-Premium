@@ -740,6 +740,16 @@ body{padding-bottom:60px}
   <div class="container">
     <div class="section">
       <div class="section-title">Administrar Usuarios</div>
+      <!-- AI CONFIG (FIX 3) -->
+      <div style="background:#EBF5FB;border:1px solid #AED6F1;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:700;color:var(--att-blue)">🤖 Config IA:</span>
+        <div style="display:flex;align-items:center;gap:4px">
+          <label style="font-size:11px;font-weight:600;color:var(--text-2)">Consultas/día por agente:</label>
+          <input class="field" id="adminAiLimit" type="number" min="0" max="200" value="30" style="width:70px;font-size:12px;padding:5px;text-align:center">
+          <button class="btn btn-primary" style="font-size:10px;padding:4px 10px" onclick="saveAiLimit()">Guardar</button>
+        </div>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="viewAiQueryLog()">📋 Ver consultas IA</button>
+      </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="showAddUserForm()">+ Nuevo Usuario</button>
         <label class="btn btn-secondary" style="cursor:pointer">
@@ -1644,6 +1654,14 @@ async function syncCotizacionToSupabase(cotizacion, isEdit) {
         (await supabase.from('cotizaciones').select('id').eq('folio', cotizacion.folio).single()).data.id
       );
     } else {
+      // FIX 14: Check for duplicate by phone number
+      var { data: existingByPhone } = await supabase.from('cotizaciones').select('folio, cliente_nombre, estatus, created_at').eq('cliente_telefono', cotizacion.cliente.telefono).neq('estatus','perdida').order('created_at',{ascending:false}).limit(3);
+      if (existingByPhone && existingByPhone.length > 0) {
+        var dupList = existingByPhone.map(function(d){ return d.folio + ' - ' + d.cliente_nombre + ' (' + d.estatus + ')'; }).join('\n');
+        if (!confirm('⚠️ POSIBLE DUPLICADO\n\nYa existen cotizaciones con este teléfono:\n\n' + dupList + '\n\n¿Deseas crear una nueva cotización de todas formas?')) {
+          return;
+        }
+      }
       // Insert new cotizacion
       var { data: cotRow, error: cotErr } = await supabase.from('cotizaciones').insert({
         folio: cotizacion.folio,
@@ -2626,8 +2644,9 @@ async function generarCotizacion() {
 
   // Validate required fields
   const errors = [];
-  if (!nombre) errors.push('Nombre del cliente');
-  if (!telefono || telefono.length !== 10) errors.push('Teléfono (debe ser exactamente 10 dígitos)');
+  if (!nombre || nombre.length < 5 || /^[0-9xX]+$/.test(nombre)) errors.push('Nombre del cliente (mínimo 5 caracteres, debe ser un nombre real)');
+  if (!telefono || telefono.length !== 10 || parseInt(telefono) < 2000000000) errors.push('Teléfono (10 dígitos, debe iniciar con 2-9)');
+  if (!planActualId) errors.push('Plan actual del cliente');
   if (!email) errors.push('Email');
   if (!direccion) errors.push('Dirección');
   if (state.items.length === 0) errors.push('Agrega al menos un equipo');
@@ -2635,6 +2654,12 @@ async function generarCotizacion() {
 
   if (errors.length > 0) {
     alert('Completa los siguientes campos:\n\n• ' + errors.join('\n• '));
+    return;
+  }
+
+  // Block agent using their own name as client
+  if (state.agente.nombre && nombre.toUpperCase().includes(state.agente.nombre.toUpperCase().split(' ')[0]) && nombre.toUpperCase().includes(state.agente.nombre.toUpperCase().split(' ').slice(-1)[0])) {
+    alert('⚠️ El nombre del cliente no puede ser tu propio nombre. Ingresa el nombre real del cliente.');
     return;
   }
 
@@ -4846,6 +4871,7 @@ async function openAdmin() {
   showView('admin', 'Admin Usuarios');
   await loadAdminData();
   renderAdminUsers();
+  loadAiLimitForAdmin();
 }
 
 async function loadAdminData() {
@@ -4892,6 +4918,40 @@ async function loadAdminData() {
       });
     }
   } catch(e) { console.error('Admin load error:', e); }
+}
+
+// ── AI Admin Config (FIX 3) ──
+async function saveAiLimit(){
+  var limit = parseInt(document.getElementById('adminAiLimit').value) || 30;
+  if(!supabase){alert('Sin conexión');return;}
+  try{
+    await supabase.from('app_config').upsert({key:'ai_daily_limit',value:String(limit),updated_at:new Date().toISOString()});
+    TR_DAILY_LIMIT = limit;
+    alert('✅ Límite actualizado a ' + limit + ' consultas/día por agente');
+  }catch(e){alert('Error: '+e.message);}
+}
+async function loadAiLimitForAdmin(){
+  if(!supabase) return;
+  try{
+    var res = await supabase.from('app_config').select('value').eq('key','ai_daily_limit').maybeSingle();
+    if(res.data) document.getElementById('adminAiLimit').value = res.data.value;
+  }catch(e){}
+}
+async function viewAiQueryLog(){
+  if(!supabase){alert('Sin conexión');return;}
+  try{
+    var {data} = await supabase.from('ai_queries_log').select('*').order('created_at',{ascending:false}).limit(100);
+    if(!data||data.length===0){alert('No hay consultas registradas aún.');return;}
+    var h='<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div style="background:var(--bg-card);border-radius:14px;width:95%;max-width:700px;max-height:80vh;overflow-y:auto;padding:20px;margin:40px auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">';
+    h+='<div style="display:flex;justify-content:space-between;margin-bottom:12px"><h3 style="font-size:16px;font-weight:800">📋 Últimas 100 consultas IA</h3><button onclick="this.closest(\'.modal-overlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div>';
+    h+='<table style="width:100%;font-size:11px;border-collapse:collapse"><tr style="background:var(--bg-main)"><th style="padding:6px;text-align:left;border-bottom:2px solid var(--border)">Agente</th><th style="padding:6px;text-align:left;border-bottom:2px solid var(--border)">Consulta</th><th style="padding:6px;text-align:left;border-bottom:2px solid var(--border)">Fecha</th></tr>';
+    data.forEach(function(q){
+      var fecha = new Date(q.created_at).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+      h+='<tr><td style="padding:4px 6px;border-bottom:1px solid var(--border);font-weight:600">'+((q.agente_nombre||'').split(' ').slice(0,2).join(' '))+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--border)">'+q.query+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--text-3)">'+fecha+'</td></tr>';
+    });
+    h+='</table></div></div>';
+    document.body.insertAdjacentHTML('beforeend',h);
+  }catch(e){alert('Error: '+e.message);}
 }
 
 function renderAdminUsers() {
@@ -6558,16 +6618,105 @@ async function renderInforme() {
 }
 
 function infVerHistorico() {
-  // Show last 7 days selector
   var el = document.getElementById('informeContent');
-  var h = '<div style="font-size:13px;font-weight:700;margin-bottom:8px">📚 Últimos 7 días</div>';
+  var h = '<div style="font-size:13px;font-weight:700;margin-bottom:8px">📚 Histórico de Informes</div>';
+  // Quick buttons
+  h += '<div style="margin-bottom:8px">';
   for (var i = 0; i < 7; i++) {
     var d = new Date(); d.setDate(d.getDate() - i);
     var ds = d.toISOString().split('T')[0];
     var label = i === 0 ? 'Hoy' : i === 1 ? 'Ayer' : ds;
     h += '<button class="btn btn-secondary" style="margin:2px;font-size:11px;padding:5px 12px" onclick="document.getElementById(\'infFecha\').value=\''+ds+'\';renderInforme()">'+label+'</button>';
   }
+  h += '</div>';
+  // Month selector
+  h += '<div style="margin-bottom:8px"><label style="font-size:11px;font-weight:600;color:var(--text-2)">Por mes:</label> ';
+  var meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var hoy = new Date();
+  for (var m = 0; m < 6; m++) {
+    var dm = new Date(hoy.getFullYear(), hoy.getMonth() - m, 1);
+    var mesLabel = meses[dm.getMonth()] + ' ' + dm.getFullYear();
+    h += '<button class="btn btn-secondary" style="margin:2px;font-size:10px;padding:4px 10px" onclick="infVerMes('+dm.getFullYear()+','+(dm.getMonth()+1)+')">'+mesLabel+'</button>';
+  }
+  h += '</div>';
+  // Custom date range
+  h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
+  h += '<label style="font-size:11px;font-weight:600;color:var(--text-2)">Rango:</label>';
+  h += '<input type="date" id="infDesde" class="field" style="width:auto;font-size:11px;padding:5px 8px">';
+  h += '<span style="font-size:11px;color:var(--text-3)">a</span>';
+  h += '<input type="date" id="infHasta" class="field" style="width:auto;font-size:11px;padding:5px 8px">';
+  h += '<button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="infVerRango()">Ver rango</button>';
+  h += '</div>';
   el.innerHTML = h;
+}
+
+async function infVerMes(year, month) {
+  var desde = year + '-' + String(month).padStart(2,'0') + '-01';
+  var hasta = new Date(year, month, 0);
+  var hastaStr = year + '-' + String(month).padStart(2,'0') + '-' + String(hasta.getDate()).padStart(2,'0');
+  await infRenderRango(desde, hastaStr);
+}
+
+async function infVerRango() {
+  var desde = document.getElementById('infDesde').value;
+  var hasta = document.getElementById('infHasta').value;
+  if (!desde || !hasta) { alert('Selecciona ambas fechas'); return; }
+  if (desde > hasta) { alert('La fecha "desde" debe ser anterior a "hasta"'); return; }
+  await infRenderRango(desde, hasta);
+}
+
+async function infRenderRango(desde, hasta) {
+  var el = document.getElementById('informeContent');
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3)">Generando informe del ' + desde + ' al ' + hasta + '...</div>';
+  try {
+    var { data: creadas } = await supabase.from('cotizaciones').select('*, cotizacion_items(*)').gte('created_at', desde+'T00:00:00').lte('created_at', hasta+'T23:59:59');
+    var { data: actualizadas } = await supabase.from('cotizaciones').select('*').gte('updated_at', desde+'T00:00:00').lte('updated_at', hasta+'T23:59:59');
+    var { data: allUsers } = await supabase.from('usuarios').select('id, nombre, attuid, rol');
+    var userMap = {}; (allUsers||[]).forEach(function(u){ userMap[u.id] = u; });
+    creadas = creadas || []; actualizadas = actualizadas || [];
+    var ventasP = actualizadas.filter(function(c){ return c.estatus === 'venta'; });
+    var perdidasP = actualizadas.filter(function(c){ return c.estatus === 'perdida'; });
+    var segP = actualizadas.filter(function(c){ return c.estatus === 'seguimiento'; });
+    var allClosed = ventasP.length + perdidasP.length;
+    var convRate = allClosed > 0 ? Math.round(ventasP.length / allClosed * 100) : 0;
+    // Agent breakdown
+    var agentCounts = {};
+    creadas.forEach(function(c){ var ag = userMap[c.agente_id]; var name = ag ? ag.nombre.split(' ').slice(0,2).join(' ') : '?'; agentCounts[name] = (agentCounts[name]||0) + 1; });
+    var topAgents = Object.keys(agentCounts).sort(function(a,b){return agentCounts[b]-agentCounts[a]});
+    // Daily breakdown
+    var dailyMap = {};
+    creadas.forEach(function(c){ var d = c.created_at.split('T')[0]; dailyMap[d] = dailyMap[d] || {cot:0,ven:0,per:0}; dailyMap[d].cot++; });
+    ventasP.forEach(function(c){ var d = c.updated_at.split('T')[0]; dailyMap[d] = dailyMap[d] || {cot:0,ven:0,per:0}; dailyMap[d].ven++; });
+    perdidasP.forEach(function(c){ var d = c.updated_at.split('T')[0]; dailyMap[d] = dailyMap[d] || {cot:0,ven:0,per:0}; dailyMap[d].per++; });
+    var h = '<div style="background:linear-gradient(135deg,#001A2F,#00395D);color:white;padding:14px;border-radius:10px;margin-bottom:10px">';
+    h += '<div style="font-size:14px;font-weight:800">📊 Informe: ' + desde + ' → ' + hasta + '</div>';
+    h += '<div style="font-size:10px;opacity:0.8;margin-top:2px">ExpertCell · AT&T</div></div>';
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:6px;margin-bottom:10px">';
+    [{v:creadas.length,l:'Cotizaciones',c:'#0057B8',i:'📝'},{v:ventasP.length,l:'Ventas',c:'#10B981',i:'✅'},{v:perdidasP.length,l:'Perdidas',c:'#DC3545',i:'❌'},{v:segP.length,l:'Seguimiento',c:'#E6A200',i:'🔄'},{v:convRate+'%',l:'Tasa cierre',c:'#8B5CF6',i:'🎯'}].forEach(function(k){
+      h += '<div style="text-align:center;padding:10px 4px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)"><div style="font-size:10px">'+k.i+'</div><div style="font-size:20px;font-weight:900;color:'+k.c+'">'+k.v+'</div><div style="font-size:8px;color:var(--text-3)">'+k.l+'</div></div>';
+    });
+    h += '</div>';
+    // Daily table
+    var days = Object.keys(dailyMap).sort().reverse();
+    if (days.length > 0) {
+      h += '<div style="background:var(--bg-card);padding:12px;border-radius:10px;border:1px solid var(--border);margin-bottom:10px">';
+      h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">📅 Desglose diario</div>';
+      h += '<table style="width:100%;font-size:11px;border-collapse:collapse"><tr style="background:var(--bg-main)"><th style="padding:6px;text-align:left;border-bottom:1px solid var(--border)">Fecha</th><th style="padding:6px;text-align:center;border-bottom:1px solid var(--border)">Cot.</th><th style="padding:6px;text-align:center;border-bottom:1px solid var(--border)">Ventas</th><th style="padding:6px;text-align:center;border-bottom:1px solid var(--border)">Perd.</th></tr>';
+      days.forEach(function(d){ var r = dailyMap[d]; h += '<tr><td style="padding:4px 6px;border-bottom:1px solid var(--border)">'+d+'</td><td style="padding:4px 6px;text-align:center;border-bottom:1px solid var(--border)">'+r.cot+'</td><td style="padding:4px 6px;text-align:center;border-bottom:1px solid var(--border);color:#10B981;font-weight:700">'+r.ven+'</td><td style="padding:4px 6px;text-align:center;border-bottom:1px solid var(--border);color:#DC3545">'+r.per+'</td></tr>'; });
+      h += '</table></div>';
+    }
+    // Top agents
+    if (topAgents.length > 0) {
+      h += '<div style="background:var(--bg-card);padding:12px;border-radius:10px;border:1px solid var(--border);margin-bottom:10px">';
+      h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px">🏆 Agentes (cotizaciones)</div>';
+      topAgents.slice(0,10).forEach(function(a,i){ h += '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px"><span>'+(i+1)+'. '+a+'</span><span style="font-weight:700">'+agentCounts[a]+'</span></div>'; });
+      h += '</div>';
+    }
+    h += '<button class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="infVerHistorico()">← Volver</button>';
+    el.innerHTML = h;
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--danger)">Error: '+e.message+'</div>';
+  }
 }
 
 // ============================================================
@@ -6612,7 +6761,7 @@ var TR_KB = {
     "WhatsApp es para CONFIRMAR lo acordado, no para informar. Primero cierra intención, luego envía.",
     "Has de tu llamada una charla casual — si conectas sabrás cada detalle y así ganan ambos."
   ],
-  sysPrompt:"Eres el coach de ventas de ExpertCell, distribuidor autorizado AT&T en México. TUTEA a los agentes pero con tono PROFESIONAL — nada de 'compa', 'órale', 'carnal', 'chido' ni jerga callejera. Tono: motivador, directo y estricto. Filosofía: 'Has de tu llamada una charla casual pero profesional, si conectas sabrás cada detalle y así ganan ambos.'\n\nFORMATO DE RESPUESTA OBLIGATORIO:\n- Usa emojis estratégicamente: 🔥 🎯 🧠 💬 📞 📲 🚨 💡 ✅ ❌ 👍 👌 ⸻\n- Estructura tus respuestas con pasos numerados: 🔹 Paso 1, 🔹 Paso 2, etc.\n- Incluye secciones claras: GUION PARA LLAMADA, MENSAJE DE WHATSAPP, ESTRATEGIA AVANZADA\n- Da frases TEXTUALES listas para usar entre comillas\n- Incluye al final la sección de ERRORES QUE NO DEBES COMETER con ❌ y ✅\n- Usa separadores ⸻ entre secciones\n- Da SIEMPRE un ejemplo de frase completa lista para usar\n\nEJEMPLO DE FORMATO:\n🔹 Paso 1 – Validar\n\"Perfecto, te entiendo 👌\"\n(Bajas defensiva.)\n⸻\n🔹 Paso 2 – Reencuadre\n\"La renovación incluye equipo como parte del beneficio.\"\n⸻\n🚨 Error que NO debes cometer\n❌ \"Confíe en mí\"\n✅ \"Es el mismo sistema oficial\"\n\nREGLAS ESTRICTAS:\n1) NUNCA uses palabras coloquiales: compa, órale, carnal, neta, chido, morro, jale\n2) NUNCA digas 'gratis' o 'de regalo' — di 'sin costo', 'incluido' o 'costo cero'\n3) NUNCA sugieras al cliente cancelar o dar de baja\n4) SIEMPRE recomienda aplicar cierres con pregunta cerrada\n5) SIEMPRE motiva a vencer el miedo practicando\n6) WhatsApp NO es salida a objeciones — primero debate, luego envía\n7) ExpertCell es distribuidor autorizado AT&T, operación formal y confiable\n\nSEGUIMIENTO CORRECTO:\n1) Abre con lo que le ATRAJO al cliente (el beneficio que mostró interés)\n2) Cierra con lo que lo hizo DUDAR (la objeción que frenó el cierre)\nEjemplo: 'Hola [nombre], ¿cómo estás? Me pongo en contacto por el interés que tienes en aumentar los GB de tu plan sin elevar costos. Para iniciar el trámite, ¿me enviarás tu INE en foto o PDF?'\nNUNCA seguimiento genérico como '¿Ya lo pensaste?'\n\nCuando respondas sobre objeciones, da la respuesta COMPLETA con:\n1) Traducción real de lo que piensa el cliente\n2) Guion para llamada paso a paso\n3) Mensaje de WhatsApp listo para usar (2 versiones)\n4) Estrategia avanzada / tip extra\n5) Errores que no deben cometer\n\nResponde en español mexicano profesional."
+  sysPrompt:"Eres el coach de ventas de ExpertCell, distribuidor autorizado AT&T en México. TUTEA a los agentes pero con tono PROFESIONAL — nada de 'compa', 'órale', 'carnal', 'chido' ni jerga callejera. Tono: motivador, directo y estricto. Filosofía: 'Has de tu llamada una charla casual pero profesional, si conectas sabrás cada detalle y así ganan ambos.'\n\nFORMATO DE RESPUESTA OBLIGATORIO:\n- Usa emojis estratégicamente: 🔥 🎯 🧠 💬 📞 📲 🚨 💡 ✅ ❌ 👍 👌 ⸻\n- Estructura tus respuestas con pasos numerados: 🔹 Paso 1, 🔹 Paso 2, etc.\n- Incluye secciones claras: GUION PARA LLAMADA, MENSAJE DE WHATSAPP, ESTRATEGIA AVANZADA\n- Da frases TEXTUALES listas para usar entre comillas\n- Incluye al final la sección de ERRORES QUE NO DEBES COMETER con ❌ y ✅\n- Usa separadores ⸻ entre secciones\n- Da SIEMPRE un ejemplo de frase completa lista para usar\n\nEJEMPLO DE FORMATO:\n🔹 Paso 1 – Validar\n\"Perfecto, te entiendo 👌\"\n(Bajas defensiva.)\n⸻\n🔹 Paso 2 – Reencuadre\n\"La renovación incluye equipo como parte del beneficio.\"\n⸻\n🚨 Error que NO debes cometer\n❌ \"Confíe en mí\"\n✅ \"Es el mismo sistema oficial\"\n\nREGLAS ESTRICTAS:\n1) NUNCA uses palabras coloquiales: compa, órale, carnal, neta, chido, morro, jale\n2) NUNCA digas 'gratis' o 'de regalo' — di 'sin costo', 'incluido' o 'costo cero'\n3) NUNCA sugieras al cliente cancelar o dar de baja\n4) SIEMPRE recomienda aplicar cierres con pregunta cerrada\n5) SIEMPRE motiva a vencer el miedo practicando\n6) WhatsApp NO es salida a objeciones — primero debate, luego envía\n7) ExpertCell es distribuidor autorizado AT&T, operación formal y confiable\n8) NUNCA menciones cambio de equipo en 30 días, devolución de equipo, o garantía de satisfacción — NO EXISTE esa política en AT&T y es una MALA PRÁCTICA decirlo\n9) NUNCA inventes políticas, promociones o beneficios de AT&T que no conozcas con certeza\n10) Solo responde preguntas relacionadas con ventas AT&T, técnicas de venta, objeciones, procesos de renovación, planes y equipos. Si el agente pregunta algo que NO tiene que ver con su trabajo de ventas AT&T, responde: 'Solo puedo ayudarte con temas de ventas AT&T, objeciones, procesos y técnicas de cierre. ¿En qué te puedo apoyar?'\n\nSEGUIMIENTO CORRECTO:\n1) Abre con lo que le ATRAJO al cliente (el beneficio que mostró interés)\n2) Cierra con lo que lo hizo DUDAR (la objeción que frenó el cierre)\nEjemplo: 'Hola [nombre], ¿cómo estás? Me pongo en contacto por el interés que tienes en aumentar los GB de tu plan sin elevar costos. Para iniciar el trámite, ¿me enviarás tu INE en foto o PDF?'\nNUNCA seguimiento genérico como '¿Ya lo pensaste?'\n\nCuando respondas sobre objeciones, da la respuesta COMPLETA con:\n1) Traducción real de lo que piensa el cliente\n2) Guion para llamada paso a paso\n3) Mensaje de WhatsApp listo para usar (2 versiones)\n4) Estrategia avanzada / tip extra\n5) Errores que no deben cometer\n\nResponde en español mexicano profesional."
 };
 var TR_SCENARIOS = [
   // Uno por cada objeción real
@@ -6760,7 +6909,7 @@ function trInitChat(){
     trRenderChat();
   });
   var qs=['Cliente dice no le interesa el equipo','Prefiere ir a sucursal','Dice deja lo pienso','¿Cómo van mis ventas?','Técnicas de cierre','No acostumbra trámites por teléfono'];
-  document.getElementById('trQuickBtns').innerHTML=qs.map(function(q){return'<button class="btn" style="padding:3px 8px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:10px" onclick="document.getElementById(\'trChatInput\').value=\''+q+'\';trSendChat()">'+q+'</button>'}).join('');
+  document.getElementById('trQuickBtns').innerHTML=qs.map(function(q){return'<button class="btn" style="padding:3px 8px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:10px" onclick="document.getElementById(\'trChatInput\').value=\''+q+'\';trSendChat()">'+q+'</button>'}).join('') + '<button class="btn" style="padding:3px 8px;border-radius:12px;border:1px solid #E6A200;background:#FFF8E1;color:#E65100;font-size:10px;font-weight:700" onclick="trShowFechaEfectiva()">📅 Fecha Efectiva</button>';
 }
 function trRenderChat(){
   var c=document.getElementById('trChatMsgs');
@@ -6769,6 +6918,71 @@ function trRenderChat(){
   c.scrollTop=c.scrollHeight;
   var rem=trRemaining();document.getElementById('trMsgCount').textContent=rem==='∞'?'':rem+' msgs restantes';
 }
+// ── FECHA EFECTIVA CALCULATOR ──
+function trShowFechaEfectiva(){
+  var html = '<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:10px;padding:14px;margin-bottom:8px">';
+  html += '<div style="font-size:14px;font-weight:800;margin-bottom:6px">📅 Calculadora de Fecha Efectiva</div>';
+  html += '<div style="font-size:11px;color:var(--text-2);margin-bottom:10px">La <b>fecha efectiva</b> es el <b>próximo corte después de la última mensualidad pagada</b>. Esta es la fecha que debes poner en "Fecha de Finalización de Plazo" cuando tipificas como <b>Seguimiento - Aceleración Pendiente</b>.</div>';
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">';
+  html += '<div style="flex:1;min-width:120px"><label style="font-size:10px;font-weight:700;color:var(--text-2);display:block;margin-bottom:3px">Día de corte del cliente</label>';
+  html += '<select id="feCorte" class="field" style="font-size:12px;padding:6px">';
+  for(var i=1;i<=31;i++) html += '<option value="'+i+'">'+i+'</option>';
+  html += '</select></div>';
+  html += '<div style="flex:1;min-width:150px"><label style="font-size:10px;font-weight:700;color:var(--text-2);display:block;margin-bottom:3px">Fecha última mensualidad</label>';
+  html += '<input type="date" id="feUltima" class="field" style="font-size:12px;padding:6px"></div>';
+  html += '<button class="btn btn-primary" style="font-size:12px;padding:8px 16px;align-self:flex-end" onclick="calcFechaEfectiva()">Calcular</button>';
+  html += '</div>';
+  html += '<div id="feResultado" style="display:none;background:#E8F5E9;border:1px solid #A5D6A7;border-radius:8px;padding:10px;text-align:center"></div>';
+  html += '<div style="margin-top:8px;font-size:10px;color:var(--text-3)"><b>Ejemplo:</b> Corte día 15, última mensualidad 20/Feb/2026 → Fecha efectiva: 15/Mar/2026 (próximo corte después de la última cuota)</div>';
+  html += '</div>';
+  trChatMsgs.push({role:'bot',text:html});
+  trRenderChat();
+}
+
+function calcFechaEfectiva(){
+  var diaCorte = parseInt(document.getElementById('feCorte').value);
+  var ultimaStr = document.getElementById('feUltima').value;
+  if(!ultimaStr){alert('Selecciona la fecha de última mensualidad');return;}
+  var ultima = new Date(ultimaStr+'T12:00:00');
+  // Find next cut date after ultima
+  var year = ultima.getFullYear();
+  var month = ultima.getMonth(); // 0-based
+  // Try current month's cut date
+  var maxDias = new Date(year, month+1, 0).getDate();
+  var diaReal = Math.min(diaCorte, maxDias);
+  var corteMesActual = new Date(year, month, diaReal);
+  var fechaEfectiva;
+  if(corteMesActual > ultima){
+    fechaEfectiva = corteMesActual;
+  } else {
+    // Next month
+    var nextMonth = month + 1;
+    var nextYear = year;
+    if(nextMonth > 11){ nextMonth = 0; nextYear++; }
+    var maxDiasNext = new Date(nextYear, nextMonth+1, 0).getDate();
+    var diaRealNext = Math.min(diaCorte, maxDiasNext);
+    fechaEfectiva = new Date(nextYear, nextMonth, diaRealNext);
+  }
+  var meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var resultado = fechaEfectiva.getDate() + ' de ' + meses[fechaEfectiva.getMonth()] + ' del ' + fechaEfectiva.getFullYear();
+  var el = document.getElementById('feResultado');
+  el.style.display = 'block';
+  el.innerHTML = '<div style="font-size:10px;color:#2E7D32;font-weight:600">FECHA EFECTIVA DE RENOVACIÓN</div><div style="font-size:22px;font-weight:900;color:#1B5E20">📅 ' + resultado + '</div><div style="font-size:10px;color:#388E3C;margin-top:4px">Esta es la fecha que debes poner en "Fecha de Finalización de Plazo"</div>';
+}
+
+// ── LOG AI QUERIES (FIX 1: monitor what agents ask) ──
+async function trLogAIQuery(agentId, agentName, query){
+  if(!supabase) return;
+  try {
+    await supabase.from('ai_queries_log').insert({
+      agente_id: agentId,
+      agente_nombre: agentName,
+      query: query.substring(0, 500),
+      created_at: new Date().toISOString()
+    });
+  } catch(e){ console.log('Log error:', e); }
+}
+
 // ── Fetch agent data context from Supabase ──
 async function trFetchDataContext(msg, agentId, agentRol) {
   if (!supabase) return '';
@@ -6882,6 +7096,8 @@ async function trSendChat(){
   var sysPrompt = TR_KB.sysPrompt+'\nEl agente se llama '+n+'. Responde en español, práctico y directo.';
   if (dataCtx) sysPrompt += '\n\nTienes acceso a los datos reales del agente. Úsalos para responder con números concretos. Si detectas patrones de pérdida, da recomendaciones específicas basadas en los datos. No inventes datos, usa solo lo que se te proporciona.' + dataCtx;
   var reply=await trCallAI(sysPrompt,msg);
+  // Log the query for monitoring (FIX 1)
+  trLogAIQuery(agId, n, msg);
   trChatMsgs.push({role:'bot',text:reply});trLoading=false;trRenderChat();
 }
 
