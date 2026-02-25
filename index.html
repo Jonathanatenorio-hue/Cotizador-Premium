@@ -450,6 +450,8 @@ input.field:focus, select.field:focus { border-color: var(--att-blue); }
 .bottom-nav button.bnav-active{color:var(--att-blue);font-weight:700}
 .bottom-nav button .bnav-icon{font-size:18px;line-height:1}
 body{padding-bottom:60px}
+
+@keyframes trPulse { 0%{transform:scale(1)} 50%{transform:scale(1.05);box-shadow:0 0 12px rgba(255,152,0,0.4)} 100%{transform:scale(1)} }
 </style>
 </head>
 <body>
@@ -806,6 +808,21 @@ body{padding-bottom:60px}
         <span style="font-size:11px;color:var(--text-3)">a</span>
         <input type="date" class="field" id="hFilterHasta" onchange="renderHistorial()" style="width:auto;font-size:11px;padding:5px 8px">
         <button class="btn btn-secondary" onclick="document.getElementById('hFilterDesde').value='';document.getElementById('hFilterHasta').value='';renderHistorial()" style="font-size:10px;padding:4px 8px">✕ Limpiar</button>
+        <select class="field" id="hFilterSubEstatus" onchange="renderHistorial()" style="width:auto;min-width:140px;font-size:11px;padding:5px 8px">
+          <option value="all">Todas las sub-tipificaciones</option>
+          <option value="aceleracion">Aceleración pendiente</option>
+          <option value="espera_pago">En espera de pago</option>
+          <option value="falta_biometrico">Falta biométrico</option>
+          <option value="falta_ine">Falta INE</option>
+          <option value="falta_contrato">Falta contrato firmado</option>
+          <option value="renovo_otro">Renovó en otro lado</option>
+          <option value="no_responde">Ya no responde</option>
+          <option value="prefiere_tienda">Prefiere ir a tienda</option>
+          <option value="pago_rechazado">Pago rechazado</option>
+          <option value="desconfianza">Desconfianza trámite</option>
+          <option value="confirmada">Venta confirmada ✅</option>
+          <option value="no_confirmada">No confirmada ⚠️</option>
+        </select>
       </div>
       <div id="historialRoleFilters" style="display:none;gap:6px;flex-wrap:wrap">
         <select class="field" id="hFilterCentro" onchange="onHFilterCentroChange()" style="width:auto;min-width:120px;font-size:12px;padding:6px 8px">
@@ -1402,6 +1419,30 @@ setTimeout(function() { if (!supabase) { initSupabase(); } }, 1500);
 setTimeout(function() { if (!supabase) { initSupabase(); } }, 3000);
 setTimeout(function() { if (!supabase) { initSupabase(); console.log('Final supabase status:', !!supabase); } }, 5000);
 
+// ── VERSION CHECK ──
+var APP_VERSION = '2026.02.25.1';
+var _versionChecked = false;
+async function checkAppVersion() {
+  if (_versionChecked || !supabase) return;
+  try {
+    var { data } = await supabase.from('app_config').select('value').eq('key','app_version').maybeSingle();
+    if (data && data.value && data.value !== APP_VERSION) {
+      console.log('Version mismatch: local=' + APP_VERSION + ' server=' + data.value);
+      // Show brief update notice
+      var n = document.createElement('div');
+      n.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#009FDB;color:white;text-align:center;padding:10px;font-size:13px;font-weight:700;z-index:99999';
+      n.textContent = '🔄 Actualizando a nueva versión...';
+      document.body.appendChild(n);
+      setTimeout(function() { location.reload(true); }, 800);
+      return;
+    }
+    _versionChecked = true;
+  } catch(e) { console.log('Version check error:', e); }
+}
+// Check version after supabase connects
+setTimeout(function() { checkAppVersion(); }, 2000);
+setTimeout(function() { checkAppVersion(); }, 6000);
+
 async function doLogin() {
   var attuid = document.getElementById('loginAttuid').value.trim().toUpperCase();
   var pin = document.getElementById('loginPin').value.trim();
@@ -1967,7 +2008,7 @@ function showView(name, title) {
 
   const titles = {
     home: '', config: 'Mi Perfil', cotizar: 'Nueva Cotización',
-    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Norte',
+    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Norte', aiDashboard: 'Análisis IA',
   };
   headerTitle.textContent = title || titles[name] || '';
 
@@ -4032,6 +4073,12 @@ function renderHistorial() {
     });
   }
 
+  // Apply sub-estatus filter
+  var hSubEst = document.getElementById('hFilterSubEstatus') ? document.getElementById('hFilterSubEstatus').value : 'all';
+  if (hSubEst !== 'all') {
+    searchFiltered = searchFiltered.filter(function(c) { return c.sub_estatus === hSubEst; });
+  }
+
   filterRow.innerHTML = statuses.map(s => {
     const count = s === 'all' ? searchFiltered.length : searchFiltered.filter(c => c.estatus === s).length;
     const active = state.filterEstatus === s ? ' active' : '';
@@ -5180,8 +5227,23 @@ async function loadAiLimitForAdmin(){
 async function openAnalisisIA(){
   if(!supabase){alert('Sin conexión');return;}
   try{
-    // Load last 500 queries
-    var {data} = await supabase.from('ai_queries_log').select('*').order('created_at',{ascending:false}).limit(500);
+    // Role-based filtering
+    var rol = currentUser.rol;
+    var query = supabase.from('ai_queries_log').select('*').order('created_at',{ascending:false}).limit(1000);
+    
+    // Filter by role
+    if (rol === 'supervisor') {
+      var myAgents = (adminUsers||[]).filter(function(u){ return u.supervisor_id === currentUser.id; }).map(function(u){ return u.id; });
+      myAgents.push(currentUser.id);
+      query = query.in('agente_id', myAgents);
+    } else if (rol === 'coordinador') {
+      var myAgents = (adminUsers||[]).filter(function(u){ return u.coordinador_id === currentUser.id; }).map(function(u){ return u.id; });
+      myAgents.push(currentUser.id);
+      query = query.in('agente_id', myAgents);
+    }
+    // admin sees all
+
+    var {data} = await query;
     if(!data||data.length===0){alert('No hay consultas registradas aún.');return;}
 
     // Analytics
@@ -5189,112 +5251,114 @@ async function openAnalisisIA(){
     var today = getMexicoDateStr();
     var todayCount=0;
     data.forEach(function(q){
-      // Per agent
       var name = (q.agente_nombre||'Desconocido').split(' ').slice(0,2).join(' ');
       agentCounts[name]=(agentCounts[name]||0)+1;
-      // Per day
       var day = (q.created_at||'').substring(0,10);
       dayCounts[day]=(dayCounts[day]||0)+1;
       if(day===today) todayCount++;
-      // Ratings
       if(q.rating==='up') ratingUp++;
       else if(q.rating==='down') ratingDown++;
       else ratingNone++;
-      // Keyword extraction (simple)
       var words = (q.query||'').toLowerCase().replace(/[^a-záéíóúñü\s]/g,'').split(/\s+/);
-      var stopwords = ['que','como','de','el','la','los','las','un','una','y','en','es','por','para','con','del','al','se','no','me','mi','si','ya','le','lo','te','tu','su','hay','son','fue','ser','mas','pero','muy','o','a','e','i','u','cual','cuando','donde','quien','este','esta','esto','estas','estos','ese','esa','eso','hola','puede','puedo','hacer','tengo','tiene','tiene','tienen','saber','dime','quiero','necesito','pago','paga','cliente','plan','att'];
+      var stopwords = ['que','como','de','el','la','los','las','un','una','y','en','es','por','para','con','del','al','se','no','me','mi','si','ya','le','lo','te','tu','su','hay','son','fue','ser','mas','pero','muy','o','a','e','i','u','cual','cuando','donde','quien','este','esta','esto','estas','estos','ese','esa','eso','hola','puede','puedo','hacer','tengo','tiene','tienen','saber','dime','quiero','necesito','pago','paga','cliente','plan','att'];
       words.forEach(function(w){ if(w.length>3 && stopwords.indexOf(w)===-1) keywords[w]=(keywords[w]||0)+1; });
     });
 
-    // Top agents
     var topAgents = Object.keys(agentCounts).map(function(k){return{name:k,count:agentCounts[k]}}).sort(function(a,b){return b.count-a.count}).slice(0,10);
-    // Top keywords
     var topKeywords = Object.keys(keywords).map(function(k){return{word:k,count:keywords[k]}}).sort(function(a,b){return b.count-a.count}).slice(0,15);
-    // Days chart (last 7)
-    var last7 = [];
-    for(var d=6;d>=0;d--){var dt=new Date();dt.setDate(dt.getDate()-d);var ds=dt.toISOString().slice(0,10);last7.push({date:ds.substring(5),count:dayCounts[ds]||0});}
-    var maxDay = Math.max.apply(null,last7.map(function(d){return d.count}))||1;
-
     var totalRated = ratingUp+ratingDown;
     var satPct = totalRated>0 ? Math.round(ratingUp/totalRated*100) : 0;
-
-    // Identify training opportunities (top negative keywords)
     var opportunities = topKeywords.slice(0,5).map(function(k){return k.word});
 
-    // Build modal
-    var h='<div class="modal-overlay" onclick="if(event.target===this)this.remove()" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">';
-    h+='<div style="background:var(--bg-card);border-radius:16px;width:95%;max-width:800px;padding:24px;margin:20px auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">';
+    // Navigate to full-screen view
+    var aiView = document.getElementById('view-aiDashboard');
+    if (!aiView) {
+      // Create the view container
+      var viewHtml = '<div id="viewAiDashboard" class="view"><div class="container" id="aiDashContent"></div></div>';
+      document.querySelector('.app').insertAdjacentHTML('beforeend', viewHtml);
+      aiView = document.getElementById('viewAiDashboard');
+    }
 
+    var h = '';
     // Header
-    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div><div style="font-size:18px;font-weight:900">🧠 Análisis de Consultas IA</div><div style="font-size:11px;color:var(--text-3)">'+data.length+' consultas analizadas</div></div><button onclick="this.closest(\'.modal-overlay\').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--text-3)">✕</button></div>';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:16px 0 8px">';
+    h += '<div><div style="font-size:20px;font-weight:900">🧠 Análisis de Consultas IA</div>';
+    h += '<div style="font-size:12px;color:var(--text-3)">'+data.length+' consultas · '+topAgents.length+' agentes activos</div></div>';
+    h += '<button class="btn btn-secondary" onclick="showView(\'historial\')" style="font-size:11px;padding:6px 14px">← Volver</button></div>';
 
     // KPI Cards
-    h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">';
-    h+='<div style="background:#E3F2FD;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900;color:#1565C0">'+todayCount+'</div><div style="font-size:9px;font-weight:700;color:#1565C0">HOY</div></div>';
-    h+='<div style="background:#E8F5E9;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900;color:#2E7D32">'+satPct+'%</div><div style="font-size:9px;font-weight:700;color:#2E7D32">SATISFACCIÓN</div></div>';
-    h+='<div style="background:#FFF3E0;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900;color:#E65100">'+ratingDown+'</div><div style="font-size:9px;font-weight:700;color:#E65100">👎 NEGATIVAS</div></div>';
-    h+='<div style="background:#F3E8FF;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900;color:#7B1FA2">'+topAgents.length+'</div><div style="font-size:9px;font-weight:700;color:#7B1FA2">AGENTES ACTIVOS</div></div>';
-    h+='</div>';
+    h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">';
+    h += '<div class="section" style="padding:14px;text-align:center;border-left:3px solid #1565C0"><div style="font-size:28px;font-weight:900;color:#1565C0">'+todayCount+'</div><div style="font-size:10px;font-weight:700;color:#1565C0">CONSULTAS HOY</div></div>';
+    h += '<div class="section" style="padding:14px;text-align:center;border-left:3px solid #2E7D32"><div style="font-size:28px;font-weight:900;color:#2E7D32">'+satPct+'%</div><div style="font-size:10px;font-weight:700;color:#2E7D32">SATISFACCIÓN</div></div>';
+    h += '<div class="section" style="padding:14px;text-align:center;border-left:3px solid #E65100"><div style="font-size:28px;font-weight:900;color:#E65100">'+ratingDown+'</div><div style="font-size:10px;font-weight:700;color:#E65100">👎 NEGATIVAS</div></div>';
+    h += '<div class="section" style="padding:14px;text-align:center;border-left:3px solid #7B1FA2"><div style="font-size:28px;font-weight:900;color:#7B1FA2">'+ratingNone+'</div><div style="font-size:10px;font-weight:700;color:#7B1FA2">SIN CALIFICAR</div></div>';
+    h += '</div>';
 
-    // Usage chart with range controls
-    h+='<div style="background:var(--surface-2);border-radius:10px;padding:14px;margin-bottom:12px">';
-    h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">';
-    h+='<div style="font-size:12px;font-weight:700">📊 Consultas por día</div>';
-    h+='<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">';
-    h+='<button class="btn btn-primary" style="font-size:9px;padding:3px 8px" onclick="aiChartRange(7)">7 días</button>';
-    h+='<button class="btn btn-secondary" style="font-size:9px;padding:3px 8px" onclick="aiChartRange(15)">15 días</button>';
-    h+='<button class="btn btn-secondary" style="font-size:9px;padding:3px 8px" onclick="aiChartRange(30)">30 días</button>';
-    h+='<button class="btn btn-secondary" style="font-size:9px;padding:3px 8px" onclick="aiChartRange(0)">Todo</button>';
-    h+='<span style="font-size:9px;color:var(--text-3);margin:0 2px">|</span>';
-    h+='<input type="date" id="aiChartDesde" style="font-size:9px;padding:2px 4px;border:1px solid var(--border);border-radius:4px">';
-    h+='<span style="font-size:9px;color:var(--text-3)">a</span>';
-    h+='<input type="date" id="aiChartHasta" style="font-size:9px;padding:2px 4px;border:1px solid var(--border);border-radius:4px">';
-    h+='<button class="btn btn-secondary" style="font-size:9px;padding:3px 8px" onclick="aiChartCustomRange()">Ver</button>';
-    h+='</div></div>';
-    h+='<div id="aiChartArea" style="overflow-x:auto"></div>';
-    h+='</div>';
+    // Chart area
+    h += '<div class="section" style="padding:14px;margin-bottom:12px">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">';
+    h += '<div style="font-size:13px;font-weight:800">📊 Consultas por día</div>';
+    h += '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">';
+    h += '<button class="btn btn-primary" style="font-size:10px;padding:4px 10px" onclick="aiChartRange(7)">7d</button>';
+    h += '<button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="aiChartRange(15)">15d</button>';
+    h += '<button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="aiChartRange(30)">30d</button>';
+    h += '<button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="aiChartRange(0)">Todo</button>';
+    h += '<span style="color:var(--text-3)">|</span>';
+    h += '<input type="date" id="aiChartDesde" class="field" style="font-size:10px;padding:4px 6px;width:auto">';
+    h += '<span style="font-size:10px;color:var(--text-3)">a</span>';
+    h += '<input type="date" id="aiChartHasta" class="field" style="font-size:10px;padding:4px 6px;width:auto">';
+    h += '<button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="aiChartCustomRange()">Ver</button>';
+    h += '</div></div>';
+    h += '<div id="aiChartArea" style="overflow-x:auto"></div>';
+    h += '</div>';
 
-    // Two columns: Top agents + Top topics
-    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">';
+    // Two columns: Agents + Topics
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">';
 
     // Top agents
-    h+='<div style="background:var(--surface-2);border-radius:10px;padding:14px">';
-    h+='<div style="font-size:12px;font-weight:700;margin-bottom:8px">👤 Agentes que más consultan</div>';
+    h += '<div class="section" style="padding:14px">';
+    h += '<div style="font-size:13px;font-weight:800;margin-bottom:10px">👤 Agentes que más consultan</div>';
     topAgents.forEach(function(a,i){
-      var pct=a.count/topAgents[0].count*100;
-      h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:10px;font-weight:700;width:16px;color:var(--text-3)">'+(i+1)+'</span><div style="flex:1"><div style="font-size:10px;font-weight:600">'+a.name+'</div><div style="background:var(--border);border-radius:2px;height:4px;margin-top:2px"><div style="background:'+(i<3?'#DC3545':'var(--att-blue)')+';height:100%;border-radius:2px;width:'+pct+'%"></div></div></div><span style="font-size:11px;font-weight:800;color:'+(i<3?'#DC3545':'var(--text-2)')+'">'+a.count+'</span></div>';
+      var pct = a.count/topAgents[0].count*100;
+      var isHigh = i < 3;
+      h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+      h += '<span style="font-size:11px;font-weight:800;width:20px;text-align:right;color:'+(isHigh?'#DC3545':'var(--text-3)')+'">'+( i+1)+'</span>';
+      h += '<div style="flex:1"><div style="font-size:11px;font-weight:700">'+a.name+'</div>';
+      h += '<div style="background:var(--border);border-radius:3px;height:6px;margin-top:2px"><div style="background:'+(isHigh?'#DC3545':'var(--att-blue)')+';height:100%;border-radius:3px;width:'+pct+'%;transition:width 0.3s"></div></div></div>';
+      h += '<span style="font-size:13px;font-weight:900;color:'+(isHigh?'#DC3545':'var(--text-1)')+'">'+a.count+'</span></div>';
     });
-    h+='</div>';
+    h += '</div>';
 
-    // Top keywords/topics
-    h+='<div style="background:var(--surface-2);border-radius:10px;padding:14px">';
-    h+='<div style="font-size:12px;font-weight:700;margin-bottom:8px">🔑 Temas más consultados</div>';
-    h+='<div style="display:flex;flex-wrap:wrap;gap:4px">';
+    // Topics
+    h += '<div class="section" style="padding:14px">';
+    h += '<div style="font-size:13px;font-weight:800;margin-bottom:10px">🔑 Temas más consultados</div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
     topKeywords.forEach(function(k){
       var size = Math.min(14, Math.max(10, 8 + k.count));
-      h+='<span style="background:var(--bg-main);border:1px solid var(--border);border-radius:12px;padding:3px 8px;font-size:'+size+'px;font-weight:600;color:var(--text-2)">'+k.word+' <span style="font-size:9px;color:var(--text-3)">'+k.count+'</span></span>';
+      h += '<span style="background:var(--bg-main);border:1px solid var(--border);border-radius:16px;padding:4px 10px;font-size:'+size+'px;font-weight:600;color:var(--text-2)">'+k.word+' <span style="font-size:9px;color:var(--text-3)">'+k.count+'</span></span>';
     });
-    h+='</div>';
-    h+='<div style="margin-top:10px;background:#FFF3E0;border-radius:8px;padding:8px;font-size:10px;color:#E65100"><b>💡 Áreas de oportunidad:</b> Los temas más repetidos sugieren necesidad de capacitación en: <b>'+opportunities.join(', ')+'</b></div>';
-    h+='</div></div>';
+    h += '</div>';
+    if (opportunities.length > 0) {
+      h += '<div style="margin-top:12px;background:#FFF3E0;border-radius:8px;padding:10px;font-size:11px;color:#E65100"><b>💡 Áreas de oportunidad:</b> '+opportunities.join(', ')+'</div>';
+    }
+    h += '</div></div>';
 
-    // Tabs for detail view
-    h+='<div style="display:flex;gap:4px;margin-bottom:8px">';
-    h+='<button id="aiTabAll" class="btn btn-primary" style="font-size:10px;padding:4px 10px" onclick="aiFilterTab(\'all\')">Todas ('+data.length+')</button>';
-    h+='<button id="aiTabDown" class="btn btn-secondary" style="font-size:10px;padding:4px 10px;color:#DC3545;border-color:#DC3545" onclick="aiFilterTab(\'down\')">👎 Negativas ('+ratingDown+')</button>';
-    h+='<button id="aiTabNone" class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="aiFilterTab(\'none\')">Sin rating ('+ratingNone+')</button>';
-    h+='</div>';
+    // Tabs
+    h += '<div style="display:flex;gap:6px;margin-bottom:8px">';
+    h += '<button id="aiTabAll" class="btn btn-primary" style="font-size:11px;padding:5px 14px" onclick="aiFilterTab(\'all\')">Todas ('+data.length+')</button>';
+    h += '<button id="aiTabDown" class="btn btn-secondary" style="font-size:11px;padding:5px 14px;color:#DC3545;border-color:#DC3545" onclick="aiFilterTab(\'down\')">👎 Negativas ('+ratingDown+')</button>';
+    h += '<button id="aiTabNone" class="btn btn-secondary" style="font-size:11px;padding:5px 14px" onclick="aiFilterTab(\'none\')">Sin rating ('+ratingNone+')</button>';
+    h += '<button id="aiTabUp" class="btn btn-secondary" style="font-size:11px;padding:5px 14px;color:#10B981;border-color:#10B981" onclick="aiFilterTab(\'up\')">👍 Positivas ('+ratingUp+')</button>';
+    h += '</div>';
 
     // Detail table
-    h+='<div id="aiLogTable" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">';
-    h+=buildAiLogTable(data, 'all');
-    h+='</div>';
-
-    h+='</div></div>';
+    h += '<div class="section" style="padding:0;overflow:hidden">';
+    h += '<div id="aiLogTable">'+buildAiLogTable(data, 'all')+'</div>';
+    h += '</div>';
 
     window._aiLogData = data;
-    document.body.insertAdjacentHTML('beforeend',h);
-    // Render initial 7-day chart
+    document.getElementById('aiDashContent').innerHTML = h;
+    showView('aiDashboard');
     setTimeout(function(){ aiChartRange(7); }, 50);
   }catch(e){alert('Error: '+e.message);}
 }
@@ -5303,22 +5367,38 @@ function buildAiLogTable(data, filter){
   var filtered = data;
   if(filter==='down') filtered = data.filter(function(q){return q.rating==='down'});
   if(filter==='none') filtered = data.filter(function(q){return !q.rating});
-  var h='<table style="width:100%;font-size:10px;border-collapse:collapse"><tr style="background:var(--bg-main);position:sticky;top:0"><th style="padding:6px;text-align:left;border-bottom:2px solid var(--border)">👤</th><th style="padding:6px;text-align:left;border-bottom:2px solid var(--border)">Consulta</th><th style="padding:6px;text-align:center;border-bottom:2px solid var(--border)">⭐</th><th style="padding:6px;text-align:right;border-bottom:2px solid var(--border)">Fecha</th></tr>';
-  filtered.slice(0,100).forEach(function(q){
+  if(filter==='up') filtered = data.filter(function(q){return q.rating==='up'});
+  var h = '';
+  filtered.slice(0,100).forEach(function(q, idx){
     var fecha = new Date(q.created_at).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
     var rIcon = q.rating==='up'?'👍':q.rating==='down'?'👎':'—';
-    var rColor = q.rating==='up'?'#E8F5E9':q.rating==='down'?'#FEE2E2':'transparent';
-    h+='<tr style="background:'+rColor+'"><td style="padding:4px 6px;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap">'+((q.agente_nombre||'').split(' ').slice(0,2).join(' '))+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--border)">'+q.query+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:center">'+rIcon+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--text-3);text-align:right">'+fecha+'</td></tr>';
+    var rBg = q.rating==='up'?'#F0FDF4':q.rating==='down'?'#FEF2F2':'var(--bg-card)';
+    var rBorder = q.rating==='down'?'border-left:3px solid #DC3545':q.rating==='up'?'border-left:3px solid #10B981':'border-left:3px solid var(--border)';
+    h += '<div style="padding:10px 14px;'+rBorder+';background:'+rBg+';border-bottom:1px solid var(--border);cursor:pointer" onclick="this.querySelector(\'.aiConvoDetail\').style.display=this.querySelector(\'.aiConvoDetail\').style.display===\'none\'?\'block\':\'none\'">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center">';
+    h += '<div style="flex:1;min-width:0"><span style="font-size:11px;font-weight:700;color:var(--text-1)">'+(q.agente_nombre||'').split(' ').slice(0,2).join(' ')+'</span>';
+    h += ' <span style="font-size:10px;color:var(--text-3)">· '+fecha+'</span>';
+    h += ' <span style="font-size:12px;margin-left:4px">'+rIcon+'</span></div>';
+    h += '<span style="font-size:10px;color:var(--att-blue)">▼</span></div>';
+    h += '<div style="font-size:11px;color:var(--text-2);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">💬 '+q.query+'</div>';
+    // Expandable conversation detail
+    h += '<div class="aiConvoDetail" style="display:none;margin-top:8px">';
+    h += '<div style="background:#E3F2FD;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:11px"><b>🙋 Agente:</b> '+q.query+'</div>';
+    if (q.response) {
+      h += '<div style="background:#F5F5F5;border-radius:8px;padding:8px 10px;font-size:11px;max-height:200px;overflow-y:auto"><b>🤖 IA:</b><div style="margin-top:4px;white-space:pre-wrap;word-break:break-word">'+q.response+'</div></div>';
+    } else {
+      h += '<div style="background:#F5F5F5;border-radius:8px;padding:8px 10px;font-size:11px;color:var(--text-3)"><i>Respuesta no registrada (anterior al cambio)</i></div>';
+    }
+    h += '</div></div>';
   });
-  if(filtered.length===0) h+='<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--text-3)">No hay consultas con este filtro</td></tr>';
-  h+='</table>';
+  if(filtered.length===0) h += '<div style="padding:20px;text-align:center;color:var(--text-3)">No hay consultas con este filtro</div>';
   return h;
 }
 
 function aiFilterTab(filter){
-  ['all','down','none'].forEach(function(f){
-    var btn=document.getElementById('aiTab'+(f==='all'?'All':f==='down'?'Down':'None'));
-    if(btn){btn.className=f===filter?'btn btn-primary':'btn btn-secondary';btn.style.fontSize='10px';btn.style.padding='4px 10px';}
+  ['all','down','none','up'].forEach(function(f){
+    var btn=document.getElementById('aiTab'+(f==='all'?'All':f==='down'?'Down':f==='up'?'Up':'None'));
+    if(btn){btn.className=f===filter?'btn btn-primary':'btn btn-secondary';btn.style.fontSize='11px';btn.style.padding='5px 14px';}
   });
   document.getElementById('aiLogTable').innerHTML = buildAiLogTable(window._aiLogData||[], filter);
 }
@@ -7676,6 +7756,20 @@ async function trCallAIMulti(sys, msgs) {
 }
 
 // ── Tab switching ──
+function trPauseTimer() {
+  if (trTimerInterval && trSessionStart) {
+    trSessionElapsedBefore += Math.floor((new Date() - trSessionStart) / 1000);
+    clearInterval(trTimerInterval);
+    trTimerInterval = null;
+    trSessionStart = null;
+  }
+}
+function trResumeTimer() {
+  if (!trTimerInterval && !trSessionBlocked && trSessionElapsedBefore > 0) {
+    trSessionStart = new Date();
+    trStartSessionTimer();
+  }
+}
 function trTab(tab){
   // Block IA tabs when time expired (guía always allowed)
   var blockedTabs = ['chat','roleplay','exercises','eval'];
@@ -7684,6 +7778,9 @@ function trTab(tab){
     trTab('guia');
     return;
   }
+  // Pause timer on guía, resume on interactive tabs
+  if (tab === 'guia') { trPauseTimer(); }
+  else if (blockedTabs.indexOf(tab) !== -1 && trSessionElapsedBefore > 0) { trResumeTimer(); }
   ['Chat','Guia','Roleplay','Exercises','Eval','Metrics'].forEach(function(t){
     var id=t.charAt(0).toLowerCase()+t.slice(1);
     var el=document.getElementById('tr'+t);
@@ -7692,6 +7789,15 @@ function trTab(tab){
     if(btn){btn.style.background=id===tab?'var(--att-blue)':'transparent';btn.style.color=id===tab?'white':'var(--text-2)'}
   });
   if(tab==='chat'&&trChatMsgs.length===0)trInitChat();
+  if(tab==='metrics'&&(currentUser.rol==='supervisor'||currentUser.rol==='coordinador'||currentUser.rol==='admin')){
+    setTimeout(function(){
+      var mc=document.getElementById('trMetrics');
+      if(mc&&!document.getElementById('trAnalyticsBtns')){
+        var bh='<div id="trAnalyticsBtns" style="display:flex;gap:8px;margin-bottom:12px"><button class="btn btn-primary" onclick="openAnalisisIA()" style="font-size:12px;padding:8px 16px">🧠 Análisis IA</button><button class="btn btn-secondary" onclick="openCompetencias()" style="font-size:12px;padding:8px 16px">📊 Competencias</button></div>';
+        mc.insertAdjacentHTML('afterbegin',bh);
+      }
+    },100);
+  }
   if(tab==='roleplay')trRenderScenarios();
   if(tab==='exercises')trRenderExercises();
   if(tab==='metrics')trLoadMetrics();
@@ -7715,7 +7821,8 @@ function trRenderChat(){
     var cls=m.role==='user'?'tr-msg-user':'tr-msg-bot';
     var html='<div class="'+cls+'">'+m.text.split('\n').map(function(l){return'<div>'+l+'</div>'}).join('');
     if(m.role==='bot' && m.logId){
-      html+='<div id="rate_'+m.logId+'" style="margin-top:6px;padding-top:4px;border-top:1px solid rgba(0,0,0,0.06);display:flex;gap:6px;align-items:center"><span style="font-size:9px;color:var(--text-3)">¿Te sirvió?</span><button onclick="trRateQuery('+m.logId+',\'up\')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px" onmouseover="this.style.background=\'#E8F5E9\'" onmouseout="this.style.background=\'none\'">👍</button><button onclick="trRateQuery('+m.logId+',\'down\')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px" onmouseover="this.style.background=\'#FEE2E2\'" onmouseout="this.style.background=\'none\'">👎</button></div>';
+      var isPending = trPendingRatingId === m.logId;
+      html+='<div id="rate_'+m.logId+'" style="margin-top:6px;padding:'+(isPending?'8px 10px':'4px 0')+';border-top:1px solid rgba(0,0,0,0.06);display:flex;gap:8px;align-items:center;'+(isPending?'background:#FFF8E1;border-radius:8px;border:1px solid #FFE082':'')+'"><span style="font-size:'+(isPending?'11':'9')+'px;color:'+(isPending?'#E65100':'var(--text-3)')+';font-weight:'+(isPending?'700':'400')+'">'+(isPending?'⚡ Califica para continuar:':'¿Te sirvió?')+'</span><button onclick="trRateQuery('+m.logId+',\'up\')" style="background:'+(isPending?'#E8F5E9':'none')+';border:'+(isPending?'1px solid #86EFAC':'none')+';cursor:pointer;font-size:'+(isPending?'18':'14')+'px;padding:'+(isPending?'4px 12px':'2px 4px')+';border-radius:6px">👍</button><button onclick="trRateQuery('+m.logId+',\'down\')" style="background:'+(isPending?'#FEE2E2':'none')+';border:'+(isPending?'1px solid #FECACA':'none')+';cursor:pointer;font-size:'+(isPending?'18':'14')+'px;padding:'+(isPending?'4px 12px':'2px 4px')+';border-radius:6px">👎</button></div>';
     }
     html+='</div>';
     return html;
@@ -7808,13 +7915,14 @@ function calcFechaEfectivaInline(folio){
 }
 
 // ── LOG AI QUERIES (FIX 1: monitor what agents ask) ──
-async function trLogAIQuery(agentId, agentName, query){
+async function trLogAIQuery(agentId, agentName, query, response){
   if(!supabase) return null;
   try {
     var { data } = await supabase.from('ai_queries_log').insert({
       agente_id: agentId,
       agente_nombre: agentName,
       query: query.substring(0, 500),
+      response: (response||'').substring(0, 2000),
       created_at: new Date().toISOString()
     }).select('id').single();
     return data ? data.id : null;
@@ -7826,6 +7934,12 @@ async function trRateQuery(logId, rating) {
     await supabase.from('ai_queries_log').update({ rating: rating }).eq('id', logId);
     var el = document.getElementById('rate_'+logId);
     if (el) el.innerHTML = rating === 'up' ? '<span style="color:#10B981;font-size:11px">✅ Gracias</span>' : '<span style="color:#F59E0B;font-size:11px">📝 Registrado</span>';
+    // Unlock chat
+    if (trPendingRatingId === logId) {
+      trPendingRatingId = null;
+      var lockBanner = document.getElementById('trRateLock');
+      if (lockBanner) lockBanner.remove();
+    }
   } catch(e) { console.log('Rate error:', e); }
 }
 
@@ -7933,6 +8047,12 @@ async function trFetchDataContext(msg, agentId, agentRol) {
 
 async function trSendChat(){
   var inp=document.getElementById('trChatInput'),msg=inp.value.trim();if(!msg||trLoading)return;
+  // Block if pending rating
+  if (trPendingRatingId) {
+    var rateEl = document.getElementById('rate_'+trPendingRatingId);
+    if (rateEl) { rateEl.style.animation = 'trPulse 0.5s ease 2'; setTimeout(function(){ rateEl.style.animation=''; }, 1100); }
+    return;
+  }
   trChatMsgs.push({role:'user',text:msg});inp.value='';trLoading=true;trRenderChat();
   var n=state.agente?state.agente.nombre:'Agente';
   var agId=state.agente?state.agente.id:'';
@@ -7943,7 +8063,7 @@ async function trSendChat(){
   if (dataCtx) sysPrompt += '\n\nTienes acceso a los datos reales del agente. Úsalos para responder con números concretos. Si detectas patrones de pérdida, da recomendaciones específicas basadas en los datos. No inventes datos, usa solo lo que se te proporciona.' + dataCtx;
   var reply=await trCallAI(sysPrompt,msg);
   // Log the query and get ID for rating
-  var logId = await trLogAIQuery(agId, n, msg);
+  var logId = await trLogAIQuery(agId, n, msg, reply);
   // Detect topic and suggest practice
   var matchedEx = trMatchExercise(msg);
   var matchedRp = trMatchRoleplay(msg);
@@ -7956,7 +8076,10 @@ async function trSendChat(){
     practiceHtml += '<button class="btn" style="font-size:10px;padding:4px 10px;background:#10B981;color:white;border:none;border-radius:6px" onclick="trStartQuiz(\''+msg.replace(/'/g,"\\'")+'\')">📝 Quiz rápido</button>';
     practiceHtml += '</div>';
   }
-  trChatMsgs.push({role:'bot',text:reply+practiceHtml,logId:logId});trLoading=false;trRenderChat();
+  trChatMsgs.push({role:'bot',text:reply+practiceHtml,logId:logId});trLoading=false;
+  // Set pending rating for agents
+  if (logId && state.agente && state.agente.rol === 'agente') trPendingRatingId = logId;
+  trRenderChat();
 }
 
 // ── TOPIC MATCHING ──
@@ -8100,7 +8223,18 @@ async function trSaveProgress(type, topic, result) {
 async function openCompetencias() {
   if (!supabase) { alert('Sin conexión'); return; }
   try {
-    var { data } = await supabase.from('agent_competencies').select('*').order('created_at',{ascending:false}).limit(1000);
+    var cQuery = supabase.from('agent_competencies').select('*').order('created_at',{ascending:false}).limit(1000);
+    // Role filter
+    if (currentUser.rol === 'supervisor') {
+      var myAgents = (adminUsers||[]).filter(function(u){ return u.supervisor_id === currentUser.id; }).map(function(u){ return u.id; });
+      myAgents.push(currentUser.id);
+      cQuery = cQuery.in('agent_id', myAgents);
+    } else if (currentUser.rol === 'coordinador') {
+      var myAgents = (adminUsers||[]).filter(function(u){ return u.coordinador_id === currentUser.id; }).map(function(u){ return u.id; });
+      myAgents.push(currentUser.id);
+      cQuery = cQuery.in('agent_id', myAgents);
+    }
+    var { data } = await cQuery;
     if (!data || data.length === 0) { alert('No hay datos de competencias aún. Los agentes deben completar ejercicios, roleplay o quizzes.'); return; }
 
     // Group by agent
@@ -8553,11 +8687,12 @@ async function trRenderLevelBar() {
 }
 
 // ── SESSION TIMER ──
-var trSessionStart = null, trTimerInterval = null, TR_SESSION_LIMIT = 20; // minutes
+var trSessionStart = null, trTimerInterval = null, TR_SESSION_LIMIT = 20, trSessionElapsedBefore = 0; // minutes
 
 function trStartSessionTimer() {
-  if (trSessionStart) return; // already running
-  trSessionStart = new Date();
+  if (trTimerInterval) return; // already running
+  if (!trSessionStart) trSessionStart = new Date();
+  trSessionElapsedBefore = trSessionElapsedBefore || 0;
   var timerBar = document.getElementById('trTimerBar');
   if (timerBar) timerBar.style.display = 'flex';
   // Load limit from config
@@ -8570,7 +8705,7 @@ function trStartSessionTimer() {
   }
   if (trTimerInterval) clearInterval(trTimerInterval);
   trTimerInterval = setInterval(function() {
-    var elapsed = Math.floor((new Date() - trSessionStart) / 1000);
+    var elapsed = trSessionElapsedBefore + Math.floor((new Date() - trSessionStart) / 1000);
     var mm = String(Math.floor(elapsed/60)).padStart(2,'0');
     var ss = String(elapsed%60).padStart(2,'0');
     var el = document.getElementById('trTimerCount');
@@ -8585,8 +8720,8 @@ function trStartSessionTimer() {
     if (elapsedMin >= TR_SESSION_LIMIT) {
       if (timerBar) { timerBar.style.background = '#FEE2E2'; timerBar.style.borderColor = '#EF4444'; }
       if (el) el.style.color = '#DC3545';
-      // Block if not admin
-      if (state.agente && state.agente.rol !== 'admin' && state.agente.rol !== 'coordinador' && state.agente.rol !== 'supervisor') {
+      // Block ONLY for agente role
+      if (state.agente && state.agente.rol === 'agente') {
         trBlockSession();
       }
     }
@@ -8610,6 +8745,7 @@ function trBlockSession() {
   trSessionStart = null;
 }
 var trSessionBlocked = false;
+var trPendingRatingId = null; // Block chat until rated
 
 // Hook into showView for auto-init
 var _origShowView = showView;
