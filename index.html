@@ -634,8 +634,9 @@ body{padding-bottom:60px}
         <div class="form-group">
           <label class="field-label">Teléfono (10 dígitos) *</label>
           <input class="field" id="cliTelefono" placeholder="10 dígitos" maxlength="10" pattern="[0-9]{10}" inputmode="numeric"
-            oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,10); validatePhone(this)">
+            oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,10); validatePhone(this)" onblur="checkDuplicatePhone(this.value)">
           <span class="field-hint" id="phoneHint" style="display:none;font-size:11px;color:var(--danger)">Debe ser exactamente 10 dígitos</span>
+          <span id="phoneDupHint" style="display:none;font-size:11px;color:#E65100;background:#FFF3E0;padding:4px 8px;border-radius:6px;margin-top:4px;display:none"></span>
         </div>
         <div class="form-group">
           <label class="field-label">Email *</label>
@@ -2461,10 +2462,30 @@ function validatePhone(input) {
   if (val.length > 0 && val.length !== 10) {
     hint.style.display = 'block';
     input.style.borderColor = 'var(--danger)';
+  } else if (val.length === 10 && parseInt(val) < 2000000000) {
+    hint.textContent = 'El número debe iniciar con 2-9';
+    hint.style.display = 'block';
+    input.style.borderColor = 'var(--danger)';
   } else {
+    hint.textContent = 'Debe ser exactamente 10 dígitos';
     hint.style.display = 'none';
     input.style.borderColor = '';
   }
+}
+
+async function checkDuplicatePhone(tel) {
+  var dupHint = document.getElementById('phoneDupHint');
+  if (!dupHint) return;
+  dupHint.style.display = 'none';
+  if (!tel || tel.length !== 10 || !supabase) return;
+  try {
+    var { data } = await supabase.from('cotizaciones').select('folio, cliente_nombre, estatus, created_at').eq('cliente_telefono', tel).neq('estatus','perdida').order('created_at',{ascending:false}).limit(3);
+    if (data && data.length > 0) {
+      var lista = data.map(function(d){ return d.folio + ' · ' + d.cliente_nombre + ' (' + d.estatus + ')'; }).join('<br>');
+      dupHint.innerHTML = '⚠️ <b>Teléfono ya existe en:</b><br>' + lista;
+      dupHint.style.display = 'block';
+    }
+  } catch(e) {}
 }
 
 function removeItem(idx) {
@@ -6460,8 +6481,11 @@ async function renderInforme() {
 
   var fecha = document.getElementById('infFecha').value;
   if (!fecha) return;
-  var fechaStart = fecha + 'T00:00:00';
-  var fechaEnd = fecha + 'T23:59:59';
+  // Adjust to Mexico timezone (UTC-6)
+  var fechaStart = fecha + 'T06:00:00+00:00';
+  var fechaEndDate = new Date(fecha + 'T06:00:00');
+  fechaEndDate.setDate(fechaEndDate.getDate() + 1);
+  var fechaEnd = fechaEndDate.toISOString().split('T')[0] + 'T05:59:59+00:00';
 
   try {
     // All cotizaciones for the day (created)
@@ -6669,8 +6693,8 @@ async function infRenderRango(desde, hasta) {
   var el = document.getElementById('informeContent');
   el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3)">Generando informe del ' + desde + ' al ' + hasta + '...</div>';
   try {
-    var { data: creadas } = await supabase.from('cotizaciones').select('*, cotizacion_items(*)').gte('created_at', desde+'T00:00:00').lte('created_at', hasta+'T23:59:59');
-    var { data: actualizadas } = await supabase.from('cotizaciones').select('*').gte('updated_at', desde+'T00:00:00').lte('updated_at', hasta+'T23:59:59');
+    var { data: creadas } = await supabase.from('cotizaciones').select('*, cotizacion_items(*)').gte('created_at', desde+'T06:00:00+00:00').lte('created_at', hasta+'T06:00:00+00:00').order('created_at',{ascending:false});
+    var { data: actualizadas } = await supabase.from('cotizaciones').select('*').gte('updated_at', desde+'T06:00:00+00:00').lte('updated_at', hasta+'T06:00:00+00:00');
     var { data: allUsers } = await supabase.from('usuarios').select('id, nombre, attuid, rol');
     var userMap = {}; (allUsers||[]).forEach(function(u){ userMap[u.id] = u; });
     creadas = creadas || []; actualizadas = actualizadas || [];
