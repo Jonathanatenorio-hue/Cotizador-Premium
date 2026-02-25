@@ -711,6 +711,13 @@ body{padding-bottom:60px}
   <div class="container">
     <div class="section" style="padding:14px;margin-bottom:8px">
       <input class="field" id="historialSearch" placeholder="🔍 Buscar por nombre, teléfono o folio..." oninput="renderHistorial()" style="width:100%;margin-bottom:8px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <label style="font-size:11px;font-weight:600;color:var(--text-3)">📅 Fecha:</label>
+        <input type="date" class="field" id="hFilterDesde" onchange="renderHistorial()" style="width:auto;font-size:11px;padding:5px 8px">
+        <span style="font-size:11px;color:var(--text-3)">a</span>
+        <input type="date" class="field" id="hFilterHasta" onchange="renderHistorial()" style="width:auto;font-size:11px;padding:5px 8px">
+        <button class="btn btn-secondary" onclick="document.getElementById('hFilterDesde').value='';document.getElementById('hFilterHasta').value='';renderHistorial()" style="font-size:10px;padding:4px 8px">✕ Limpiar</button>
+      </div>
       <div id="historialRoleFilters" style="display:none;gap:6px;flex-wrap:wrap">
         <select class="field" id="hFilterCentro" onchange="onHFilterCentroChange()" style="width:auto;min-width:120px;font-size:12px;padding:6px 8px">
           <option value="all">Todos los centros</option>
@@ -2755,7 +2762,16 @@ async function generarCotizacion() {
     document.getElementById('searchInput').value = '';
     document.getElementById('deviceResults').innerHTML = '';
 
-    alert(isEditing ? '✅ Cotización ' + folio + ' actualizada.' : '✅ Cotización ' + folio + ' generada y guardada.');
+    // Show success with WhatsApp option (FIX 9)
+    var telCliente = cotizacion.cliente.telefono;
+    var wa = cotizacion.ejecutivo ? cotizacion.ejecutivo.whatsapp : '';
+    var msgParts = ['Hola ' + cotizacion.cliente.nombre + ', soy ' + (cotizacion.ejecutivo ? cotizacion.ejecutivo.nombre : '') + ' de AT&T.'];
+    msgParts.push('Te envío tu cotización ' + cotizacion.folio + '.');
+    cotizacion.items.forEach(function(it){ msgParts.push('• ' + it.planName + (it.equipoNombre ? ' + ' + it.equipoNombre : '')); });
+    msgParts.push('¿Tienes alguna duda? ¡Con gusto te ayudo!');
+    var waMsg = msgParts.join('\n');
+    var waUrl = 'https://wa.me/52' + telCliente + '?text=' + encodeURIComponent(waMsg);
+    showSuccessModal(isEditing ? 'actualizada' : 'generada', folio, waUrl, telCliente);
   } catch(err) {
     alert('Error: ' + err.message);
     console.error(err);
@@ -2893,6 +2909,27 @@ function addPriceWarning(doc, mg, y, cW, H) {
   doc.text(warnLines, mg + 4, y + 9.5);
   y += 16;
   return y;
+}
+
+// ============================================================
+// SUCCESS MODAL WITH WHATSAPP (FIX 9)
+// ============================================================
+function showSuccessModal(action, folio, waUrl, tel) {
+  var overlay = document.createElement('div');
+  overlay.id = 'successOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = '<div style="background:white;border-radius:16px;padding:24px;max-width:380px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3)">' +
+    '<div style="font-size:48px;margin-bottom:8px">✅</div>' +
+    '<div style="font-size:16px;font-weight:700;color:#1B5E20;margin-bottom:4px">Cotización ' + action + '</div>' +
+    '<div style="font-size:13px;color:var(--text-3);margin-bottom:16px">' + folio + '</div>' +
+    (tel ? '<a href="' + waUrl + '" target="_blank" style="display:block;background:#25D366;color:white;font-weight:700;padding:12px;border-radius:10px;text-decoration:none;font-size:14px;margin-bottom:8px" onclick="closeSuccessModal()">💬 Enviar por WhatsApp al cliente</a>' : '') +
+    '<button onclick="closeSuccessModal()" style="background:var(--surface-2);border:none;color:var(--text-2);font-weight:600;padding:10px;border-radius:10px;width:100%;font-size:13px;cursor:pointer">Cerrar</button>' +
+    '</div>';
+  document.body.appendChild(overlay);
+}
+function closeSuccessModal() {
+  var el = document.getElementById('successOverlay');
+  if (el) el.remove();
 }
 
 // ============================================================
@@ -3839,6 +3876,19 @@ function renderHistorial() {
     });
   }
 
+  // Apply date range filter (FIX 13)
+  var hDesde = document.getElementById('hFilterDesde') ? document.getElementById('hFilterDesde').value : '';
+  var hHasta = document.getElementById('hFilterHasta') ? document.getElementById('hFilterHasta').value : '';
+  if (hDesde || hHasta) {
+    searchFiltered = searchFiltered.filter(function(c) {
+      var cDate = (c.createdAt || c.fecha || '').substring(0,10);
+      if (!cDate) return true;
+      if (hDesde && cDate < hDesde) return false;
+      if (hHasta && cDate > hHasta) return false;
+      return true;
+    });
+  }
+
   filterRow.innerHTML = statuses.map(s => {
     const count = s === 'all' ? searchFiltered.length : searchFiltered.filter(c => c.estatus === s).length;
     const active = state.filterEstatus === s ? ' active' : '';
@@ -3923,6 +3973,21 @@ function showDetalle(folio) {
                 </div>
                 <label class="field-label">Fecha de finalización de plazo:</label>
                 <input type="date" class="field" id="fechaFinPlazo_${cot.folio}" value="${cot.fecha_fin_plazo||''}" style="width:100%">
+                <div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:10px;margin-top:8px">
+                  <div style="font-size:11px;font-weight:700;color:#E65100;margin-bottom:6px">📅 Calculadora de Fecha Efectiva</div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+                    <div style="flex:1;min-width:80px">
+                      <label style="font-size:9px;font-weight:700;color:var(--text-3)">Día de corte</label>
+                      <select class="field" id="feCorte_${cot.folio}" style="font-size:11px;padding:4px">` + (function(){var o='';for(var i=1;i<=31;i++)o+='<option value=\"'+i+'\">'+i+'</option>';return o})() + `</select>
+                    </div>
+                    <div style="flex:1;min-width:120px">
+                      <label style="font-size:9px;font-weight:700;color:var(--text-3)">Última mensualidad</label>
+                      <input type="date" class="field" id="feUltima_${cot.folio}" style="font-size:11px;padding:4px">
+                    </div>
+                    <button class="btn btn-primary" style="font-size:10px;padding:5px 10px" onclick="calcFechaEfectivaInline('${cot.folio}')">Calcular</button>
+                  </div>
+                  <div id="feRes_${cot.folio}" style="display:none;margin-top:6px;text-align:center;background:#E8F5E9;border-radius:6px;padding:6px"></div>
+                </div>
                 <label class="field-label" style="margin-top:6px">Estatus de INE:</label>
                 <select class="field" id="tieneIne_${cot.folio}" style="width:100%">
                   <option value="">Selecciona...</option>
@@ -5364,8 +5429,15 @@ async function openRecuperacion() {
     Object.keys(centros).sort().forEach(function(c){ centroSel.innerHTML += '<option value="'+c+'">'+c+'</option>'; });
     recFilterCentroChange();
 
-    // Reasign dropdown — ALL users, no server filter
+    // Reasign dropdown — filtered by role (FIX 11)
     var activeList = (allUsers || []).filter(function(u){ return u.activo === true || u.activo === 'true'; });
+    var rol = currentUser ? currentUser.rol : 'agente';
+    if (rol === 'supervisor') {
+      activeList = activeList.filter(function(u){ return u.supervisor_id === currentUser.id || u.id === currentUser.id; });
+    } else if (rol === 'coordinador') {
+      activeList = activeList.filter(function(u){ return u.coordinador_id === currentUser.id || u.id === currentUser.id; });
+    }
+    // admin sees all
     recupAllAgents = activeList;
     var agSel = document.getElementById('recupAgente');
     agSel.innerHTML = '<option value="">Selecciona agente...</option>';
@@ -6102,7 +6174,13 @@ document.getElementById('waPlanAnterior').addEventListener('change', function() 
   var plan = WA_PLANS[k], ro = document.getElementById('waRentaOverride').value.trim();
   var r = ro ? parseInt(ro.replace(/[^0-9]/g,'')) : plan.renta;
   var b = waFindBest(r, plan.gb);
-  if (b) document.getElementById('waHint').innerHTML = '💡 Sugerencia: <b>'+b.name+'</b> ($'+b.renta+'/mes, '+b.gb+' GB) — '+(b.saving>0?'ahorra $'+b.saving+'/mes':b.saving===0?'mismo precio':'solo $'+Math.abs(b.saving)+' más');
+  var hint = '';
+  if (b) hint = '💡 Sugerencia: <b>'+b.name+'</b> ($'+b.renta+'/mes, '+b.gb+' GB) — '+(b.saving>0?'ahorra $'+b.saving+'/mes':b.saving===0?'mismo precio':'solo $'+Math.abs(b.saving)+' más');
+  // FIX 16: Auto-suggest Azul 2+ for low-tier plans
+  if (k && (k.toLowerCase().includes('azul 1') || k.toLowerCase().includes('azul1') || plan.gb <= 5)) {
+    hint += '<div style="margin-top:6px;background:#E3F2FD;border:1px solid #90CAF9;border-radius:6px;padding:6px 8px;font-size:11px"><span style="font-weight:700;color:#1565C0">⭐ TIP:</span> Clientes con planes bajos (≤5GB) son excelentes candidatos para <b>Azul 2+</b>. Muchos se quedan sin datos y terminan comprando paquetes extra — ¡cuando suman eso, ya pagan casi lo mismo!</div>';
+  }
+  document.getElementById('waHint').innerHTML = hint;
 });
 
 // ============================================================
@@ -6968,10 +7046,8 @@ function calcFechaEfectiva(){
   var ultimaStr = document.getElementById('feUltima').value;
   if(!ultimaStr){alert('Selecciona la fecha de última mensualidad');return;}
   var ultima = new Date(ultimaStr+'T12:00:00');
-  // Find next cut date after ultima
   var year = ultima.getFullYear();
-  var month = ultima.getMonth(); // 0-based
-  // Try current month's cut date
+  var month = ultima.getMonth();
   var maxDias = new Date(year, month+1, 0).getDate();
   var diaReal = Math.min(diaCorte, maxDias);
   var corteMesActual = new Date(year, month, diaReal);
@@ -6979,7 +7055,6 @@ function calcFechaEfectiva(){
   if(corteMesActual > ultima){
     fechaEfectiva = corteMesActual;
   } else {
-    // Next month
     var nextMonth = month + 1;
     var nextYear = year;
     if(nextMonth > 11){ nextMonth = 0; nextYear++; }
@@ -6992,6 +7067,40 @@ function calcFechaEfectiva(){
   var el = document.getElementById('feResultado');
   el.style.display = 'block';
   el.innerHTML = '<div style="font-size:10px;color:#2E7D32;font-weight:600">FECHA EFECTIVA DE RENOVACIÓN</div><div style="font-size:22px;font-weight:900;color:#1B5E20">📅 ' + resultado + '</div><div style="font-size:10px;color:#388E3C;margin-top:4px">Esta es la fecha que debes poner en "Fecha de Finalización de Plazo"</div>';
+}
+
+function calcFechaEfectivaInline(folio){
+  var diaCorte = parseInt(document.getElementById('feCorte_'+folio).value);
+  var ultimaStr = document.getElementById('feUltima_'+folio).value;
+  if(!ultimaStr){alert('Selecciona la fecha de última mensualidad');return;}
+  var ultima = new Date(ultimaStr+'T12:00:00');
+  var year = ultima.getFullYear();
+  var month = ultima.getMonth();
+  var maxDias = new Date(year, month+1, 0).getDate();
+  var diaReal = Math.min(diaCorte, maxDias);
+  var corteMesActual = new Date(year, month, diaReal);
+  var fechaEfectiva;
+  if(corteMesActual > ultima){
+    fechaEfectiva = corteMesActual;
+  } else {
+    var nextMonth = month + 1;
+    var nextYear = year;
+    if(nextMonth > 11){ nextMonth = 0; nextYear++; }
+    var maxDiasNext = new Date(nextYear, nextMonth+1, 0).getDate();
+    var diaRealNext = Math.min(diaCorte, maxDiasNext);
+    fechaEfectiva = new Date(nextYear, nextMonth, diaRealNext);
+  }
+  var meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var resultado = fechaEfectiva.getDate() + ' de ' + meses[fechaEfectiva.getMonth()] + ' del ' + fechaEfectiva.getFullYear();
+  // Auto-fill the date field
+  var yyyy = fechaEfectiva.getFullYear();
+  var mm = String(fechaEfectiva.getMonth()+1).padStart(2,'0');
+  var dd = String(fechaEfectiva.getDate()).padStart(2,'0');
+  document.getElementById('fechaFinPlazo_'+folio).value = yyyy+'-'+mm+'-'+dd;
+  // Show result
+  var el = document.getElementById('feRes_'+folio);
+  el.style.display = 'block';
+  el.innerHTML = '<div style="font-size:10px;color:#2E7D32;font-weight:600">✅ FECHA EFECTIVA CALCULADA Y APLICADA</div><div style="font-size:16px;font-weight:900;color:#1B5E20">📅 ' + resultado + '</div>';
 }
 
 // ── LOG AI QUERIES (FIX 1: monitor what agents ask) ──
