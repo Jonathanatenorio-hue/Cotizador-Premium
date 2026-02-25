@@ -2180,7 +2180,7 @@ async function handleFileUpload(event) {
             id: 'p'+i, sheet:'Premium', oferta:'AT&T Premium',
             equipo: equipo.trim(), marca: String(marca), precioContado: pc,
             estatus: String(estatus), vigencia: String(vigencia),
-            fechaInicio: null, fechaFin: null, fechaFinText: '',
+            fechaInicio: parseVigencia(vigencia).inicio, fechaFin: parseVigencia(vigencia).fin, fechaFinText: '',
             pricing: pricing, plans: PLANS_PREMIUM, plazos: [24,30,36],
           });
         }
@@ -2251,8 +2251,8 @@ async function handleFileUpload(event) {
             id: 't'+i, sheet:'Titanio', oferta:'AT&T Titanio',
             equipo: equipo, marca: String(marca), precioContado: pc || 0,
             estatus: String(estatus), vigencia: String(vigencia),
-            fechaInicio: null,
-            fechaFin: null,
+            fechaInicio: parseVigencia(vigencia).inicio,
+            fechaFin: parseVigencia(vigencia).fin,
             fechaFinText: '',
             pricing: { titanio: { 24: promo24 } },
             plans: PLANS_TITANIO, plazos: [24],
@@ -2284,6 +2284,27 @@ async function handleFileUpload(event) {
       `<input type="file" id="fileInput" accept=".xlsx,.xlsm" onchange="handleFileUpload(event)" style="display:none">` +
       `</div>`;
   }
+}
+
+// Parse vigencia text like "01 FEBRERO 26 - 15 FEBRERO 26" or "16 FEBRERO 26 - 28 MARZO 26"
+function parseVigencia(vig) {
+  if (!vig) return { inicio: null, fin: null };
+  var meses = {ENERO:0,FEBRERO:1,MARZO:2,ABRIL:3,MAYO:4,JUNIO:5,JULIO:6,AGOSTO:7,SEPTIEMBRE:8,OCTUBRE:9,NOVIEMBRE:10,DICIEMBRE:11,
+    ENE:0,FEB:1,MAR:2,ABR:3,MAY:4,JUN:5,JUL:6,AGO:7,SEP:8,OCT:9,NOV:10,DIC:11};
+  var parts = String(vig).toUpperCase().split(/\s*[-–]\s*/);
+  function parseDate(s) {
+    if (!s) return null;
+    var tokens = s.trim().split(/\s+/);
+    if (tokens.length < 3) return null;
+    var dia = parseInt(tokens[0]);
+    var mesKey = tokens[1];
+    var anio = parseInt(tokens[2]);
+    if (isNaN(dia) || isNaN(anio)) return null;
+    if (meses[mesKey] === undefined) return null;
+    if (anio < 100) anio += 2000;
+    return new Date(anio, meses[mesKey], dia);
+  }
+  return { inicio: parseDate(parts[0]), fin: parseDate(parts[1] || parts[0]) };
 }
 
 function isVigente(dev) {
@@ -3731,7 +3752,13 @@ async function initHistorialFilters() {
   }
 
   // Initial populate cascading dropdowns
-  populateCoordFilter();
+  if (rol === 'admin') {
+    populateCoordFilter();
+  } else if (rol === 'coordinador') {
+    populateSupFilter();
+  } else if (rol === 'supervisor') {
+    populateAgenteFilter();
+  }
 }
 
 function populateCoordFilter() {
@@ -5928,6 +5955,8 @@ var waScenario = 'primer_contacto', waMassScenario = 'captacion', waRenScenario 
   var premOpts = '';
   Object.keys(WA_PREM).forEach(function(k) {
     var p = WA_PREM[k];
+    // Exclude Azul 1 from WhatsApp suggestions
+    if (k.toLowerCase().indexOf('azul 1') !== -1) return;
     premOpts += '<option value="'+k+'">'+k+' — $'+p.renta+'/mes — '+p.gb+' GB</option>';
   });
   ['waPremiumPlan','waMassPremium'].forEach(function(id) {
@@ -5958,6 +5987,8 @@ function waFindBest(renta, gb) {
   var best = null, bestScore = -99999;
   Object.keys(WA_PREM).forEach(function(k) {
     var p = WA_PREM[k];
+    // Never suggest Azul 1 — minimum is Azul 2
+    if (k.toLowerCase().indexOf('azul 1') !== -1 || k.toLowerCase().indexOf('azul1') !== -1) return;
     if (p.gb > gb) {
       var s = (renta - p.renta) * 1.5 + (p.gb - gb) * 5;
       if (renta - p.renta >= -50) s += 1000;
@@ -5966,7 +5997,11 @@ function waFindBest(renta, gb) {
   });
   if (!best) {
     var closest = null, diff = 999999;
-    Object.keys(WA_PREM).forEach(function(k) { var p = WA_PREM[k]; if (Math.abs(p.renta-renta) < diff) { diff = Math.abs(p.renta-renta); closest = {name:k,renta:p.renta,gb:p.gb,saving:renta-p.renta,gbGain:p.gb-gb,gbMultiple:(p.gb/Math.max(gb,1)).toFixed(1)}; } });
+    Object.keys(WA_PREM).forEach(function(k) {
+      var p = WA_PREM[k];
+      if (k.toLowerCase().indexOf('azul 1') !== -1 || k.toLowerCase().indexOf('azul1') !== -1) return;
+      if (Math.abs(p.renta-renta) < diff) { diff = Math.abs(p.renta-renta); closest = {name:k,renta:p.renta,gb:p.gb,saving:renta-p.renta,gbGain:p.gb-gb,gbMultiple:(p.gb/Math.max(gb,1)).toFixed(1)}; }
+    });
     best = closest;
   }
   return best;
