@@ -752,11 +752,17 @@ body{padding-bottom:60px}
       <div style="background:#EBF5FB;border:1px solid #AED6F1;border-radius:10px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span style="font-size:13px;font-weight:700;color:var(--att-blue)">🤖 Config IA:</span>
         <div style="display:flex;align-items:center;gap:4px">
-          <label style="font-size:11px;font-weight:600;color:var(--text-2)">Consultas/día por agente:</label>
+          <label style="font-size:11px;font-weight:600;color:var(--text-2)">Consultas/día:</label>
           <input class="field" id="adminAiLimit" type="number" min="0" max="200" value="30" style="width:70px;font-size:12px;padding:5px;text-align:center">
           <button class="btn btn-primary" style="font-size:10px;padding:4px 10px" onclick="saveAiLimit()">Guardar</button>
         </div>
-        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="viewAiQueryLog()">📋 Ver consultas IA</button>
+        <div style="display:flex;align-items:center;gap:4px">
+          <label style="font-size:11px;font-weight:600;color:var(--text-2)">⏱️ Min Academy/día:</label>
+          <input class="field" id="adminAcademyTime" type="number" min="5" max="120" value="20" style="width:60px;font-size:12px;padding:5px;text-align:center">
+          <button class="btn btn-primary" style="font-size:10px;padding:4px 10px" onclick="saveAcademyTime()">Guardar</button>
+        </div>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openAnalisisIA()">🧠 Análisis IA</button>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openCompetencias()">📊 Competencias</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="showAddUserForm()">+ Nuevo Usuario</button>
@@ -1162,9 +1168,20 @@ body{padding-bottom:60px}
       <div style="display:flex;gap:6px" id="trLevelStats">
         <div style="text-align:center"><div id="trLvlRp" style="font-size:14px;font-weight:800;color:var(--att-blue)">0</div><div style="font-size:8px;color:var(--text-3)">Roleplays</div></div>
         <div style="text-align:center"><div id="trLvlEx" style="font-size:14px;font-weight:800;color:#10B981">0</div><div style="font-size:8px;color:var(--text-3)">Ejercicios</div></div>
+        <div style="text-align:center"><div id="trLvlQz" style="font-size:14px;font-weight:800;color:#8B5CF6">0</div><div style="font-size:8px;color:var(--text-3)">Quizzes</div></div>
         <div style="text-align:center"><div id="trLvlStreak" style="font-size:14px;font-weight:800;color:#F59E0B">0</div><div style="font-size:8px;color:var(--text-3)">🔥 Racha</div></div>
       </div>
     </div>
+    <!-- SESSION TIMER -->
+    <div id="trTimerBar" style="display:none;background:#FFF3E0;border:1px solid #FFE082;border-radius:8px;padding:6px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:14px">⏱️</span>
+        <span style="font-size:11px;font-weight:600;color:#E65100">Tiempo de estudio: <span id="trTimerCount" style="font-weight:900">00:00</span></span>
+      </div>
+      <span id="trTimerLimit" style="font-size:10px;color:var(--text-3)"></span>
+    </div>
+    <!-- BADGES -->
+    <div id="trBadgesRow" style="display:none;margin-bottom:8px;overflow-x:auto;white-space:nowrap;padding:4px 0"></div>
 
     <!-- CHAT TAB -->
     <div id="trChat">
@@ -1762,8 +1779,15 @@ async function loadCotizacionesFromSupabase() {
     var agentIds = [...new Set(data.map(function(c) { return c.agente_id; }))];
     var agentMap = {};
     if (agentIds.length > 0) {
-      var { data: agents } = await supabase.from('usuarios').select('id, nombre, attuid, whatsapp').in('id', agentIds);
+      var { data: agents } = await supabase.from('usuarios').select('id, nombre, attuid, whatsapp, supervisor_id').in('id', agentIds);
       (agents || []).forEach(function(a) { agentMap[a.id] = a; });
+    }
+    // Load supervisor names
+    var supIds = [...new Set(Object.values(agentMap).map(function(a){return a.supervisor_id}).filter(Boolean))];
+    var supMap = {};
+    if (supIds.length > 0) {
+      var { data: sups } = await supabase.from('usuarios').select('id, nombre').in('id', supIds);
+      (sups || []).forEach(function(s) { supMap[s.id] = s.nombre; });
     }
 
     // Convert Supabase format to local format
@@ -1781,6 +1805,7 @@ async function loadCotizacionesFromSupabase() {
           direccion: c.cliente_direccion,
         },
         ejecutivo: ag ? { nombre: ag.nombre, attuid: ag.attuid, whatsapp: ag.whatsapp || '' } : { ...state.agente },
+        supervisorNombre: ag && ag.supervisor_id ? (supMap[ag.supervisor_id] || '') : '',
         items: (c.cotizacion_items || []).map(function(it) {
           return {
             equipo: it.equipo,
@@ -3940,7 +3965,7 @@ function renderHistorial() {
       <div class="historial-body">
         <span class="historial-client">${cot.cliente.nombre}</span>
         <span class="historial-meta">${cot.cliente.telefono || ''} · ${cot.items.length} equipo(s) · ${cot.fecha}</span>
-        <span class="historial-meta">Ejecutivo: ${cot.ejecutivo ? cot.ejecutivo.nombre : 'N/A'}${cot.sub_estatus ? ' · ' + subEstatusLabel(cot.sub_estatus) : ''}${cot.folio_att ? ' · Folio ATT: ' + cot.folio_att : ''}${cot.sub_estatus==='aceleracion' && cot.fecha_fin_plazo ? ' · Plazo: ' + cot.fecha_fin_plazo + (new Date(cot.fecha_fin_plazo+'T00:00:00') <= new Date() ? ' 🚨 VENCIDO' : '') : ''}</span>
+        <span class="historial-meta">Ejecutivo: ${cot.ejecutivo ? cot.ejecutivo.nombre : 'N/A'}${cot.supervisorNombre ? ' · Sup: ' + cot.supervisorNombre : ''}${cot.sub_estatus ? ' · ' + subEstatusLabel(cot.sub_estatus) : ''}${cot.folio_att ? ' · Folio ATT: ' + cot.folio_att : ''}${cot.sub_estatus==='aceleracion' && cot.fecha_fin_plazo ? ' · Plazo: ' + cot.fecha_fin_plazo + (new Date(cot.fecha_fin_plazo+'T00:00:00') <= new Date() ? ' 🚨 VENCIDO' : '') : ''}</span>
       </div>
     </div>
   `).join('') + '</div>';
@@ -4070,8 +4095,8 @@ function showDetalle(folio) {
 
   showView('detalle', 'Cotización ' + cot.folio);
   setTimeout(function() { onEstatusChange(cot.folio, true); }, 50);
-  // Admin-only delete button
-  if (currentUser && currentUser.rol === 'admin') {
+  // Admin and coordinador delete button
+  if (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador')) {
     var delBtn = document.createElement('div');
     delBtn.style.cssText = 'text-align:right;margin-top:12px;padding:0 14px';
     delBtn.innerHTML = '<button class="btn btn-secondary" style="font-size:10px;padding:5px 12px;color:#DC3545;border-color:#DC3545" onclick="eliminarCotizacion(\''+cot.folio+'\')">🗑️ Eliminar cotización</button>';
@@ -4080,7 +4105,7 @@ function showDetalle(folio) {
 }
 
 async function eliminarCotizacion(folio) {
-  if (!currentUser || currentUser.rol !== 'admin') { alert('Solo el administrador puede eliminar cotizaciones.'); return; }
+  if (!currentUser || (currentUser.rol !== 'admin' && currentUser.rol !== 'coordinador')) { alert('Solo administradores y coordinadores pueden eliminar cotizaciones.'); return; }
   if (!confirm('¿Eliminar la cotización '+folio+'?\n\nEsta acción es permanente.')) return;
   if (!confirm('Última confirmación: ¿Realmente eliminar '+folio+'?')) return;
   try {
@@ -5043,28 +5068,229 @@ async function saveAiLimit(){
     alert('✅ Límite actualizado a ' + limit + ' consultas/día por agente');
   }catch(e){alert('Error: '+e.message);}
 }
+async function saveAcademyTime(){
+  var mins = parseInt(document.getElementById('adminAcademyTime').value) || 20;
+  if(!supabase){alert('Sin conexión');return;}
+  try{
+    await supabase.from('app_config').upsert({key:'academy_time_limit',value:String(mins),updated_at:new Date().toISOString()});
+    TR_SESSION_LIMIT = mins;
+    alert('✅ Límite de Sales Academy: ' + mins + ' minutos/día por agente');
+  }catch(e){alert('Error: '+e.message);}
+}
 async function loadAiLimitForAdmin(){
   if(!supabase) return;
   try{
     var res = await supabase.from('app_config').select('value').eq('key','ai_daily_limit').maybeSingle();
     if(res.data) document.getElementById('adminAiLimit').value = res.data.value;
+    var res2 = await supabase.from('app_config').select('value').eq('key','academy_time_limit').maybeSingle();
+    if(res2.data && document.getElementById('adminAcademyTime')) document.getElementById('adminAcademyTime').value = res2.data.value;
   }catch(e){}
 }
-async function viewAiQueryLog(){
+async function openAnalisisIA(){
   if(!supabase){alert('Sin conexión');return;}
   try{
-    var {data} = await supabase.from('ai_queries_log').select('*').order('created_at',{ascending:false}).limit(100);
+    // Load last 500 queries
+    var {data} = await supabase.from('ai_queries_log').select('*').order('created_at',{ascending:false}).limit(500);
     if(!data||data.length===0){alert('No hay consultas registradas aún.');return;}
-    var h='<div class="modal-overlay" onclick="if(event.target===this)this.remove()"><div style="background:var(--bg-card);border-radius:14px;width:95%;max-width:700px;max-height:80vh;overflow-y:auto;padding:20px;margin:40px auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">';
-    h+='<div style="display:flex;justify-content:space-between;margin-bottom:12px"><h3 style="font-size:16px;font-weight:800">📋 Últimas 100 consultas IA</h3><button onclick="this.closest(\'.modal-overlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div>';
-    h+='<table style="width:100%;font-size:11px;border-collapse:collapse"><tr style="background:var(--bg-main)"><th style="padding:6px;text-align:left;border-bottom:2px solid var(--border)">Agente</th><th style="padding:6px;text-align:left;border-bottom:2px solid var(--border)">Consulta</th><th style="padding:6px;text-align:left;border-bottom:2px solid var(--border)">Fecha</th></tr>';
+
+    // Analytics
+    var agentCounts={}, dayCounts={}, ratingUp=0, ratingDown=0, ratingNone=0, keywords={};
+    var today = getMexicoDateStr();
+    var todayCount=0;
     data.forEach(function(q){
-      var fecha = new Date(q.created_at).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
-      h+='<tr><td style="padding:4px 6px;border-bottom:1px solid var(--border);font-weight:600">'+((q.agente_nombre||'').split(' ').slice(0,2).join(' '))+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--border)">'+q.query+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--text-3)">'+fecha+'</td></tr>';
+      // Per agent
+      var name = (q.agente_nombre||'Desconocido').split(' ').slice(0,2).join(' ');
+      agentCounts[name]=(agentCounts[name]||0)+1;
+      // Per day
+      var day = (q.created_at||'').substring(0,10);
+      dayCounts[day]=(dayCounts[day]||0)+1;
+      if(day===today) todayCount++;
+      // Ratings
+      if(q.rating==='up') ratingUp++;
+      else if(q.rating==='down') ratingDown++;
+      else ratingNone++;
+      // Keyword extraction (simple)
+      var words = (q.query||'').toLowerCase().replace(/[^a-záéíóúñü\s]/g,'').split(/\s+/);
+      var stopwords = ['que','como','de','el','la','los','las','un','una','y','en','es','por','para','con','del','al','se','no','me','mi','si','ya','le','lo','te','tu','su','hay','son','fue','ser','mas','pero','muy','o','a','e','i','u','cual','cuando','donde','quien','este','esta','esto','estas','estos','ese','esa','eso','hola','puede','puedo','hacer','tengo','tiene','tiene','tienen','saber','dime','quiero','necesito','pago','paga','cliente','plan','att'];
+      words.forEach(function(w){ if(w.length>3 && stopwords.indexOf(w)===-1) keywords[w]=(keywords[w]||0)+1; });
     });
-    h+='</table></div></div>';
+
+    // Top agents
+    var topAgents = Object.keys(agentCounts).map(function(k){return{name:k,count:agentCounts[k]}}).sort(function(a,b){return b.count-a.count}).slice(0,10);
+    // Top keywords
+    var topKeywords = Object.keys(keywords).map(function(k){return{word:k,count:keywords[k]}}).sort(function(a,b){return b.count-a.count}).slice(0,15);
+    // Days chart (last 7)
+    var last7 = [];
+    for(var d=6;d>=0;d--){var dt=new Date();dt.setDate(dt.getDate()-d);var ds=dt.toISOString().slice(0,10);last7.push({date:ds.substring(5),count:dayCounts[ds]||0});}
+    var maxDay = Math.max.apply(null,last7.map(function(d){return d.count}))||1;
+
+    var totalRated = ratingUp+ratingDown;
+    var satPct = totalRated>0 ? Math.round(ratingUp/totalRated*100) : 0;
+
+    // Identify training opportunities (top negative keywords)
+    var opportunities = topKeywords.slice(0,5).map(function(k){return k.word});
+
+    // Build modal
+    var h='<div class="modal-overlay" onclick="if(event.target===this)this.remove()" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">';
+    h+='<div style="background:var(--bg-card);border-radius:16px;width:95%;max-width:800px;padding:24px;margin:20px auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">';
+
+    // Header
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div><div style="font-size:18px;font-weight:900">🧠 Análisis de Consultas IA</div><div style="font-size:11px;color:var(--text-3)">'+data.length+' consultas analizadas</div></div><button onclick="this.closest(\'.modal-overlay\').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--text-3)">✕</button></div>';
+
+    // KPI Cards
+    h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">';
+    h+='<div style="background:#E3F2FD;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900;color:#1565C0">'+todayCount+'</div><div style="font-size:9px;font-weight:700;color:#1565C0">HOY</div></div>';
+    h+='<div style="background:#E8F5E9;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900;color:#2E7D32">'+satPct+'%</div><div style="font-size:9px;font-weight:700;color:#2E7D32">SATISFACCIÓN</div></div>';
+    h+='<div style="background:#FFF3E0;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900;color:#E65100">'+ratingDown+'</div><div style="font-size:9px;font-weight:700;color:#E65100">👎 NEGATIVAS</div></div>';
+    h+='<div style="background:#F3E8FF;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900;color:#7B1FA2">'+topAgents.length+'</div><div style="font-size:9px;font-weight:700;color:#7B1FA2">AGENTES ACTIVOS</div></div>';
+    h+='</div>';
+
+    // Usage chart with range controls
+    h+='<div style="background:var(--surface-2);border-radius:10px;padding:14px;margin-bottom:12px">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">';
+    h+='<div style="font-size:12px;font-weight:700">📊 Consultas por día</div>';
+    h+='<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">';
+    h+='<button class="btn btn-primary" style="font-size:9px;padding:3px 8px" onclick="aiChartRange(7)">7 días</button>';
+    h+='<button class="btn btn-secondary" style="font-size:9px;padding:3px 8px" onclick="aiChartRange(15)">15 días</button>';
+    h+='<button class="btn btn-secondary" style="font-size:9px;padding:3px 8px" onclick="aiChartRange(30)">30 días</button>';
+    h+='<button class="btn btn-secondary" style="font-size:9px;padding:3px 8px" onclick="aiChartRange(0)">Todo</button>';
+    h+='<span style="font-size:9px;color:var(--text-3);margin:0 2px">|</span>';
+    h+='<input type="date" id="aiChartDesde" style="font-size:9px;padding:2px 4px;border:1px solid var(--border);border-radius:4px">';
+    h+='<span style="font-size:9px;color:var(--text-3)">a</span>';
+    h+='<input type="date" id="aiChartHasta" style="font-size:9px;padding:2px 4px;border:1px solid var(--border);border-radius:4px">';
+    h+='<button class="btn btn-secondary" style="font-size:9px;padding:3px 8px" onclick="aiChartCustomRange()">Ver</button>';
+    h+='</div></div>';
+    h+='<div id="aiChartArea" style="overflow-x:auto"></div>';
+    h+='</div>';
+
+    // Two columns: Top agents + Top topics
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">';
+
+    // Top agents
+    h+='<div style="background:var(--surface-2);border-radius:10px;padding:14px">';
+    h+='<div style="font-size:12px;font-weight:700;margin-bottom:8px">👤 Agentes que más consultan</div>';
+    topAgents.forEach(function(a,i){
+      var pct=a.count/topAgents[0].count*100;
+      h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:10px;font-weight:700;width:16px;color:var(--text-3)">'+(i+1)+'</span><div style="flex:1"><div style="font-size:10px;font-weight:600">'+a.name+'</div><div style="background:var(--border);border-radius:2px;height:4px;margin-top:2px"><div style="background:'+(i<3?'#DC3545':'var(--att-blue)')+';height:100%;border-radius:2px;width:'+pct+'%"></div></div></div><span style="font-size:11px;font-weight:800;color:'+(i<3?'#DC3545':'var(--text-2)')+'">'+a.count+'</span></div>';
+    });
+    h+='</div>';
+
+    // Top keywords/topics
+    h+='<div style="background:var(--surface-2);border-radius:10px;padding:14px">';
+    h+='<div style="font-size:12px;font-weight:700;margin-bottom:8px">🔑 Temas más consultados</div>';
+    h+='<div style="display:flex;flex-wrap:wrap;gap:4px">';
+    topKeywords.forEach(function(k){
+      var size = Math.min(14, Math.max(10, 8 + k.count));
+      h+='<span style="background:var(--bg-main);border:1px solid var(--border);border-radius:12px;padding:3px 8px;font-size:'+size+'px;font-weight:600;color:var(--text-2)">'+k.word+' <span style="font-size:9px;color:var(--text-3)">'+k.count+'</span></span>';
+    });
+    h+='</div>';
+    h+='<div style="margin-top:10px;background:#FFF3E0;border-radius:8px;padding:8px;font-size:10px;color:#E65100"><b>💡 Áreas de oportunidad:</b> Los temas más repetidos sugieren necesidad de capacitación en: <b>'+opportunities.join(', ')+'</b></div>';
+    h+='</div></div>';
+
+    // Tabs for detail view
+    h+='<div style="display:flex;gap:4px;margin-bottom:8px">';
+    h+='<button id="aiTabAll" class="btn btn-primary" style="font-size:10px;padding:4px 10px" onclick="aiFilterTab(\'all\')">Todas ('+data.length+')</button>';
+    h+='<button id="aiTabDown" class="btn btn-secondary" style="font-size:10px;padding:4px 10px;color:#DC3545;border-color:#DC3545" onclick="aiFilterTab(\'down\')">👎 Negativas ('+ratingDown+')</button>';
+    h+='<button id="aiTabNone" class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="aiFilterTab(\'none\')">Sin rating ('+ratingNone+')</button>';
+    h+='</div>';
+
+    // Detail table
+    h+='<div id="aiLogTable" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">';
+    h+=buildAiLogTable(data, 'all');
+    h+='</div>';
+
+    h+='</div></div>';
+
+    window._aiLogData = data;
     document.body.insertAdjacentHTML('beforeend',h);
+    // Render initial 7-day chart
+    setTimeout(function(){ aiChartRange(7); }, 50);
   }catch(e){alert('Error: '+e.message);}
+}
+
+function buildAiLogTable(data, filter){
+  var filtered = data;
+  if(filter==='down') filtered = data.filter(function(q){return q.rating==='down'});
+  if(filter==='none') filtered = data.filter(function(q){return !q.rating});
+  var h='<table style="width:100%;font-size:10px;border-collapse:collapse"><tr style="background:var(--bg-main);position:sticky;top:0"><th style="padding:6px;text-align:left;border-bottom:2px solid var(--border)">👤</th><th style="padding:6px;text-align:left;border-bottom:2px solid var(--border)">Consulta</th><th style="padding:6px;text-align:center;border-bottom:2px solid var(--border)">⭐</th><th style="padding:6px;text-align:right;border-bottom:2px solid var(--border)">Fecha</th></tr>';
+  filtered.slice(0,100).forEach(function(q){
+    var fecha = new Date(q.created_at).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+    var rIcon = q.rating==='up'?'👍':q.rating==='down'?'👎':'—';
+    var rColor = q.rating==='up'?'#E8F5E9':q.rating==='down'?'#FEE2E2':'transparent';
+    h+='<tr style="background:'+rColor+'"><td style="padding:4px 6px;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap">'+((q.agente_nombre||'').split(' ').slice(0,2).join(' '))+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--border)">'+q.query+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:center">'+rIcon+'</td><td style="padding:4px 6px;border-bottom:1px solid var(--border);white-space:nowrap;color:var(--text-3);text-align:right">'+fecha+'</td></tr>';
+  });
+  if(filtered.length===0) h+='<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--text-3)">No hay consultas con este filtro</td></tr>';
+  h+='</table>';
+  return h;
+}
+
+function aiFilterTab(filter){
+  ['all','down','none'].forEach(function(f){
+    var btn=document.getElementById('aiTab'+(f==='all'?'All':f==='down'?'Down':'None'));
+    if(btn){btn.className=f===filter?'btn btn-primary':'btn btn-secondary';btn.style.fontSize='10px';btn.style.padding='4px 10px';}
+  });
+  document.getElementById('aiLogTable').innerHTML = buildAiLogTable(window._aiLogData||[], filter);
+}
+
+function aiChartRange(days){
+  var data = window._aiLogData||[];
+  if(!data.length) return;
+  var dayCounts={};
+  data.forEach(function(q){ var d=(q.created_at||'').substring(0,10); dayCounts[d]=(dayCounts[d]||0)+1; });
+
+  var bars=[];
+  if(days===0){
+    // All data - group by day
+    var allDays = Object.keys(dayCounts).sort();
+    allDays.forEach(function(d){ bars.push({date:d.substring(5),fullDate:d,count:dayCounts[d]||0}); });
+  } else {
+    for(var i=days-1;i>=0;i--){
+      var dt=new Date();dt.setDate(dt.getDate()-i);
+      var ds=dt.toISOString().slice(0,10);
+      bars.push({date:ds.substring(5),fullDate:ds,count:dayCounts[ds]||0});
+    }
+  }
+  renderAiChart(bars, days);
+}
+
+function aiChartCustomRange(){
+  var desde=document.getElementById('aiChartDesde').value;
+  var hasta=document.getElementById('aiChartHasta').value;
+  if(!desde||!hasta){alert('Selecciona ambas fechas');return;}
+  var data=window._aiLogData||[];
+  var dayCounts={};
+  data.forEach(function(q){ var d=(q.created_at||'').substring(0,10); dayCounts[d]=(dayCounts[d]||0)+1; });
+  var bars=[];
+  var cur=new Date(desde+'T12:00:00');
+  var end=new Date(hasta+'T12:00:00');
+  while(cur<=end){
+    var ds=cur.toISOString().slice(0,10);
+    bars.push({date:ds.substring(5),fullDate:ds,count:dayCounts[ds]||0});
+    cur.setDate(cur.getDate()+1);
+  }
+  renderAiChart(bars, -1);
+}
+
+function renderAiChart(bars, activeDays){
+  var total=0; bars.forEach(function(b){total+=b.count});
+  var max=Math.max.apply(null,bars.map(function(b){return b.count}))||1;
+  var avg=bars.length>0?Math.round(total/bars.length*10)/10:0;
+  // Bar width adapts to count
+  var barW = bars.length<=7?'flex:1':'min-width:28px;width:28px';
+  var h='<div style="display:flex;gap:4px;margin-bottom:6px;font-size:10px;color:var(--text-3)"><span>Total: <b style=color:var(--text-1)>'+total+'</b></span><span>· Promedio/día: <b style=color:var(--text-1)>'+avg+'</b></span><span>· Pico: <b style=color:var(--text-1)>'+max+'</b></span></div>';
+  h+='<div style="display:flex;align-items:flex-end;gap:2px;height:70px;overflow-x:auto;padding-bottom:2px">';
+  bars.forEach(function(b){
+    var pct=Math.max(4,b.count/max*100);
+    var isToday=b.fullDate===getMexicoDateStr();
+    var color=isToday?'#10B981':b.count===0?'var(--border)':'var(--att-blue)';
+    h+='<div style="'+barW+';text-align:center;flex-shrink:0"><div style="background:'+color+';border-radius:3px 3px 0 0;height:'+pct+'%;min-height:3px;margin:0 auto;width:85%" title="'+b.fullDate+': '+b.count+'"></div><div style="font-size:7px;color:var(--text-3);margin-top:1px;overflow:hidden;white-space:nowrap">'+b.date+'</div><div style="font-size:8px;font-weight:700;color:'+(b.count>0?'var(--text-1)':'var(--text-3)')+'">'+b.count+'</div></div>';
+  });
+  h+='</div>';
+  document.getElementById('aiChartArea').innerHTML=h;
+  // Update button styles
+  [7,15,30,0].forEach(function(d){
+    var btns=document.querySelectorAll('#aiChartArea').length; // dummy
+  });
 }
 
 function renderAdminUsers() {
@@ -5473,9 +5699,9 @@ async function openRecuperacion() {
     });
     console.log('Recup: dropdown agents:', activeList.length);
 
-    // Show delete button only for admin
+    // Show delete button for admin and coordinador
     var btnElim = document.getElementById('btnEliminarRecup');
-    if (btnElim) btnElim.style.display = (currentUser && currentUser.rol === 'admin') ? '' : 'none';
+    if (btnElim) btnElim.style.display = (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador')) ? '' : 'none';
 
     recTab(recupTab);
   } catch(e) {
@@ -5611,7 +5837,7 @@ async function reasignarSeleccionadas() {
 }
 
 async function eliminarSeleccionadasRecup() {
-  if (!currentUser || currentUser.rol !== 'admin') { alert('Solo el administrador puede eliminar.'); return; }
+  if (!currentUser || (currentUser.rol !== 'admin' && currentUser.rol !== 'coordinador')) { alert('Solo administradores y coordinadores pueden eliminar.'); return; }
 
   var checks = document.querySelectorAll('.recup-check:checked');
   if (checks.length === 0) { alert('Selecciona al menos una cotización.'); return; }
@@ -6932,6 +7158,13 @@ var TR_EXERCISES = [
 var trChatMsgs=[],trRpMsgs=[],trRpHistory=[],trRpScenario=null,trRpTurn=0,trLoading=false,trExCompleted={};
 var TR_DAILY_LIMIT=30, TR_API_KEY='', TR_USAGE_TODAY=0;
 
+// Mexico timezone date helper (UTC-6)
+function getMexicoDateStr() {
+  var now = new Date();
+  var mx = new Date(now.getTime() - 6*60*60*1000);
+  return mx.toISOString().slice(0,10);
+}
+
 // ── Supabase Config Sync ──
 async function trLoadConfig() {
   if (!supabase) return;
@@ -6954,14 +7187,14 @@ async function trSaveConfig(key, value) {
 async function trLoadUsage() {
   if (!supabase || !state.agente) return;
   try {
-    var today = new Date().toISOString().slice(0,10);
+    var today = getMexicoDateStr();
     var res = await supabase.from('training_usage').select('total_count').eq('agent_id', state.agente.id).eq('date', today).maybeSingle();
     TR_USAGE_TODAY = res.data ? res.data.total_count : 0;
   } catch(e) { TR_USAGE_TODAY = 0; }
 }
 async function trIncUsage(type) {
   if (!supabase || !state.agente) return;
-  var today = new Date().toISOString().slice(0,10);
+  var today = getMexicoDateStr();
   var agId = state.agente.id, agName = state.agente.nombre;
   TR_USAGE_TODAY++;
   try {
@@ -7023,6 +7256,13 @@ async function trCallAIMulti(sys, msgs) {
 
 // ── Tab switching ──
 function trTab(tab){
+  // Block IA tabs when time expired (guía always allowed)
+  var blockedTabs = ['chat','roleplay','exercises','eval'];
+  if (trSessionBlocked && blockedTabs.indexOf(tab) !== -1) {
+    alert('⏰ Tu tiempo de estudio terminó por hoy. Puedes consultar la 📚 Guía.');
+    trTab('guia');
+    return;
+  }
   ['Chat','Guia','Roleplay','Exercises','Eval','Metrics'].forEach(function(t){
     var id=t.charAt(0).toLowerCase()+t.slice(1);
     var el=document.getElementById('tr'+t);
@@ -7050,7 +7290,15 @@ function trInitChat(){
 }
 function trRenderChat(){
   var c=document.getElementById('trChatMsgs');
-  c.innerHTML=trChatMsgs.map(function(m){var cls=m.role==='user'?'tr-msg-user':'tr-msg-bot';return'<div class="'+cls+'">'+m.text.split('\n').map(function(l){return'<div>'+l+'</div>'}).join('')+'</div>'}).join('');
+  c.innerHTML=trChatMsgs.map(function(m){
+    var cls=m.role==='user'?'tr-msg-user':'tr-msg-bot';
+    var html='<div class="'+cls+'">'+m.text.split('\n').map(function(l){return'<div>'+l+'</div>'}).join('');
+    if(m.role==='bot' && m.logId){
+      html+='<div id="rate_'+m.logId+'" style="margin-top:6px;padding-top:4px;border-top:1px solid rgba(0,0,0,0.06);display:flex;gap:6px;align-items:center"><span style="font-size:9px;color:var(--text-3)">¿Te sirvió?</span><button onclick="trRateQuery('+m.logId+',\'up\')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px" onmouseover="this.style.background=\'#E8F5E9\'" onmouseout="this.style.background=\'none\'">👍</button><button onclick="trRateQuery('+m.logId+',\'down\')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px" onmouseover="this.style.background=\'#FEE2E2\'" onmouseout="this.style.background=\'none\'">👎</button></div>';
+    }
+    html+='</div>';
+    return html;
+  }).join('');
   if(trLoading)c.innerHTML+='<div class="tr-typing"><span></span><span></span><span></span></div>';
   c.scrollTop=c.scrollHeight;
   var rem=trRemaining();document.getElementById('trMsgCount').textContent=rem==='∞'?'':rem+' msgs restantes';
@@ -7140,15 +7388,24 @@ function calcFechaEfectivaInline(folio){
 
 // ── LOG AI QUERIES (FIX 1: monitor what agents ask) ──
 async function trLogAIQuery(agentId, agentName, query){
-  if(!supabase) return;
+  if(!supabase) return null;
   try {
-    await supabase.from('ai_queries_log').insert({
+    var { data } = await supabase.from('ai_queries_log').insert({
       agente_id: agentId,
       agente_nombre: agentName,
       query: query.substring(0, 500),
       created_at: new Date().toISOString()
-    });
-  } catch(e){ console.log('Log error:', e); }
+    }).select('id').single();
+    return data ? data.id : null;
+  } catch(e){ console.log('Log error:', e); return null; }
+}
+async function trRateQuery(logId, rating) {
+  if(!supabase || !logId) return;
+  try {
+    await supabase.from('ai_queries_log').update({ rating: rating }).eq('id', logId);
+    var el = document.getElementById('rate_'+logId);
+    if (el) el.innerHTML = rating === 'up' ? '<span style="color:#10B981;font-size:11px">✅ Gracias</span>' : '<span style="color:#F59E0B;font-size:11px">📝 Registrado</span>';
+  } catch(e) { console.log('Rate error:', e); }
 }
 
 // ── Fetch agent data context from Supabase ──
@@ -7264,9 +7521,244 @@ async function trSendChat(){
   var sysPrompt = TR_KB.sysPrompt+'\nEl agente se llama '+n+'. Responde en español, práctico y directo.';
   if (dataCtx) sysPrompt += '\n\nTienes acceso a los datos reales del agente. Úsalos para responder con números concretos. Si detectas patrones de pérdida, da recomendaciones específicas basadas en los datos. No inventes datos, usa solo lo que se te proporciona.' + dataCtx;
   var reply=await trCallAI(sysPrompt,msg);
-  // Log the query for monitoring (FIX 1)
-  trLogAIQuery(agId, n, msg);
-  trChatMsgs.push({role:'bot',text:reply});trLoading=false;trRenderChat();
+  // Log the query and get ID for rating
+  var logId = await trLogAIQuery(agId, n, msg);
+  // Detect topic and suggest practice
+  var matchedEx = trMatchExercise(msg);
+  var matchedRp = trMatchRoleplay(msg);
+  var practiceHtml = '';
+  if (matchedRp !== null || matchedEx !== null) {
+    practiceHtml = '\n\n<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:8px;margin-top:6px">';
+    practiceHtml += '<div style="font-size:10px;font-weight:700;color:#E65100;margin-bottom:4px">🎯 ¿Quieres dominar este tema?</div>';
+    if (matchedRp !== null) practiceHtml += '<button class="btn" style="font-size:10px;padding:4px 10px;background:#8B5CF6;color:white;border:none;border-radius:6px;margin-right:4px" onclick="trStartRp('+matchedRp+')">🎭 Roleplay</button>';
+    if (matchedEx !== null) practiceHtml += '<button class="btn" style="font-size:10px;padding:4px 10px;background:var(--att-blue);color:white;border:none;border-radius:6px;margin-right:4px" onclick="trExStart('+matchedEx+')">🏋️ Ejercicio</button>';
+    practiceHtml += '<button class="btn" style="font-size:10px;padding:4px 10px;background:#10B981;color:white;border:none;border-radius:6px" onclick="trStartQuiz(\''+msg.replace(/'/g,"\\'")+'\')">📝 Quiz rápido</button>';
+    practiceHtml += '</div>';
+  }
+  trChatMsgs.push({role:'bot',text:reply+practiceHtml,logId:logId});trLoading=false;trRenderChat();
+}
+
+// ── TOPIC MATCHING ──
+function trMatchExercise(query) {
+  var q = query.toLowerCase();
+  var map = [
+    {keys:['equipo','no quiere equipo','llevar equipo','obligar equipo'], idx:0},
+    {keys:['sucursal','tienda','prefiere ir','ir a la tienda','presencial'], idx:1},
+    {keys:['pienso','pensarlo','dejame ver','lo piensa','piensa'], idx:2},
+    {keys:['no me interesa','no interesa','no gracias','no quiero'], idx:3},
+    {keys:['tiempo','ocupado','no puedo hablar','estoy trabajando'], idx:4},
+    {keys:['cierre','cerrar','pregunta de cierre','cierro'], idx:5},
+    {keys:['seguimiento','dar seguimiento','volver a llamar','llamar despues'], idx:6},
+    {keys:['whatsapp','mensaje','manda info','mandar informacion'], idx:7},
+    {keys:['economico','dinero','no puede pagar','caro','barato','pagar mas'], idx:8},
+    {keys:['cobertura','señal','falla','red','no tiene señal'], idx:9}
+  ];
+  for (var i=0;i<map.length;i++) {
+    for (var j=0;j<map[i].keys.length;j++) {
+      if (q.indexOf(map[i].keys[j]) !== -1) return map[i].idx;
+    }
+  }
+  return null;
+}
+function trMatchRoleplay(query) {
+  var q = query.toLowerCase();
+  var map = [
+    {keys:['equipo','no quiere equipo'], id:1},
+    {keys:['sucursal','tienda','prefiere ir'], id:2},
+    {keys:['pienso','pensarlo','dejame ver'], id:3},
+    {keys:['economico','dinero','no puede pagar'], id:4},
+    {keys:['estoy bien','no necesita cambiar'], id:5},
+    {keys:['no me interesa','no interesa'], id:6},
+    {keys:['no hago tramites','telefono','desconfia'], id:7},
+    {keys:['no quiero pagar mas','plan bajo','pagar mas'], id:8},
+    {keys:['cobertura','señal','falla'], id:9},
+    {keys:['ocupado','tiempo','no puedo'], id:10},
+    {keys:['cierre','cerrar','listo para comprar'], id:11},
+    {keys:['seguimiento','dar seguimiento'], id:12},
+    {keys:['whatsapp','manda info'], id:13}
+  ];
+  for (var i=0;i<map.length;i++) {
+    for (var j=0;j<map[i].keys.length;j++) {
+      if (q.indexOf(map[i].keys[j]) !== -1) return map[i].id;
+    }
+  }
+  return null;
+}
+
+// ── MINI-QUIZ SYSTEM ──
+async function trStartQuiz(topic) {
+  trChatMsgs.push({role:'user',text:'📝 Quiero hacer quiz sobre: '+topic});
+  trLoading=true; trRenderChat();
+  var sys = 'Eres evaluador de ventas AT&T. Genera un quiz de 3 preguntas de opción múltiple sobre este tema de ventas: "'+topic+'". Responde SOLO JSON: {"questions":[{"q":"pregunta","options":["A) opción","B) opción","C) opción"],"correct":0,"explanation":"por qué es correcta"}]}. Las preguntas deben ser prácticas, como si fueran situaciones reales en llamada. En español.';
+  var reply = await trCallAI(sys, 'Genera quiz sobre: '+topic);
+  trLoading=false;
+  var quiz;
+  try { quiz = JSON.parse(reply.replace(/```json|```/g,'').trim()); } catch(e) {
+    trChatMsgs.push({role:'bot',text:'No pude generar el quiz. Intenta de nuevo.'});
+    trRenderChat(); return;
+  }
+  window._trQuiz = quiz;
+  window._trQuizTopic = topic;
+  window._trQuizScore = 0;
+  window._trQuizIdx = 0;
+  trShowQuizQuestion(0);
+}
+
+function trShowQuizQuestion(idx) {
+  var quiz = window._trQuiz;
+  if (!quiz || !quiz.questions || idx >= quiz.questions.length) {
+    trFinishQuiz(); return;
+  }
+  var q = quiz.questions[idx];
+  var h = '<div style="background:#F3E8FF;border:1px solid #D8B4FE;border-radius:10px;padding:12px">';
+  h += '<div style="font-size:9px;font-weight:700;color:#7B1FA2;margin-bottom:4px">PREGUNTA '+(idx+1)+'/'+quiz.questions.length+'</div>';
+  h += '<div style="font-size:12px;font-weight:700;margin-bottom:8px;line-height:1.4">'+q.q+'</div>';
+  q.options.forEach(function(opt, i) {
+    h += '<button onclick="trAnswerQuiz('+idx+','+i+')" style="display:block;width:100%;text-align:left;padding:8px 10px;margin-bottom:4px;border:1px solid var(--border);border-radius:6px;background:white;cursor:pointer;font-size:11px;transition:all 0.2s" onmouseover="this.style.borderColor=\'#7B1FA2\';this.style.background=\'#F3E8FF\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.background=\'white\'">'+opt+'</button>';
+  });
+  h += '</div>';
+  trChatMsgs.push({role:'bot',text:h});
+  trRenderChat();
+}
+
+function trAnswerQuiz(qIdx, ansIdx) {
+  var quiz = window._trQuiz;
+  var q = quiz.questions[qIdx];
+  var correct = ansIdx === q.correct;
+  if (correct) window._trQuizScore++;
+  var icon = correct ? '✅' : '❌';
+  var color = correct ? '#E8F5E9' : '#FEE2E2';
+  var h = '<div style="background:'+color+';border-radius:8px;padding:8px;font-size:11px">';
+  h += '<div style="font-weight:700">'+icon+' '+(correct?'¡Correcto!':'Incorrecto — la respuesta era: '+q.options[q.correct])+'</div>';
+  h += '<div style="color:var(--text-2);margin-top:4px">'+q.explanation+'</div></div>';
+  trChatMsgs.push({role:'bot',text:h});
+  window._trQuizIdx = qIdx + 1;
+  if (qIdx + 1 < quiz.questions.length) {
+    setTimeout(function(){ trShowQuizQuestion(qIdx+1); }, 800);
+  } else {
+    setTimeout(function(){ trFinishQuiz(); }, 800);
+  }
+  trRenderChat();
+}
+
+async function trFinishQuiz() {
+  var score = window._trQuizScore||0;
+  var total = window._trQuiz.questions.length;
+  var pct = Math.round(score/total*100);
+  var color = pct>=80?'#10B981':pct>=60?'#F59E0B':'#DC3545';
+  var h = '<div style="background:var(--surface-2);border:2px solid '+color+';border-radius:10px;padding:14px;text-align:center">';
+  h += '<div style="font-size:36px;font-weight:900;color:'+color+'">'+score+'/'+total+'</div>';
+  h += '<div style="font-size:12px;font-weight:700;color:'+color+'">'+(pct>=80?'¡Excelente! 🎉':pct>=60?'Bien, pero puedes mejorar 💪':'Necesitas repasar este tema 📚')+'</div>';
+  h += '<div style="margin-top:8px;display:flex;gap:6px;justify-content:center">';
+  h += '<button class="btn" style="font-size:10px;padding:4px 10px;background:var(--att-blue);color:white;border:none;border-radius:6px" onclick="trStartQuiz(\''+((window._trQuizTopic||'').replace(/'/g,"\\'"))+'\')">🔄 Repetir quiz</button>';
+  h += '</div></div>';
+  trChatMsgs.push({role:'bot',text:h});
+  trRenderChat();
+  // Save quiz result
+  await trSaveProgress('quiz', window._trQuizTopic||'general', {score:pct, correct:score, total:total});
+  trRenderLevelBar();
+}
+
+// ── SAVE PROGRESS & COMPETENCIES ──
+async function trSaveProgress(type, topic, result) {
+  if (!supabase || !state.agente) return;
+  try {
+    await supabase.from('agent_competencies').insert({
+      agent_id: state.agente.id,
+      agent_name: state.agente.nombre,
+      type: type,
+      topic: topic.substring(0,200),
+      score: result.score || 0,
+      details: JSON.stringify(result),
+      created_at: new Date().toISOString()
+    });
+  } catch(e) { console.log('Save progress error:', e); }
+}
+
+// ── COMPETENCIES DASHBOARD (admin) ──
+async function openCompetencias() {
+  if (!supabase) { alert('Sin conexión'); return; }
+  try {
+    var { data } = await supabase.from('agent_competencies').select('*').order('created_at',{ascending:false}).limit(1000);
+    if (!data || data.length === 0) { alert('No hay datos de competencias aún. Los agentes deben completar ejercicios, roleplay o quizzes.'); return; }
+
+    // Group by agent
+    var agents = {};
+    var oneWeekAgo = new Date(); oneWeekAgo.setDate(oneWeekAgo.getDate()-7);
+    var twoWeeksAgo = new Date(); twoWeeksAgo.setDate(twoWeeksAgo.getDate()-14);
+    data.forEach(function(r) {
+      var name = (r.agent_name||'').split(' ').slice(0,2).join(' ');
+      if (!agents[name]) agents[name] = {exercises:[], roleplays:[], quizzes:[], total:0, avgScore:0, scores:[], thisWeek:[], lastWeek:[]};
+      agents[name].total++;
+      if (r.score) {
+        agents[name].scores.push(r.score);
+        var rDate = new Date(r.created_at);
+        if (rDate >= oneWeekAgo) agents[name].thisWeek.push(r.score);
+        else if (rDate >= twoWeeksAgo) agents[name].lastWeek.push(r.score);
+      }
+      if (r.type==='exercise') agents[name].exercises.push(r);
+      else if (r.type==='roleplay') agents[name].roleplays.push(r);
+      else if (r.type==='quiz') agents[name].quizzes.push(r);
+    });
+
+    // Calculate averages and trends
+    Object.keys(agents).forEach(function(k) {
+      var a = agents[k];
+      a.avgScore = a.scores.length > 0 ? Math.round(a.scores.reduce(function(s,v){return s+v},0) / a.scores.length) : 0;
+      var twAvg = a.thisWeek.length > 0 ? Math.round(a.thisWeek.reduce(function(s,v){return s+v},0)/a.thisWeek.length) : null;
+      var lwAvg = a.lastWeek.length > 0 ? Math.round(a.lastWeek.reduce(function(s,v){return s+v},0)/a.lastWeek.length) : null;
+      a.trend = (twAvg !== null && lwAvg !== null) ? twAvg - lwAvg : null;
+      a.thisWeekAvg = twAvg;
+      a.lastWeekAvg = lwAvg;
+    });
+
+    var sorted = Object.keys(agents).map(function(k){return{name:k,data:agents[k]}}).sort(function(a,b){return b.data.total-a.data.total});
+
+    // Build modal
+    var h = '<div class="modal-overlay" onclick="if(event.target===this)this.remove()" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">';
+    h += '<div style="background:var(--bg-card);border-radius:16px;width:95%;max-width:700px;padding:24px;margin:20px auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div style="font-size:18px;font-weight:900">📊 Competencias por Agente</div><button onclick="this.closest(\'.modal-overlay\').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--text-3)">✕</button></div>';
+
+    // Agent cards
+    sorted.forEach(function(ag) {
+      var a = ag.data;
+      var sc = a.avgScore>=80?'#10B981':a.avgScore>=60?'#F59E0B':'#DC3545';
+      h += '<div style="background:var(--surface-2);border-radius:10px;padding:12px;margin-bottom:8px">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+      h += '<div style="font-size:13px;font-weight:700">'+ag.name+'</div>';
+      h += '<div style="display:flex;gap:8px;align-items:center">';
+      if (a.trend !== null) {
+        var tIcon = a.trend > 0 ? '📈' : a.trend < 0 ? '📉' : '➡️';
+        var tColor = a.trend > 0 ? '#10B981' : a.trend < 0 ? '#DC3545' : 'var(--text-3)';
+        var tSign = a.trend > 0 ? '+' : '';
+        h += '<span style="font-size:11px;font-weight:700;color:'+tColor+'" title="Semana actual vs anterior">'+tIcon+' '+tSign+a.trend+'%</span>';
+      }
+      h += '<span style="font-size:20px;font-weight:900;color:'+sc+'">'+a.avgScore+'%</span>';
+      h += '</div></div>';
+      h += '<div style="display:flex;gap:12px;flex-wrap:wrap">';
+      h += '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--att-blue)">'+a.exercises.length+'</div><div style="font-size:9px;color:var(--text-3)">Ejercicios</div></div>';
+      h += '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:#8B5CF6">'+a.roleplays.length+'</div><div style="font-size:9px;color:var(--text-3)">Roleplays</div></div>';
+      h += '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:#10B981">'+a.quizzes.length+'</div><div style="font-size:9px;color:var(--text-3)">Quizzes</div></div>';
+      h += '<div style="text-align:center"><div style="font-size:16px;font-weight:800">'+a.total+'</div><div style="font-size:9px;color:var(--text-3)">Total</div></div>';
+      h += '</div>';
+      // Show weak topics
+      var topicScores = {};
+      a.scores.length && data.filter(function(r){return (r.agent_name||'').split(' ').slice(0,2).join(' ')===ag.name && r.score}).forEach(function(r){
+        if (!topicScores[r.topic]) topicScores[r.topic]={scores:[],topic:r.topic};
+        topicScores[r.topic].scores.push(r.score);
+      });
+      var weakTopics = Object.values(topicScores).map(function(t){t.avg=Math.round(t.scores.reduce(function(s,v){return s+v},0)/t.scores.length);return t}).filter(function(t){return t.avg<70}).sort(function(a,b){return a.avg-b.avg}).slice(0,3);
+      if (weakTopics.length > 0) {
+        h += '<div style="margin-top:6px;background:#FEE2E2;border-radius:6px;padding:6px 8px;font-size:10px"><b style="color:#DC3545">⚠️ Temas débiles:</b> ';
+        h += weakTopics.map(function(t){return t.topic+' ('+t.avg+'%)'}).join(', ');
+        h += '</div>';
+      }
+      h += '</div>';
+    });
+
+    h += '</div></div>';
+    document.body.insertAdjacentHTML('beforeend', h);
+  } catch(e) { alert('Error: '+e.message); }
 }
 
 // ── ROLEPLAY ──
@@ -7536,16 +8028,21 @@ var TR_LEVELS = [
   {lvl:7,name:'Leyenda',min:2500,badge:'#F59E0B',grad:'#F59E0B,#EF4444'}
 ];
 
-// XP Rules: Roleplay = score (0-100 XP), Exercise = 15 XP, Streak day = 10 XP
+// XP Rules: Roleplay = score (0-100 XP), Exercise = 15 XP, Quiz = 20 XP, Streak day = 10 XP
 async function trCalcLevel() {
-  if (!supabase || !state.agente) return {lvl:1,name:'Novato',xp:0,next:100,pct:0,rp:0,ex:0,streak:0};
+  if (!supabase || !state.agente) return {lvl:1,name:'Novato',xp:0,next:100,pct:0,rp:0,ex:0,qz:0,streak:0,badges:[]};
   var agId = state.agente.id;
   try {
-    // Get all progress
+    // Get all progress from training_progress
     var progRes = await supabase.from('training_progress').select('type,score,completed_at').eq('agent_id', agId);
     var prog = progRes.data || [];
     var rpDone = prog.filter(function(p){return p.type==='roleplay'});
     var exDone = prog.filter(function(p){return p.type==='exercise'});
+
+    // Get quizzes from agent_competencies
+    var compRes = await supabase.from('agent_competencies').select('type,score,created_at').eq('agent_id', agId);
+    var comp = compRes.data || [];
+    var qzDone = comp.filter(function(p){return p.type==='quiz'});
 
     // Get usage for streak
     var usageRes = await supabase.from('training_usage').select('date,total_count').eq('agent_id', agId).gt('total_count',0).order('date',{ascending:false});
@@ -7553,9 +8050,8 @@ async function trCalcLevel() {
 
     // Calculate streak
     var streak = 0;
-    var today = new Date().toISOString().slice(0,10);
+    var today = getMexicoDateStr();
     var checkDate = new Date();
-    // Allow today or yesterday as start
     if (usageDays.indexOf(today) !== -1) {
       streak = 1;
       checkDate.setDate(checkDate.getDate() - 1);
@@ -7577,9 +8073,24 @@ async function trCalcLevel() {
 
     // Calculate XP
     var xp = 0;
-    rpDone.forEach(function(r) { xp += (r.score || 50); }); // roleplay = score as XP
-    xp += exDone.length * 15; // exercise = 15 XP
-    xp += streak * 10; // streak day = 10 XP
+    rpDone.forEach(function(r) { xp += (r.score || 50); });
+    xp += exDone.length * 15;
+    qzDone.forEach(function(q) { xp += Math.round((q.score||0) / 5) + 10; }); // quiz: base 10 + score/5
+    xp += streak * 10;
+
+    // Calculate badges
+    var badges = [];
+    if (rpDone.length >= 1) badges.push({icon:'🎭',name:'Primer Roleplay',color:'#8B5CF6'});
+    if (rpDone.length >= 10) badges.push({icon:'🎭',name:'10 Roleplays',color:'#6D28D9'});
+    if (exDone.length >= 1) badges.push({icon:'🏋️',name:'Primer Ejercicio',color:'#3B82F6'});
+    if (exDone.length >= 10) badges.push({icon:'🏋️',name:'10 Ejercicios',color:'#1D4ED8'});
+    if (qzDone.length >= 1) badges.push({icon:'📝',name:'Primer Quiz',color:'#10B981'});
+    if (qzDone.filter(function(q){return q.score>=100}).length >= 1) badges.push({icon:'💯',name:'Quiz Perfecto',color:'#F59E0B'});
+    if (streak >= 3) badges.push({icon:'🔥',name:'Racha 3 días',color:'#EF4444'});
+    if (streak >= 7) badges.push({icon:'🔥',name:'Racha 7 días',color:'#DC2626'});
+    if (rpDone.filter(function(r){return r.score>=80}).length>=5) badges.push({icon:'⭐',name:'5 Roleplays 80+',color:'#F59E0B'});
+    if (xp >= 500) badges.push({icon:'🏆',name:'500 XP',color:'#F59E0B'});
+    if (xp >= 1000) badges.push({icon:'👑',name:'1000 XP',color:'#EF4444'});
 
     // Find level
     var curLevel = TR_LEVELS[0];
@@ -7589,8 +8100,8 @@ async function trCalcLevel() {
     }
     var pct = nextLevel ? Math.min(100, Math.round((xp - curLevel.min) / (nextLevel.min - curLevel.min) * 100)) : 100;
 
-    return {lvl:curLevel.lvl, name:curLevel.name, xp:xp, next:nextLevel?nextLevel.min:curLevel.min, nextName:nextLevel?nextLevel.name:'¡Máximo!', pct:pct, rp:rpDone.length, ex:exDone.length, streak:streak, grad:curLevel.grad};
-  } catch(e) { console.log('Level calc error:', e); return {lvl:1,name:'Novato',xp:0,next:100,pct:0,rp:0,ex:0,streak:0,grad:'#6B7280,#4B5563'}; }
+    return {lvl:curLevel.lvl, name:curLevel.name, xp:xp, next:nextLevel?nextLevel.min:curLevel.min, nextName:nextLevel?nextLevel.name:'¡Máximo!', pct:pct, rp:rpDone.length, ex:exDone.length, qz:qzDone.length, streak:streak, grad:curLevel.grad, badges:badges};
+  } catch(e) { console.log('Level calc error:', e); return {lvl:1,name:'Novato',xp:0,next:100,pct:0,rp:0,ex:0,qz:0,streak:0,grad:'#6B7280,#4B5563',badges:[]}; }
 }
 
 async function trRenderLevelBar() {
@@ -7605,9 +8116,79 @@ async function trRenderLevelBar() {
   document.getElementById('trLevelFill').style.background = 'linear-gradient(90deg,' + (d.grad||'#3B82F6,#1D4ED8') + ')';
   document.getElementById('trLvlRp').textContent = d.rp;
   document.getElementById('trLvlEx').textContent = d.ex;
+  document.getElementById('trLvlQz').textContent = d.qz || 0;
   document.getElementById('trLvlStreak').textContent = d.streak;
+  // Render badges
+  var bRow = document.getElementById('trBadgesRow');
+  if (d.badges && d.badges.length > 0) {
+    bRow.style.display = 'block';
+    bRow.innerHTML = d.badges.map(function(b){
+      return '<span style="display:inline-block;padding:3px 8px;margin-right:4px;border-radius:12px;font-size:10px;font-weight:600;background:'+b.color+'15;color:'+b.color+';border:1px solid '+b.color+'40">'+b.icon+' '+b.name+'</span>';
+    }).join('');
+  } else { bRow.style.display = 'none'; }
+  // Start session timer
+  trStartSessionTimer();
   return d;
 }
+
+// ── SESSION TIMER ──
+var trSessionStart = null, trTimerInterval = null, TR_SESSION_LIMIT = 20; // minutes
+
+function trStartSessionTimer() {
+  if (trSessionStart) return; // already running
+  trSessionStart = new Date();
+  var timerBar = document.getElementById('trTimerBar');
+  if (timerBar) timerBar.style.display = 'flex';
+  // Load limit from config
+  if (supabase) {
+    supabase.from('app_config').select('value').eq('key','academy_time_limit').maybeSingle().then(function(res){
+      if (res.data && res.data.value) TR_SESSION_LIMIT = parseInt(res.data.value) || 20;
+      var limitEl = document.getElementById('trTimerLimit');
+      if (limitEl) limitEl.textContent = 'Límite: ' + TR_SESSION_LIMIT + ' min';
+    });
+  }
+  if (trTimerInterval) clearInterval(trTimerInterval);
+  trTimerInterval = setInterval(function() {
+    var elapsed = Math.floor((new Date() - trSessionStart) / 1000);
+    var mm = String(Math.floor(elapsed/60)).padStart(2,'0');
+    var ss = String(elapsed%60).padStart(2,'0');
+    var el = document.getElementById('trTimerCount');
+    if (el) el.textContent = mm+':'+ss;
+    // Check limit
+    var elapsedMin = elapsed / 60;
+    var timerBar = document.getElementById('trTimerBar');
+    if (elapsedMin >= TR_SESSION_LIMIT * 0.8 && elapsedMin < TR_SESSION_LIMIT) {
+      if (timerBar) { timerBar.style.background = '#FFF3E0'; timerBar.style.borderColor = '#FF9800'; }
+      if (el) el.style.color = '#E65100';
+    }
+    if (elapsedMin >= TR_SESSION_LIMIT) {
+      if (timerBar) { timerBar.style.background = '#FEE2E2'; timerBar.style.borderColor = '#EF4444'; }
+      if (el) el.style.color = '#DC3545';
+      // Block if not admin
+      if (state.agente && state.agente.rol !== 'admin' && state.agente.rol !== 'coordinador' && state.agente.rol !== 'supervisor') {
+        trBlockSession();
+      }
+    }
+  }, 1000);
+}
+
+function trBlockSession() {
+  clearInterval(trTimerInterval);
+  trSessionBlocked = true;
+  // Switch to guía tab automatically
+  trTab('guia');
+  // Show notification
+  var notif = document.createElement('div');
+  notif.id = 'trBlockNotif';
+  notif.style.cssText = 'background:#FEE2E2;border:1px solid #EF4444;border-radius:10px;padding:12px;margin-bottom:8px;text-align:center';
+  notif.innerHTML = '<div style="font-size:14px;margin-bottom:4px">⏰ <b>Tiempo de estudio terminado</b></div>' +
+    '<div style="font-size:11px;color:#DC3545;margin-bottom:6px">Usaste tus <b>'+TR_SESSION_LIMIT+' minutos</b> de hoy. Puedes seguir consultando la 📚 Guía, pero el Asistente, Roleplay y Ejercicios se desbloquean mañana.</div>' +
+    '<button onclick="showView(\'cotizador\')" style="background:var(--att-blue);color:white;border:none;padding:8px 16px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">🎯 Ir a vender</button>';
+  var levelBar = document.getElementById('trLevelBar');
+  if (levelBar && !document.getElementById('trBlockNotif')) levelBar.after(notif);
+  trSessionStart = null;
+}
+var trSessionBlocked = false;
 
 // Hook into showView for auto-init
 var _origShowView = showView;
