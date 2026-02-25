@@ -570,6 +570,12 @@ body{padding-bottom:60px}
         <div class="card-desc">Entrenamiento con IA y roleplay</div>
       </div>
 
+      <div class="home-card clickable" onclick="openMiNorte()">
+        <div class="card-icon">🧭</div>
+        <div class="card-title">Mi Norte</div>
+        <div class="card-desc">Mi meta, simulador y motivación</div>
+      </div>
+
       <div class="home-card clickable" id="cardMetas" onclick="openMetas()">
         <div class="card-icon">🎯</div>
         <div class="card-title">Metas</div>
@@ -585,6 +591,89 @@ body{padding-bottom:60px}
 </div>
 
 <!-- ===== VIEW: INFORMES ===== -->
+<!-- ===== VIEW: MI NORTE ===== -->
+<div class="view" id="viewMiNorte">
+  <div class="container">
+    <!-- Motivational Banner -->
+    <div id="mnBanner" style="display:none;border-radius:14px;padding:16px;margin-bottom:12px;background:linear-gradient(135deg,#0057B8,#009FDB);color:white;position:relative;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div id="mnBannerPhoto" style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;overflow:hidden">🧭</div>
+        <div style="flex:1">
+          <div id="mnBannerMotiv" style="font-size:14px;font-weight:800;line-height:1.3"></div>
+          <div id="mnBannerMeta" style="font-size:11px;opacity:0.85;margin-top:4px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:4px;margin-bottom:12px">
+      <button class="btn btn-primary" id="mnTabVision" onclick="mnTab('vision')" style="flex:1;font-size:11px;padding:8px">🧭 Mi Visión</button>
+      <button class="btn btn-secondary" id="mnTabSim" onclick="mnTab('simulador')" style="flex:1;font-size:11px;padding:8px">🚀 Simulador</button>
+      <button class="btn btn-secondary" id="mnTabProg" onclick="mnTab('progreso')" style="flex:1;font-size:11px;padding:8px">📈 Mi Progreso</button>
+    </div>
+
+    <!-- VISION TAB -->
+    <div id="mnVision">
+      <div class="section" style="padding:16px;margin-bottom:10px">
+        <div style="font-size:14px;font-weight:800;margin-bottom:12px">🧭 Mi Norte Personal</div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="field-label">🌟 Mi meta de vida</label>
+          <textarea class="field" id="mnMetaVida" rows="2" placeholder="¿Qué quieres lograr? Ej: Tener mi casa propia, dar la mejor vida a mi familia..." style="resize:vertical"></textarea>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="field-label">🏢 Mi meta en ExpertCell</label>
+          <textarea class="field" id="mnMetaEC" rows="2" placeholder="¿Qué quieres lograr aquí? Ej: Ser el mejor agente, llegar a supervisor..." style="resize:vertical"></textarea>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="field-label">❤️ Mi motivación más grande</label>
+          <textarea class="field" id="mnMotivacion" rows="2" placeholder="¿Por quién o por qué das lo mejor? Ej: Mi esposa y mis hijos..." style="resize:vertical"></textarea>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="field-label">📷 Foto de mi motivación (familia, meta visual, etc.)</label>
+          <input type="file" accept="image/*" id="mnFotoInput" onchange="mnPreviewPhoto(this)" style="font-size:11px">
+          <div id="mnFotoPreview" style="margin-top:8px;display:none"><img id="mnFotoImg" style="max-width:200px;border-radius:10px;border:2px solid var(--att-blue)"></div>
+        </div>
+        <button class="btn btn-primary" onclick="mnSaveVision()" style="width:100%;padding:10px;font-size:13px">💾 Guardar Mi Norte</button>
+      </div>
+    </div>
+
+    <!-- SIMULADOR TAB -->
+    <div id="mnSimulador" style="display:none">
+      <div class="section" style="padding:16px;margin-bottom:10px">
+        <div style="font-size:14px;font-weight:800;margin-bottom:4px">🚀 Simulador de Ingresos</div>
+        <div style="font-size:10px;color:var(--text-3);margin-bottom:12px">Pon tus ventas por plan y ve cuánto ganarías</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+          <div><label style="font-size:10px;font-weight:600">Azul 2</label><input type="number" class="field mnSimInput" id="mnSAzul2" min="0" value="0" oninput="mnCalcSim()"></div>
+          <div><label style="font-size:10px;font-weight:600">Azul 3</label><input type="number" class="field mnSimInput" id="mnSAzul3" min="0" value="0" oninput="mnCalcSim()"></div>
+          <div><label style="font-size:10px;font-weight:600">Plata</label><input type="number" class="field mnSimInput" id="mnSPlata" min="0" value="0" oninput="mnCalcSim()"></div>
+          <div><label style="font-size:10px;font-weight:600">Oro</label><input type="number" class="field mnSimInput" id="mnSOro" min="0" value="0" oninput="mnCalcSim()"></div>
+          <div><label style="font-size:10px;font-weight:600">Black</label><input type="number" class="field mnSimInput" id="mnSBlack" min="0" value="0" oninput="mnCalcSim()"></div>
+          <div><label style="font-size:10px;font-weight:600">Diamante</label><input type="number" class="field mnSimInput" id="mnSDiamante" min="0" value="0" oninput="mnCalcSim()"></div>
+          <div><label style="font-size:10px;font-weight:600">Platino</label><input type="number" class="field mnSimInput" id="mnSPlatino" min="0" value="0" oninput="mnCalcSim()"></div>
+          <div><label style="font-size:10px;font-weight:600">Titanio</label><input type="number" class="field mnSimInput" id="mnSTitanio" min="0" value="0" oninput="mnCalcSim()"></div>
+        </div>
+        <div style="background:#FEE2E2;border-radius:8px;padding:10px;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:#DC3545;margin-bottom:6px">📦 Fee DHL (envíos)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div><label style="font-size:10px">Azul 2 (-$25)</label><input type="number" class="field" id="mnDhlAzul2" min="0" value="0" oninput="mnCalcSim()"></div>
+            <div><label style="font-size:10px">Resto (-$50)</label><input type="number" class="field" id="mnDhlResto" min="0" value="0" oninput="mnCalcSim()"></div>
+          </div>
+        </div>
+        <div><label style="font-size:10px;font-weight:600">Faltas en el mes</label><input type="number" class="field" id="mnFaltas" min="0" max="30" value="0" oninput="mnCalcSim()" style="width:80px"></div>
+      </div>
+      <!-- Results -->
+      <div id="mnSimResult" class="section" style="padding:16px;background:linear-gradient(135deg,#004A3D,#00695C);color:white;border-radius:14px"></div>
+    </div>
+
+    <!-- PROGRESO TAB -->
+    <div id="mnProgreso" style="display:none">
+      <div id="mnProgresoContent" class="section" style="padding:16px">
+        <div style="text-align:center;color:var(--text-3);padding:20px">Cargando progreso...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="view" id="viewInformes">
   <div class="container">
     <div class="section" style="padding:14px;margin-bottom:8px">
@@ -1379,6 +1468,7 @@ async function doLogin() {
     document.getElementById('bottomNav').style.display = 'flex';
     await loadCotizacionesFromSupabase();
     updateHome();
+    mnShowHomeBanner();
 
   } catch(e) {
     errEl.textContent = 'Error de conexión. Intenta de nuevo.';
@@ -1425,6 +1515,7 @@ async function tryAutoLogin() {
       await loadCotizacionesFromSupabase();
       updateHome();
     }
+      mnShowHomeBanner();
   } catch(e) { console.error('Auto-login error:', e); }
 }
 
@@ -1876,7 +1967,7 @@ function showView(name, title) {
 
   const titles = {
     home: '', config: 'Mi Perfil', cotizar: 'Nueva Cotización',
-    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes',
+    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Norte',
   };
   headerTitle.textContent = title || titles[name] || '';
 
@@ -6445,6 +6536,336 @@ document.getElementById('waPlanAnterior').addEventListener('change', function() 
 });
 
 // ============================================================
+// ============================================================
+// MI NORTE — Personal Goals & Income Simulator
+// ============================================================
+var MN_COMISIONES = {
+  'Azul 2':  {n1:75, n2:75, n3:100},
+  'Azul 3':  {n1:125,n2:250,n3:350},
+  'Plata':   {n1:150,n2:300,n3:400},
+  'Oro':     {n1:175,n2:350,n3:475},
+  'Black':   {n1:225,n2:450,n3:650},
+  'Diamante':{n1:250,n2:500,n3:700},
+  'Platino': {n1:250,n2:500,n3:700},
+  'Titanio': {n1:100,n2:200,n3:250}
+};
+var MN_BASE = 9400, MN_FALTA = 309.10;
+
+function openMiNorte() {
+  showView('miNorte','Mi Norte');
+  mnLoadVision();
+  mnCalcSim();
+}
+
+function mnTab(tab) {
+  ['vision','simulador','progreso'].forEach(function(t){
+    var el = document.getElementById('mn'+t.charAt(0).toUpperCase()+t.slice(1));
+    if(el) el.style.display = t===tab?'':'none';
+    var btn = document.getElementById('mnTab'+({vision:'Vision',simulador:'Sim',progreso:'Prog'}[t]));
+    if(btn){btn.className=t===tab?'btn btn-primary':'btn btn-secondary';btn.style.flex='1';btn.style.fontSize='11px';btn.style.padding='8px'}
+  });
+  if(tab==='progreso') mnLoadProgreso();
+}
+
+// Photo preview
+function mnPreviewPhoto(input) {
+  if(input.files && input.files[0]){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      document.getElementById('mnFotoImg').src = e.target.result;
+      document.getElementById('mnFotoPreview').style.display = 'block';
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+// Save vision to Supabase
+async function mnSaveVision() {
+  if(!supabase || !currentUser) {alert('Sin conexión');return;}
+  var data = {
+    user_id: currentUser.id,
+    meta_vida: document.getElementById('mnMetaVida').value.trim(),
+    meta_ec: document.getElementById('mnMetaEC').value.trim(),
+    motivacion: document.getElementById('mnMotivacion').value.trim(),
+    foto: document.getElementById('mnFotoImg').src || null,
+    updated_at: new Date().toISOString()
+  };
+  try {
+    // Check if exists
+    var {data:existing} = await supabase.from('agent_norte').select('id').eq('user_id',currentUser.id).maybeSingle();
+    if(existing) await supabase.from('agent_norte').update(data).eq('id',existing.id);
+    else await supabase.from('agent_norte').insert(data);
+    alert('✅ Tu Norte guardado. ¡Recuérdalo cada día!');
+    mnRenderBanner(data);
+  } catch(e) {alert('Error: '+e.message);}
+}
+
+// Load vision
+async function mnLoadVision() {
+  if(!supabase || !currentUser) return;
+  try {
+    var {data} = await supabase.from('agent_norte').select('*').eq('user_id',currentUser.id).maybeSingle();
+    if(data) {
+      document.getElementById('mnMetaVida').value = data.meta_vida || '';
+      document.getElementById('mnMetaEC').value = data.meta_ec || '';
+      document.getElementById('mnMotivacion').value = data.motivacion || '';
+      if(data.foto) {
+        document.getElementById('mnFotoImg').src = data.foto;
+        document.getElementById('mnFotoPreview').style.display = 'block';
+      }
+      mnRenderBanner(data);
+    }
+  } catch(e){}
+}
+
+function mnRenderBanner(data) {
+  var banner = document.getElementById('mnBanner');
+  if(!data || (!data.motivacion && !data.meta_vida)) {banner.style.display='none';return;}
+  banner.style.display = 'block';
+  var photoEl = document.getElementById('mnBannerPhoto');
+  if(data.foto) photoEl.innerHTML = '<img src="'+data.foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
+  else photoEl.innerHTML = '🧭';
+  document.getElementById('mnBannerMotiv').textContent = data.motivacion || data.meta_vida || '';
+  document.getElementById('mnBannerMeta').textContent = data.meta_ec || '';
+}
+
+// SIMULATOR
+function mnCalcSim() {
+  var plans = ['Azul 2','Azul 3','Plata','Oro','Black','Diamante','Platino','Titanio'];
+  var ids = ['mnSAzul2','mnSAzul3','mnSPlata','mnSOro','mnSBlack','mnSDiamante','mnSPlatino','mnSTitanio'];
+  var ventas = {};
+  var totalVentas = 0;
+  plans.forEach(function(p,i){
+    var v = parseInt(document.getElementById(ids[i]).value)||0;
+    ventas[p] = v;
+    totalVentas += v;
+  });
+
+  // Determine level
+  var nivel = 0, nivelLabel = 'SIN BONO (<6)', nivelKey = 'n1';
+  if(totalVentas >= 6 && totalVentas <= 9) { nivel=1; nivelLabel='NIVEL 1 (6-9)'; nivelKey='n1'; }
+  else if(totalVentas >= 10 && totalVentas <= 15) { nivel=2; nivelLabel='⚡ NIVEL 2 (10-15)'; nivelKey='n2'; }
+  else if(totalVentas >= 16) { nivel=3; nivelLabel='🚀 NIVEL 3 (16+)'; nivelKey='n3'; }
+
+  // Calculate commissions
+  var comisionTotal = 0;
+  var desglose = [];
+  if(totalVentas >= 6) {
+    plans.forEach(function(p){
+      if(ventas[p] > 0) {
+        var rate = MN_COMISIONES[p][nivelKey];
+        var sub = ventas[p] * rate;
+        comisionTotal += sub;
+        desglose.push({plan:p, qty:ventas[p], rate:rate, sub:sub});
+      }
+    });
+  }
+
+  // Accelerators
+  var acelerador = 0, acelLabel = '';
+  if(totalVentas >= 25) { acelerador = totalVentas * 150; acelLabel = '🔥 25+ → +$150 × '+totalVentas+' = $'+acelerador.toLocaleString(); }
+  else if(totalVentas >= 20) { acelerador = totalVentas * 100; acelLabel = '🚀 20+ → +$100 × '+totalVentas+' = $'+acelerador.toLocaleString(); }
+
+  // DHL fees
+  var dhlAzul2 = (parseInt(document.getElementById('mnDhlAzul2').value)||0) * 25;
+  var dhlResto = (parseInt(document.getElementById('mnDhlResto').value)||0) * 50;
+  var dhlTotal = dhlAzul2 + dhlResto;
+
+  // Faltas
+  var faltas = parseInt(document.getElementById('mnFaltas').value)||0;
+  var descFaltas = faltas * MN_FALTA;
+
+  // Total
+  var sueldoNeto = MN_BASE - descFaltas;
+  var ingresoTotal = sueldoNeto + comisionTotal + acelerador - dhlTotal;
+
+  // Progress bar position
+  var barPos = totalVentas <= 0 ? 0 : totalVentas >= 25 ? 100 : Math.round(totalVentas/25*100);
+  var nivelColor = nivel===0?'#6B7280':nivel===1?'#F59E0B':nivel===2?'#3B82F6':'#10B981';
+
+  var h = '';
+  h += '<div style="text-align:center;margin-bottom:12px"><div style="font-size:18px;font-weight:900;color:'+nivelColor+'">'+nivelLabel+'</div></div>';
+
+  h += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>Total Ventas:</span><span style="font-weight:800">'+totalVentas+'</span></div>';
+  h += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>Base Neto:</span><span style="font-weight:800">$'+sueldoNeto.toLocaleString()+'</span></div>';
+  if(descFaltas>0) h += '<div style="display:flex;justify-content:space-between;font-size:11px;color:#FF8A80"><span>- Faltas ('+faltas+' × $309.10):</span><span>-$'+descFaltas.toLocaleString()+'</span></div>';
+
+  h += '<div style="margin:8px 0;border-top:1px solid rgba(255,255,255,0.2);padding-top:8px">';
+  h += '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px"><span>Comisión Tabla:</span><span style="font-weight:800">$'+comisionTotal.toLocaleString()+'</span></div>';
+  // Desglose
+  if(desglose.length>0){
+    desglose.forEach(function(d){
+      h+='<div style="display:flex;justify-content:space-between;font-size:10px;opacity:0.8;padding-left:8px"><span>'+d.plan+' ('+d.qty+' × $'+d.rate+')</span><span>$'+d.sub.toLocaleString()+'</span></div>';
+    });
+  }
+  if(acelerador>0) h += '<div style="display:flex;justify-content:space-between;font-size:12px;color:#FFD54F;margin-top:4px"><span>'+acelLabel+'</span></div>';
+  if(dhlTotal>0) h += '<div style="display:flex;justify-content:space-between;font-size:11px;color:#FF8A80;margin-top:4px"><span>- Fee DHL:</span><span>-$'+dhlTotal.toLocaleString()+'</span></div>';
+  h += '</div>';
+
+  // TOTAL
+  h += '<div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:12px;margin-top:10px;text-align:center">';
+  h += '<div style="font-size:11px;font-weight:600;opacity:0.8">INGRESO TOTAL ESTIMADO</div>';
+  h += '<div style="font-size:36px;font-weight:900">$'+ingresoTotal.toLocaleString()+'</div>';
+  h += '</div>';
+
+  // Level bar
+  h += '<div style="margin-top:12px;position:relative;height:6px;background:rgba(255,255,255,0.2);border-radius:3px">';
+  h += '<div style="position:absolute;height:100%;border-radius:3px;background:'+nivelColor+';width:'+barPos+'%;transition:width 0.5s"></div>';
+  h += '</div>';
+  h += '<div style="display:flex;justify-content:space-between;font-size:9px;opacity:0.6;margin-top:3px"><span>0</span><span>6</span><span>10</span><span>16</span><span>20</span><span>25+</span></div>';
+
+  // What-if hints
+  if(totalVentas > 0 && totalVentas < 6) {
+    var faltan = 6 - totalVentas;
+    h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">💡 Te faltan <b>'+faltan+' venta(s)</b> para activar comisiones</div>';
+  } else if(totalVentas >= 6 && totalVentas < 10) {
+    var faltan = 10 - totalVentas;
+    h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">⚡ Con <b>'+faltan+' venta(s) más</b> subes a Nivel 2 y DUPLICAS comisiones</div>';
+  } else if(totalVentas >= 10 && totalVentas < 16) {
+    var faltan = 16 - totalVentas;
+    h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">🚀 Con <b>'+faltan+' venta(s) más</b> subes a Nivel 3 con bonos extra</div>';
+  } else if(totalVentas >= 16 && totalVentas < 20) {
+    var faltan = 20 - totalVentas;
+    h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">🚀 Con <b>'+faltan+' más</b> activas acelerador +$100/venta (+$'+(totalVentas+faltan)*100+' extra)</div>';
+  }
+
+  document.getElementById('mnSimResult').innerHTML = h;
+}
+
+// PROGRESO - loads real sales data
+async function mnLoadProgreso() {
+  var el = document.getElementById('mnProgresoContent');
+  if(!supabase || !currentUser) {el.innerHTML='<div style="color:var(--text-3);text-align:center;padding:20px">Sin conexión</div>';return;}
+  el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-3)">Cargando...</div>';
+  try {
+    // Get current month ventas for this agent
+    var now = new Date();
+    var mesStr = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    var desde = mesStr+'-01T06:00:00+00:00';
+    var hastaDate = new Date(now.getFullYear(),now.getMonth()+1,1);
+    var hasta = hastaDate.toISOString().split('T')[0]+'T05:59:59+00:00';
+
+    var agId = currentUser.id;
+    var {data:ventas} = await supabase.from('cotizaciones').select('*,cotizacion_items(plan_nombre)').eq('agente_id',agId).eq('estatus','venta').gte('created_at',desde).lte('created_at',hasta);
+    ventas = ventas || [];
+
+    // Count by plan
+    var planCount = {};
+    ventas.forEach(function(v){
+      (v.cotizacion_items||[]).forEach(function(it){
+        var pn = (it.plan_nombre||'').replace('AT&T ','');
+        // Map to commission plan names
+        var mapped = 'Otro';
+        if(pn.indexOf('Azul 2')!==-1) mapped='Azul 2';
+        else if(pn.indexOf('Azul 3')!==-1) mapped='Azul 3';
+        else if(pn.indexOf('Plata')!==-1) mapped='Plata';
+        else if(pn.indexOf('Oro')!==-1) mapped='Oro';
+        else if(pn.indexOf('Black')!==-1) mapped='Black';
+        else if(pn.indexOf('Diamante')!==-1) mapped='Diamante';
+        else if(pn.indexOf('Platino')!==-1) mapped='Platino';
+        else if(pn.indexOf('Titanio')!==-1) mapped='Titanio';
+        planCount[mapped] = (planCount[mapped]||0)+1;
+      });
+    });
+
+    var totalV = ventas.length;
+    var nivel = totalV<6?0:totalV<=9?1:totalV<=15?2:3;
+    var nivelKey = nivel<=1?'n1':nivel===2?'n2':'n3';
+
+    // Calculate actual commission
+    var comReal = 0;
+    Object.keys(planCount).forEach(function(p){
+      if(MN_COMISIONES[p] && totalV>=6) comReal += planCount[p] * MN_COMISIONES[p][nivelKey];
+    });
+    var acel = totalV>=25?totalV*150:totalV>=20?totalV*100:0;
+
+    // Days remaining
+    var daysInMonth = new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+    var daysLeft = daysInMonth - now.getDate();
+    var workDaysLeft = Math.round(daysLeft * 5/7); // approximate work days
+
+    // Load agent's norte for meta
+    var {data:norte} = await supabase.from('agent_norte').select('meta_ingreso').eq('user_id',agId).maybeSingle();
+    var metaIngreso = norte && norte.meta_ingreso ? norte.meta_ingreso : 15000;
+
+    var ingresoActual = MN_BASE + comReal + acel;
+    var pctMeta = metaIngreso > 0 ? Math.min(100,Math.round(ingresoActual/metaIngreso*100)) : 0;
+    var metaColor = pctMeta>=100?'#10B981':pctMeta>=70?'#F59E0B':'#DC3545';
+
+    var h = '<div style="font-size:14px;font-weight:800;margin-bottom:12px">📈 Mi Progreso del Mes</div>';
+
+    // Meta input
+    h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px"><label style="font-size:11px;font-weight:600">🎯 Mi meta mensual: $</label><input type="number" class="field" id="mnMetaIngreso" value="'+metaIngreso+'" style="width:100px;font-size:12px" onchange="mnSaveMetaIngreso(this.value)"></div>';
+
+    // Progress bar
+    h += '<div style="background:var(--surface-2);border-radius:10px;padding:14px;margin-bottom:10px">';
+    h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:700;color:'+metaColor+'">$'+ingresoActual.toLocaleString()+' de $'+metaIngreso.toLocaleString()+'</span><span style="font-size:11px;font-weight:900;color:'+metaColor+'">'+pctMeta+'%</span></div>';
+    h += '<div style="height:12px;background:var(--border);border-radius:6px;overflow:hidden"><div style="height:100%;background:'+metaColor+';border-radius:6px;width:'+pctMeta+'%;transition:width 0.5s"></div></div>';
+    h += '</div>';
+
+    // Stats
+    h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">';
+    h += '<div style="background:var(--surface-2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:var(--att-blue)">'+totalV+'</div><div style="font-size:9px;color:var(--text-3)">Ventas</div></div>';
+    h += '<div style="background:var(--surface-2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:#10B981">$'+comReal.toLocaleString()+'</div><div style="font-size:9px;color:var(--text-3)">Comisión</div></div>';
+    h += '<div style="background:var(--surface-2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:#F59E0B">'+workDaysLeft+'</div><div style="font-size:9px;color:var(--text-3)">Días hábiles</div></div>';
+    h += '</div>';
+
+    // Plan breakdown
+    h += '<div style="background:var(--surface-2);border-radius:8px;padding:10px;margin-bottom:10px">';
+    h += '<div style="font-size:11px;font-weight:700;margin-bottom:6px">Desglose por plan</div>';
+    Object.keys(planCount).sort().forEach(function(p){
+      h += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span>'+p+' × '+planCount[p]+'</span><span style="font-weight:700">'+(MN_COMISIONES[p]&&totalV>=6?'$'+(planCount[p]*MN_COMISIONES[p][nivelKey]).toLocaleString():'$0')+'</span></div>';
+    });
+    h += '</div>';
+
+    // Projections
+    if(totalV < 6 && workDaysLeft > 0) {
+      var needPerDay = Math.ceil((6-totalV)/workDaysLeft);
+      h += '<div style="background:#FFF3E0;border:1px solid #FFE082;border-radius:8px;padding:10px;font-size:11px">⚠️ Necesitas <b>'+needPerDay+' venta(s)/día</b> los próximos '+workDaysLeft+' días para activar comisiones</div>';
+    } else if(totalV >= 6 && ingresoActual < metaIngreso && workDaysLeft > 0) {
+      h += '<div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:8px;padding:10px;font-size:11px">💪 Sigue así — a este ritmo llegarías a <b>$'+Math.round(ingresoActual*(daysInMonth/(daysInMonth-daysLeft))).toLocaleString()+'</b> al cierre del mes</div>';
+    } else if(ingresoActual >= metaIngreso) {
+      h += '<div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:8px;padding:10px;font-size:11px;text-align:center">🎉 <b>¡Vas arriba de tu meta!</b> ¡Sigue así!</div>';
+    }
+
+    el.innerHTML = h;
+  } catch(e) { el.innerHTML='<div style="color:#DC3545;padding:20px">Error: '+e.message+'</div>'; }
+}
+
+async function mnSaveMetaIngreso(val) {
+  if(!supabase||!currentUser) return;
+  var meta = parseInt(val)||15000;
+  try {
+    var {data:existing} = await supabase.from('agent_norte').select('id').eq('user_id',currentUser.id).maybeSingle();
+    if(existing) await supabase.from('agent_norte').update({meta_ingreso:meta,updated_at:new Date().toISOString()}).eq('id',existing.id);
+    else await supabase.from('agent_norte').insert({user_id:currentUser.id,meta_ingreso:meta,updated_at:new Date().toISOString()});
+    mnLoadProgreso();
+  } catch(e){}
+}
+
+// Show motivational banner on home screen
+async function mnShowHomeBanner() {
+  if(!supabase||!currentUser) return;
+  try {
+    var {data} = await supabase.from('agent_norte').select('motivacion,meta_ec,foto').eq('user_id',currentUser.id).maybeSingle();
+    if(!data || !data.motivacion) return;
+    var existing = document.getElementById('mnHomeBanner');
+    if(existing) existing.remove();
+    var banner = document.createElement('div');
+    banner.id = 'mnHomeBanner';
+    banner.style.cssText = 'border-radius:14px;padding:14px;margin-bottom:12px;background:linear-gradient(135deg,#0057B8,#009FDB);color:white;cursor:pointer';
+    banner.onclick = function(){ openMiNorte(); };
+    var photoHtml = data.foto ? '<img src="'+data.foto+'" style="width:48px;height:48px;object-fit:cover;border-radius:50%;border:2px solid rgba(255,255,255,0.5)">' : '<span style="font-size:24px">🧭</span>';
+    banner.innerHTML = '<div style="display:flex;align-items:center;gap:12px">'+
+      '<div style="flex-shrink:0">'+photoHtml+'</div>'+
+      '<div><div style="font-size:13px;font-weight:800">'+data.motivacion+'</div>'+
+      (data.meta_ec?'<div style="font-size:10px;opacity:0.85;margin-top:2px">'+data.meta_ec+'</div>':'')+
+      '</div></div>';
+    var container = document.querySelector('#viewHome .container');
+    if(container) container.insertBefore(banner, container.firstChild);
+  } catch(e){}
+}
+
 // METAS DE VENTAS — Sales Goals Module
 // ============================================================
 var METAS_CENTROS = {
