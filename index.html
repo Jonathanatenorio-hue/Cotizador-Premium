@@ -38,7 +38,7 @@
 
 body {
   font-family: 'DM Sans', -apple-system, sans-serif;
-  background: var(--surface-2);
+  background: #F3F6FA;
   color: var(--text);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
@@ -96,50 +96,126 @@ body {
 /* ===== HOME GRID ===== */
 .home-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
 }
+@media (max-width: 900px) { .home-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px) { .home-grid { grid-template-columns: repeat(2, 1fr); } }
 .home-card {
   background: var(--surface);
-  border-radius: 14px;
-  padding: 22px;
+  border-radius: 16px;
+  padding: 20px 16px;
   text-align: center;
-  border: 1.5px solid var(--border);
-  transition: all 0.25s cubic-bezier(.4,0,.2,1);
+  border: 1px solid rgba(0,31,63,0.06);
+  transition: all 0.3s cubic-bezier(.4,0,.2,1);
   cursor: default;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 3px rgba(0,31,63,0.04);
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 140px;
 }
 .home-card::before {
   content:'';position:absolute;top:0;left:0;right:0;height:3px;
   background:linear-gradient(90deg,var(--att-blue),var(--att-accent));
-  opacity:0;transition:opacity 0.25s;
+  transform:scaleX(0);transition:transform 0.35s cubic-bezier(.4,0,.2,1);
+  transform-origin:left;
+}
+.home-card::after {
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(circle at 50% 0%, rgba(0,159,219,0.04) 0%, transparent 70%);
+  opacity:0;transition:opacity 0.3s;pointer-events:none;
 }
 .home-card.clickable { cursor: pointer; }
-.home-card.clickable:hover { border-color: var(--att-blue); box-shadow: 0 8px 28px rgba(0,159,219,0.12); transform: translateY(-3px); }
-.home-card.clickable:hover::before { opacity: 1; }
-.home-card.disabled { opacity: 0.4; pointer-events: none; }
-.card-icon { font-size: 32px; margin-bottom: 10px; }
-.card-title { font-size: 15px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.2px; }
-.card-desc { font-size: 12px; color: var(--text-2); line-height: 1.5; }
-.card-stat { font-size: 13px; color: var(--att-blue); font-weight: 700; margin: 6px 0; }
+.home-card.clickable:hover { 
+  border-color: rgba(0,159,219,0.2); 
+  box-shadow: 0 8px 32px rgba(0,159,219,0.1), 0 2px 8px rgba(0,31,63,0.06); 
+  transform: translateY(-4px); 
+}
+.home-card.clickable:hover::before { transform: scaleX(1); }
+.home-card.clickable:hover::after { opacity: 1; }
+.home-card.clickable:active { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,159,219,0.08); }
+.home-card.disabled { opacity: 0.35; pointer-events: none; }
+.card-icon { 
+  font-size: 28px; 
+  margin-bottom: 8px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #F0F7FF 0%, #E8F4FD 100%);
+  box-shadow: 0 2px 8px rgba(0,159,219,0.06);
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.home-card.clickable:hover .card-icon { 
+  transform: scale(1.08); 
+  box-shadow: 0 4px 14px rgba(0,159,219,0.12); 
+}
+.card-title { 
+  font-size: 13px; 
+  font-weight: 800; 
+  margin-bottom: 4px; 
+  letter-spacing: -0.2px; 
+  color: var(--att-dark);
+}
+.card-desc { font-size: 11px; color: var(--text-3); line-height: 1.4; }
+.card-stat { font-size: 14px; color: var(--att-blue); font-weight: 800; margin: 4px 0 2px; }
 .success-pill {
   display: inline-block;
-  background: var(--success-bg);
+  background: linear-gradient(135deg, #E8F8EF, #D1F2E0);
   color: var(--success);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 20px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
-.mini-stats { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
-.mini-stat { font-size: 11px; font-weight: 600; }
+.mini-stats { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 4px; }
+.mini-stat { font-size: 10px; font-weight: 700; }
 .mini-stat.open { color: var(--att-blue); }
 .mini-stat.closed { color: var(--success); }
 .mini-stat.pending { color: var(--warning); }
 .mini-stat.lost { color: var(--danger); }
+
+/* Home welcome bar */
+.home-welcome {
+  background: linear-gradient(135deg, #001A2F 0%, #00395D 40%, #005A8C 80%, #0090C9 100%);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+.home-welcome::before {
+  content:'';position:absolute;top:-50%;right:-10%;width:200px;height:200px;
+  background:radial-gradient(circle,rgba(0,199,177,0.15) 0%,transparent 70%);
+  pointer-events:none;
+}
+.home-welcome-name { font-size: 20px; font-weight: 800; letter-spacing: -0.3px; }
+.home-welcome-sub { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+
+/* Staggered animation on load */
+.home-card { animation: homeCardIn 0.4s cubic-bezier(.4,0,.2,1) both; }
+.home-card:nth-child(1) { animation-delay: 0.03s; }
+.home-card:nth-child(2) { animation-delay: 0.06s; }
+.home-card:nth-child(3) { animation-delay: 0.09s; }
+.home-card:nth-child(4) { animation-delay: 0.12s; }
+.home-card:nth-child(5) { animation-delay: 0.15s; }
+.home-card:nth-child(6) { animation-delay: 0.18s; }
+.home-card:nth-child(7) { animation-delay: 0.21s; }
+.home-card:nth-child(8) { animation-delay: 0.24s; }
+.home-card:nth-child(9) { animation-delay: 0.27s; }
+.home-card:nth-child(10) { animation-delay: 0.30s; }
+.home-card:nth-child(11) { animation-delay: 0.33s; }
+.home-card:nth-child(12) { animation-delay: 0.36s; }
+.home-card:nth-child(13) { animation-delay: 0.39s; }
+@keyframes homeCardIn { from { opacity:0; transform: translateY(16px) scale(0.97); } to { opacity:1; transform: translateY(0) scale(1); } }
 
 /* ===== FILE UPLOAD ===== */
 .upload-zone {
@@ -475,10 +551,10 @@ body{padding-bottom:60px}
 
 <!-- ===== LOGIN SCREEN ===== -->
 <div id="loginScreen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#001A2F 0%,#00395D 50%,#009FDB 100%)">
-  <div style="background:white;border-radius:16px;padding:32px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center">
-    <div style="font-size:28px;font-weight:800;color:#00395D;margin-bottom:2px">AT&T</div>
-    <div style="font-size:11px;color:#009FDB;font-weight:700;letter-spacing:1px;margin-bottom:4px">EXPERTCELL</div>
-    <div style="font-size:10px;color:#8899AA;margin-bottom:20px">Cotizador Premium</div>
+  <div style="background:white;border-radius:20px;padding:36px 32px;width:340px;box-shadow:0 24px 80px rgba(0,31,63,0.15),0 4px 24px rgba(0,0,0,0.08);text-align:center;border:1px solid rgba(0,31,63,0.04)">
+    <div style="width:56px;height:56px;margin:0 auto 12px;background:linear-gradient(135deg,#001A2F,#005A8C);border-radius:16px;display:flex;align-items:center;justify-content:center"><span style="color:white;font-size:18px;font-weight:900;letter-spacing:1px">AT&T</span></div>
+    <div style="font-size:22px;font-weight:900;color:#00395D;margin-bottom:0;letter-spacing:-0.5px">EXPERTCELL</div>
+    <div style="font-size:10px;color:#8899AA;margin-bottom:20px;letter-spacing:0.5px">CRM Premium</div>
     <div style="margin-bottom:12px;text-align:left">
       <label style="font-size:11px;font-weight:600;color:#4A5F78;display:block;margin-bottom:4px">ATTUID</label>
       <input id="loginAttuid" class="field" placeholder="Ej: JT2908" style="text-transform:uppercase;width:100%;box-sizing:border-box" autocomplete="off">
@@ -515,6 +591,10 @@ body{padding-bottom:60px}
 <!-- ===== VIEW: HOME ===== -->
 <div class="view active" id="viewHome">
   <div class="container">
+    <div class="home-welcome" id="homeWelcome">
+      <div class="home-welcome-name" id="homeWelcomeName">Bienvenido</div>
+      <div class="home-welcome-sub" id="homeWelcomeSub">ExpertCell CRM · Distribuidor Autorizado AT&T</div>
+    </div>
     <div id="homeAlerts" style="display:none;margin-bottom:10px"></div>
     <div class="home-grid">
       <div class="home-card" id="cardUpload">
@@ -1729,6 +1809,11 @@ async function doLogin() {
     document.getElementById('bottomNav').style.display = 'flex';
     await loadCotizacionesFromSupabase();
     updateHome();
+    // Set welcome name
+    var wn = document.getElementById('homeWelcomeName');
+    if (wn) wn.textContent = 'Hola, ' + (state.agente.nombre||'').split(' ')[0] + ' 👋';
+    var ws = document.getElementById('homeWelcomeSub');
+    if (ws) ws.textContent = 'ExpertCell CRM · ' + ({admin:'Administrador',coordinador:'Coordinador',supervisor:'Supervisor',agente:'Ejecutivo'}[state.agente.rol]||'');
     mnShowHomeBanner();
     loadCentralPriceList();
 
@@ -9223,6 +9308,9 @@ async function trRenderMetrics() {
   <button onclick="bnavGo('historial')" id="bnav_historial"><span class="bnav-icon">📋</span>Historial</button>
   <button onclick="bnavGo('dashboard')" id="bnav_dashboard"><span class="bnav-icon">📊</span>Dashboard</button>
   <button onclick="bnavGo('training')" id="bnav_training"><span class="bnav-icon">🎓</span>Academy</button>
+</div>
+<div id="jtFooter" style="text-align:center;padding:16px 0 24px;font-size:10px;color:#BCC7D4;letter-spacing:0.5px;font-weight:600">
+  <span style="opacity:0.5">━━━</span> Diseñado por <span style="font-weight:800;color:#8899AA">JT</span> <span style="opacity:0.5">━━━</span>
 </div>
 </body>
 </html>
