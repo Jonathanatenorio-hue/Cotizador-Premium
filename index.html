@@ -508,7 +508,7 @@ body{padding-bottom:60px}
         <div class="card-icon">📋</div>
         <div class="card-title">Lista de Precios</div>
         <div id="uploadStatus">
-          <div class="card-desc">Sube la lista de precios AT&T (.xlsm)</div>
+          <div class="card-desc">Cargando lista de precios...</div>
           <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
             <div style="font-size:24px;margin-bottom:4px">📁</div>
             <div style="font-size:12px;color:var(--text-3)">Click para seleccionar archivo</div>
@@ -886,11 +886,17 @@ body{padding-bottom:60px}
         <select class="field" id="adminFilterCentro" onchange="renderAdminUsers()" style="width:auto">
           <option value="all">Todos los centros</option>
         </select>
+        <select class="field" id="adminFilterSup" onchange="renderAdminUsers()" style="width:auto">
+          <option value="all">Todos los supervisores</option>
+        </select>
         <select class="field" id="adminFilterEstatus" onchange="renderAdminUsers()" style="width:auto">
           <option value="activos">Activos</option>
           <option value="baja">Baja</option>
           <option value="all">Todos</option>
         </select>
+      </div>
+      <div style="margin-bottom:8px">
+        <input class="field" id="adminSearchBar" placeholder="🔍 Buscar por nombre, ATTUID, WhatsApp..." oninput="renderAdminUsers()" style="width:100%">
       </div>
       <div id="addUserForm" style="display:none;background:var(--surface-2);padding:16px;border-radius:10px;margin-bottom:12px">
         <div style="font-weight:700;margin-bottom:10px;color:var(--att-blue)">Nuevo Usuario</div>
@@ -1443,6 +1449,207 @@ async function checkAppVersion() {
 setTimeout(function() { checkAppVersion(); }, 2000);
 setTimeout(function() { checkAppVersion(); }, 6000);
 
+// ── CENTRALIZED PRICE LIST (Supabase Storage) ──
+var PRICE_LIST_BUCKET = 'price-lists';
+var PRICE_LIST_FILE = 'lista_precios_vigente.xlsm';
+
+async function loadCentralPriceList() {
+  if (!supabase || state.fileLoaded) return;
+  try {
+    // Check if there's a centralized list
+    var { data: files } = await supabase.storage.from(PRICE_LIST_BUCKET).list('', { limit: 5 });
+    if (!files || files.length === 0) return;
+    var found = files.find(function(f){ return f.name === PRICE_LIST_FILE; });
+    if (!found) return;
+
+    // Show loading
+    var uploadStatus = document.getElementById('uploadStatus');
+    if (uploadStatus) uploadStatus.innerHTML = '<div class="card-desc" style="color:var(--att-blue)">⏳ Cargando lista centralizada...</div>';
+
+    // Download the file
+    var { data: blob, error } = await supabase.storage.from(PRICE_LIST_BUCKET).download(PRICE_LIST_FILE);
+    if (error || !blob) { console.log('Price list download error:', error); return; }
+
+    // Process it like a local upload
+    var arrayBuf = await blob.arrayBuffer();
+    var fakeFile = { name: 'Lista centralizada', arrayBuffer: function(){ return Promise.resolve(arrayBuf); } };
+    // Create a fake event
+    var fakeEvt = { target: { files: [fakeFile] } };
+    // We need to process directly since handleFileUpload reads file.arrayBuffer()
+    await processPriceListData(arrayBuf, 'Lista centralizada (v' + (found.updated_at || '').substring(0,10) + ')');
+    console.log('Centralized price list loaded OK');
+  } catch(e) { console.log('Central price list error:', e); }
+}
+
+async function processPriceListData(arrayBuf, fileName) {
+  try {
+    var wb = XLSX.read(arrayBuf, { type:'array', cellDates:true });
+    var devices = [];
+
+    // === Parse Premium sheet ===
+    var pSheetName = null;
+    var sheetKeys = Object.keys(wb.Sheets);
+    for (var si = 0; si < sheetKeys.length; si++) {
+      var sn = sheetKeys[si].toLowerCase();
+      if (sn.indexOf('promocion') >= 0 && sn.indexOf('premium') >= 0 && sn.indexOf('(2)') < 0) { pSheetName = sheetKeys[si]; break; }
+    }
+    if (!pSheetName) {
+      for (var si = 0; si < sheetKeys.length; si++) {
+        var sn = sheetKeys[si].toLowerCase();
+        if (sn.indexOf('premium') >= 0 && sn.indexOf('(2)') < 0 && sn.indexOf('combo') < 0) { pSheetName = sheetKeys[si]; break; }
+      }
+    }
+    var pSheet = pSheetName ? wb.Sheets[pSheetName] : null;
+    if (pSheet) {
+      var rows = XLSX.utils.sheet_to_json(pSheet, { header:1, defval:null });
+      var pCols = { equipo:-1, marca:-1, precio:-1, estatus:-1, vigencia:-1 };
+      var pStartRow = -1;
+      for (var pri = 0; pri < Math.min(rows.length, 15); pri++) {
+        var prow = rows[pri]; if (!prow) continue;
+        for (var pci = 0; pci < prow.length; pci++) {
+          var pcell = String(prow[pci] || '').toLowerCase().trim();
+          if (pcell.includes('equipo')) pCols.equipo = pci;
+          if (pcell.includes('marca')) pCols.marca = pci;
+          if (pcell.includes('precio') && pcell.includes('contado')) pCols.precio = pci;
+          if (pcell.includes('estatus') && pCols.estatus < 0) pCols.estatus = pci;
+          if (pcell === 'vigencia') pCols.vigencia = pci;
+        }
+        if (pCols.equipo >= 0 && pCols.precio >= 0) { pStartRow = pri + 1; break; }
+      }
+      if (pCols.precio >= 0) {
+        for (var pri2 = 0; pri2 < pStartRow; pri2++) {
+          var pr2 = rows[pri2]; if (!pr2) continue;
+          for (var pc2 = pCols.precio + 1; pc2 < pr2.length; pc2++) {
+            var v2 = String(pr2[pc2] || '').trim();
+            if (v2 === '24' || v2 === '24 Meses' || v2 === '24 meses') {
+              var firstPlanCol = pCols.precio + 1;
+              var planIdx = Math.floor((pc2 - firstPlanCol) / 3);
+              if (planIdx >= 0 && planIdx < PLANS_PREMIUM.length) PLANS_PREMIUM[planIdx].col = pc2;
+            }
+          }
+        }
+      }
+      if (pStartRow >= 0 && pCols.equipo >= 0) {
+        for (var i = pStartRow; i < rows.length; i++) {
+          var r = rows[i]; if (!r) continue;
+          var equipo = r[pCols.equipo];
+          if (!equipo || typeof equipo !== 'string' || equipo.trim() === '') continue;
+          var pc = pCols.precio >= 0 ? (typeof r[pCols.precio] === 'number' ? r[pCols.precio] : parseFloat(String(r[pCols.precio] || '').replace(/[$,]/g, ''))) : 0;
+          if (!pc || pc <= 0) continue;
+          var pricing = {};
+          PLANS_PREMIUM.forEach(function(plan) {
+            pricing[plan.id] = {};
+            [0,1,2].forEach(function(offset) {
+              var plazo = [24,30,36][offset];
+              var val = r[plan.col + offset];
+              if (typeof val === 'number' && val >= 0) pricing[plan.id][plazo] = val;
+              else if (typeof val === 'string') { var parsed = parseFloat(val.replace(/[$,]/g, '')); pricing[plan.id][plazo] = (!isNaN(parsed) && parsed >= 0) ? parsed : null; }
+              else pricing[plan.id][plazo] = null;
+            });
+          });
+          var marca = pCols.marca >= 0 ? (r[pCols.marca] || '') : '';
+          var estatus = pCols.estatus >= 0 ? (r[pCols.estatus] || '') : '';
+          var vigencia = pCols.vigencia >= 0 ? (r[pCols.vigencia] || '') : '';
+          devices.push({ id:'p'+i, sheet:'Premium', oferta:'AT\u0026T Premium', equipo:equipo.trim(), marca:String(marca), precioContado:pc, estatus:String(estatus), vigencia:String(vigencia), fechaInicio:parseVigencia(vigencia).inicio, fechaFin:parseVigencia(vigencia).fin, fechaFinText:'', pricing:pricing, plans:PLANS_PREMIUM, plazos:[24,30,36] });
+        }
+      }
+    }
+
+    // === Parse Titanio sheet ===
+    var tSheetName = Object.keys(wb.Sheets).find(function(s){ return s.toLowerCase().includes('titanio'); });
+    var tSheet = tSheetName ? wb.Sheets[tSheetName] : null;
+    if (tSheet) {
+      var rows = XLSX.utils.sheet_to_json(tSheet, { header:1, defval:null });
+      var tCols = { equipo:-1, marca:-1, precio:-1, promo24:-1, estatus:-1, vigencia:-1 };
+      var tStartRow = -1;
+      for (var ri = 0; ri < Math.min(rows.length, 15); ri++) {
+        var row = rows[ri]; if (!row) continue;
+        for (var ci = 0; ci < row.length; ci++) {
+          var cell = String(row[ci] || '').toLowerCase().trim();
+          if (cell.includes('equipo')) tCols.equipo = ci;
+          if (cell.includes('marca')) tCols.marca = ci;
+          if (cell.includes('precio') && cell.includes('contado')) tCols.precio = ci;
+          if (cell.includes('24') && cell.includes('mes')) tCols.promo24 = ci;
+          if (cell.includes('estatus')) tCols.estatus = ci;
+          if (cell === 'vigencia') tCols.vigencia = ci;
+        }
+        if (tCols.equipo >= 0 && tCols.precio >= 0) { tStartRow = ri + 1; break; }
+      }
+      if (tStartRow >= 0 && tCols.equipo >= 0) {
+        function tParsePrice(v) {
+          if (v === null || v === undefined || v === '' || v === 'NA' || v === 'N/A') return null;
+          if (typeof v === 'number') return v;
+          var n = parseFloat(String(v).replace(/[$,]/g, ''));
+          return isNaN(n) ? null : n;
+        }
+        for (var i = tStartRow; i < rows.length; i++) {
+          var r = rows[i]; if (!r) continue;
+          var equipo = r[tCols.equipo];
+          if (!equipo || typeof equipo !== 'string' || equipo.trim() === '') continue;
+          equipo = equipo.trim();
+          var pc = tParsePrice(r[tCols.precio]);
+          if (pc === null || pc === undefined) continue;
+          var promo24 = tCols.promo24 >= 0 ? tParsePrice(r[tCols.promo24]) : null;
+          var marca = tCols.marca >= 0 ? (r[tCols.marca] || '') : '';
+          var estatus = tCols.estatus >= 0 ? (r[tCols.estatus] || '') : '';
+          var vigencia = tCols.vigencia >= 0 ? (r[tCols.vigencia] || '') : '';
+          devices.push({ id:'t'+i, sheet:'Titanio', oferta:'AT\u0026T Titanio', equipo:equipo.trim(), marca:String(marca), precioContado:pc||0, estatus:String(estatus), vigencia:String(vigencia), fechaInicio:parseVigencia(vigencia).inicio, fechaFin:parseVigencia(vigencia).fin, fechaFinText:'', pricing:{titanio:{24:promo24}}, plans:PLANS_TITANIO, plazos:[24] });
+        }
+      }
+    }
+
+    state.devices = devices;
+    state.fileLoaded = true;
+    state.fileName = fileName;
+    var vigentes = devices.filter(isVigente);
+    var uploadStatus = document.getElementById('uploadStatus');
+    if (uploadStatus) {
+      var canUpload = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador');
+      uploadStatus.innerHTML =
+        '<div class="success-pill">✓ ' + fileName + '</div>' +
+        '<div class="card-stat">' + vigentes.length + ' equipos vigentes de ' + devices.length + ' total</div>' +
+        (canUpload ? '<div class="upload-zone" onclick="document.getElementById(\'fileInputCentral\').click()" style="padding:8px;margin-top:6px"><div style="font-size:11px;color:var(--text-3)">📤 Subir nueva lista (reemplaza para todos)</div><input type="file" id="fileInputCentral" accept=".xlsx,.xlsm" onchange="uploadCentralPriceList(this)" style="display:none"></div>' : '');
+    }
+    updateHome();
+  } catch(err) {
+    var uploadStatus = document.getElementById('uploadStatus');
+    if (uploadStatus) uploadStatus.innerHTML = '<div class="card-desc" style="color:var(--danger)">❌ Error: ' + err.message + '</div>';
+  }
+}
+
+async function uploadCentralPriceList(input) {
+  var file = input.files[0];
+  if (!file || !supabase) return;
+  if (!currentUser || (currentUser.rol !== 'admin' && currentUser.rol !== 'coordinador')) {
+    alert('Solo coordinadores o admin pueden actualizar la lista centralizada.');
+    return;
+  }
+  var uploadStatus = document.getElementById('uploadStatus');
+  if (uploadStatus) uploadStatus.innerHTML = '<div class="card-desc" style="color:var(--att-blue)">⏳ Subiendo lista centralizada...</div>';
+
+  try {
+    // Upload to Supabase Storage (upsert replaces existing)
+    var { data, error } = await supabase.storage.from(PRICE_LIST_BUCKET).upload(PRICE_LIST_FILE, file, { upsert: true, contentType: file.type || 'application/octet-stream' });
+    if (error) throw error;
+
+    // Process locally
+    var arrayBuf = await file.arrayBuffer();
+    await processPriceListData(arrayBuf, file.name + ' (centralizada)');
+
+    // Bump version to force reload on other users
+    var newVersion = 'PL.' + new Date().toISOString().substring(0,19).replace(/[-:T]/g,'');
+    await supabase.from('app_config').upsert({ key: 'price_list_version', value: newVersion });
+
+    alert('✅ Lista actualizada para todos los usuarios. Los agentes la recibirán automáticamente al abrir la app.');
+  } catch(e) {
+    alert('Error al subir: ' + e.message);
+    if (uploadStatus) uploadStatus.innerHTML = '<div class="card-desc" style="color:var(--danger)">❌ Error: ' + e.message + '</div>';
+  }
+}
+
+// Auto-load after login
+var _origDoLogin;
+
 async function doLogin() {
   var attuid = document.getElementById('loginAttuid').value.trim().toUpperCase();
   var pin = document.getElementById('loginPin').value.trim();
@@ -1510,6 +1717,7 @@ async function doLogin() {
     await loadCotizacionesFromSupabase();
     updateHome();
     mnShowHomeBanner();
+    loadCentralPriceList();
 
   } catch(e) {
     errEl.textContent = 'Error de conexión. Intenta de nuevo.';
@@ -2424,9 +2632,12 @@ async function handleFileUpload(event) {
     state.fileName = file.name;
 
     const vigentes = devices.filter(isVigente);
+    var canUploadCentral = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador');
     document.getElementById('uploadStatus').innerHTML =
       `<div class="success-pill">✓ ${file.name}</div>` +
       `<div class="card-stat">${vigentes.length} equipos vigentes de ${devices.length} total</div>` +
+      (canUploadCentral ?
+        `<button class="btn btn-primary" onclick="pushLocalListToCentral()" style="font-size:11px;padding:6px 12px;margin-top:6px">📤 Publicar como lista oficial para todos</button>` : '') +
       `<div class="upload-zone" onclick="document.getElementById('fileInput2').click()" style="padding:10px;margin-top:6px">` +
       `<div style="font-size:11px;color:var(--text-3)">Cambiar archivo</div>` +
       `<input type="file" id="fileInput2" accept=".xlsx,.xlsm" onchange="handleFileUpload(event)" style="display:none">` +
@@ -2441,6 +2652,25 @@ async function handleFileUpload(event) {
       `<input type="file" id="fileInput" accept=".xlsx,.xlsm" onchange="handleFileUpload(event)" style="display:none">` +
       `</div>`;
   }
+}
+
+// Push locally loaded file to central storage
+async function pushLocalListToCentral() {
+  if (!supabase) return;
+  var inp = document.getElementById('fileInput2') || document.getElementById('fileInput');
+  if (!inp || !inp.files || !inp.files[0]) {
+    alert('Sube el archivo primero antes de publicarlo.');
+    return;
+  }
+  if (!confirm('¿Publicar esta lista como oficial para TODOS los usuarios?')) return;
+  try {
+    var file = inp.files[0];
+    var { error } = await supabase.storage.from(PRICE_LIST_BUCKET).upload(PRICE_LIST_FILE, file, { upsert: true, contentType: file.type || 'application/octet-stream' });
+    if (error) throw error;
+    var newVersion = 'PL.' + new Date().toISOString().substring(0,19).replace(/[-:T]/g,'');
+    await supabase.from('app_config').upsert({ key: 'price_list_version', value: newVersion });
+    alert('✅ Lista publicada para todos.');
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 // Parse vigencia text like "01 FEBRERO 26 - 15 FEBRERO 26" or "16 FEBRERO 26 - 28 MARZO 26"
@@ -5173,6 +5403,15 @@ async function loadAdminData() {
 
     // Fill centro dropdowns
     var centroSel = document.getElementById('adminFilterCentro');
+    // Populate supervisor filter
+    var supSel = document.getElementById('adminFilterSup');
+    if (supSel) {
+      var sups = adminUsers.filter(function(u){ return u.rol === 'supervisor' && u.activo; }).sort(function(a,b){ return a.nombre.localeCompare(b.nombre); });
+      supSel.innerHTML = '<option value="all">Todos los supervisores</option>';
+      sups.forEach(function(s) {
+        supSel.innerHTML += '<option value="'+s.id+'">'+s.nombre+'</option>';
+      });
+    }
     var newCentroSel = document.getElementById('newUserCentro');
 
     if (currentUser.rol === 'coordinador') {
@@ -5467,12 +5706,22 @@ function renderAiChart(bars, activeDays){
 function renderAdminUsers() {
   var filterRol = document.getElementById('adminFilterRol').value;
   var filterCentro = document.getElementById('adminFilterCentro').value;
+  var filterSup = document.getElementById('adminFilterSup') ? document.getElementById('adminFilterSup').value : 'all';
   var filterEstatus = document.getElementById('adminFilterEstatus').value;
+  var searchTerm = document.getElementById('adminSearchBar') ? document.getElementById('adminSearchBar').value.toLowerCase().trim() : '';
   var list = adminUsers.filter(function(u) {
     if (filterRol !== 'all' && u.rol !== filterRol) return false;
     if (filterCentro !== 'all' && u.centro_id !== parseInt(filterCentro)) return false;
+    if (filterSup !== 'all' && u.supervisor_id !== filterSup) return false;
     if (filterEstatus === 'activos' && !u.activo) return false;
     if (filterEstatus === 'baja' && u.activo) return false;
+    if (searchTerm) {
+      var match = (u.nombre||'').toLowerCase().indexOf(searchTerm) >= 0 ||
+        (u.attuid||'').toLowerCase().indexOf(searchTerm) >= 0 ||
+        (u.whatsapp||'').indexOf(searchTerm) >= 0 ||
+        (u.rol||'').toLowerCase().indexOf(searchTerm) >= 0;
+      if (!match) return false;
+    }
     return true;
   });
 
