@@ -1215,18 +1215,55 @@ body{padding-bottom:60px}
 <!-- ===== VIEW: ACELERACIONES ===== -->
 <div class="view" id="viewAceleraciones">
   <div class="container">
+    <!-- Calendar Section -->
+    <div class="section" style="padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div>
+          <div style="font-size:16px;font-weight:800;color:var(--att-dark)">📅 Calendario de Gestión</div>
+          <div style="font-size:11px;color:var(--text-3)">Aceleraciones y seguimientos pendientes</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-secondary" onclick="acelCalNavMonth(-1)" style="font-size:14px;padding:4px 10px">‹</button>
+          <span id="acelCalMonthLabel" style="font-size:13px;font-weight:700;min-width:120px;text-align:center"></span>
+          <button class="btn btn-secondary" onclick="acelCalNavMonth(1)" style="font-size:14px;padding:4px 10px">›</button>
+        </div>
+      </div>
+      <!-- Legend -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:10px">
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#DC3545;vertical-align:middle"></span> Vencida/hoy</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FF9800;vertical-align:middle"></span> Vence en 3 días</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#FFC107;vertical-align:middle"></span> Aceleración</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#2196F3;vertical-align:middle"></span> Sin atender 2+ días</span>
+      </div>
+      <div id="acelCalendar"></div>
+    </div>
+
+    <!-- Alerts Summary -->
+    <div id="acelAlertsSummary" style="margin-bottom:10px"></div>
+
+    <!-- Day detail panel -->
+    <div id="acelDayDetail" class="section" style="padding:14px;margin-bottom:10px;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div id="acelDayTitle" style="font-size:14px;font-weight:800"></div>
+        <button class="btn btn-secondary" onclick="document.getElementById('acelDayDetail').style.display='none'" style="font-size:10px;padding:4px 10px">✕ Cerrar</button>
+      </div>
+      <div id="acelDayItems"></div>
+    </div>
+
+    <!-- Existing list section -->
     <div class="section" style="padding:14px;margin-bottom:8px">
-      <div class="section-title">⚡ Agenda de Aceleraciones</div>
-      <p style="font-size:11px;color:var(--text-3);margin:4px 0 10px">Clientes en aceleración pendiente organizados por fecha de liberación.</p>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-        <select class="field" id="acelFilterIne" onchange="renderAceleraciones()" style="width:auto;font-size:12px;padding:5px 8px">
-          <option value="all">Todos</option>
-          <option value="con_ine">Con INE</option>
-          <option value="sin_ine">Sin INE</option>
-        </select>
-        <select class="field" id="acelFilterAgente" onchange="renderAceleraciones()" style="width:auto;font-size:12px;padding:5px 8px">
-          <option value="all">Todos los agentes</option>
-        </select>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:14px;font-weight:800">⚡ Lista Completa</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <select class="field" id="acelFilterIne" onchange="renderAceleraciones()" style="width:auto;font-size:11px;padding:5px 8px">
+            <option value="all">Todos</option>
+            <option value="con_ine">Con INE</option>
+            <option value="sin_ine">Sin INE</option>
+          </select>
+          <select class="field" id="acelFilterAgente" onchange="renderAceleraciones()" style="width:auto;font-size:11px;padding:5px 8px">
+            <option value="all">Todos los agentes</option>
+          </select>
+        </div>
       </div>
       <div id="acelList"></div>
     </div>
@@ -6403,6 +6440,193 @@ async function eliminarSeleccionadasRecup() {
 // ============================================================
 // ACELERACIONES
 // ============================================================
+// ── CALENDAR FOR ACELERACIONES ──
+var acelCalMonth = null; // current displayed month
+
+function acelCalNavMonth(delta) {
+  if (!acelCalMonth) acelCalMonth = new Date();
+  acelCalMonth = new Date(acelCalMonth.getFullYear(), acelCalMonth.getMonth() + delta, 1);
+  acelRenderCalendar();
+}
+
+function acelRenderCalendar() {
+  if (!acelCalMonth) acelCalMonth = new Date();
+  var year = acelCalMonth.getFullYear(), month = acelCalMonth.getMonth();
+  var monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  document.getElementById('acelCalMonthLabel').textContent = monthNames[month] + ' ' + year;
+
+  var now = new Date(); now.setHours(0,0,0,0);
+  var todayStr = now.toISOString().slice(0,10);
+  var en3dias = new Date(now.getTime() + 3 * 86400000);
+
+  // Gather all events: aceleraciones + seguimientos sin atender
+  var events = {}; // dateStr -> [{type, color, cot}]
+
+  state.cotizaciones.forEach(function(c) {
+    // Aceleraciones pendientes
+    if (c.sub_estatus === 'aceleracion' && c.estatus !== 'perdida' && c.estatus !== 'venta' && c.fecha_fin_plazo) {
+      var dateStr = c.fecha_fin_plazo;
+      var fecha = new Date(dateStr + 'T00:00:00');
+      var color, type;
+      if (fecha <= now) { color = '#DC3545'; type = 'vencida'; }
+      else if (fecha <= en3dias) { color = '#FF9800'; type = 'urgente'; }
+      else { color = '#FFC107'; type = 'acel'; }
+      if (!events[dateStr]) events[dateStr] = [];
+      events[dateStr].push({type: type, color: color, cot: c});
+    }
+
+    // Seguimientos sin atender (2+ días)
+    if (c.estatus === 'seguimiento' && c.sub_estatus !== 'aceleracion') {
+      var created = c.updatedAt || c.createdAt || c.fecha;
+      if (created) {
+        var cDate = new Date(created);
+        var daysSince = Math.floor((now - cDate) / 86400000);
+        if (daysSince >= 2) {
+          var dateStr2 = created.substring(0,10);
+          if (!events[dateStr2]) events[dateStr2] = [];
+          events[dateStr2].push({type: 'sinAtender', color: '#2196F3', cot: c, daysSince: daysSince});
+        }
+      }
+    }
+  });
+
+  // Build calendar grid
+  var firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  var daysInMonth = new Date(year, month + 1, 0).getDate();
+  
+  var h = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">';
+  // Headers
+  ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].forEach(function(d) {
+    h += '<div style="text-align:center;font-size:10px;font-weight:700;color:var(--text-3);padding:4px 0">'+d+'</div>';
+  });
+
+  // Empty cells before first day
+  for (var e = 0; e < firstDay; e++) {
+    h += '<div style="min-height:48px"></div>';
+  }
+
+  // Days
+  for (var d = 1; d <= daysInMonth; d++) {
+    var dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    var isToday = dateStr === todayStr;
+    var dayEvents = events[dateStr] || [];
+    var hasEvents = dayEvents.length > 0;
+    var bgColor = isToday ? '#E3F2FD' : (hasEvents ? '#FAFAFA' : 'transparent');
+    var borderStyle = isToday ? 'border:2px solid var(--att-blue)' : (hasEvents ? 'border:1px solid var(--border)' : 'border:1px solid transparent');
+    var cursor = hasEvents ? 'cursor:pointer' : '';
+    var onclick = hasEvents ? ' onclick="acelShowDay(\''+dateStr+'\',\''+d+' de '+monthNames[month]+'\')"' : '';
+
+    h += '<div style="min-height:48px;border-radius:8px;padding:3px;'+borderStyle+';background:'+bgColor+';'+cursor+';transition:all 0.15s;position:relative"'+onclick;
+    if (hasEvents) h += ' onmouseover="this.style.boxShadow=\'0 2px 8px rgba(0,0,0,0.12)\';this.style.transform=\'scale(1.04)\'" onmouseout="this.style.boxShadow=\'none\';this.style.transform=\'scale(1)\'"';
+    h += '>';
+    
+    h += '<div style="font-size:11px;font-weight:'+(isToday||hasEvents?'800':'500')+';color:'+(isToday?'var(--att-blue)':'var(--text-1)')+'">'+d+'</div>';
+
+    // Event dots
+    if (hasEvents) {
+      // Group by color and count
+      var colorCounts = {};
+      dayEvents.forEach(function(ev) {
+        if (!colorCounts[ev.color]) colorCounts[ev.color] = 0;
+        colorCounts[ev.color]++;
+      });
+      h += '<div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px">';
+      Object.keys(colorCounts).forEach(function(col) {
+        var cnt = colorCounts[col];
+        if (cnt <= 3) {
+          for (var i = 0; i < cnt; i++) {
+            h += '<div style="width:6px;height:6px;border-radius:50%;background:'+col+'"></div>';
+          }
+        } else {
+          h += '<div style="display:flex;align-items:center;gap:1px"><div style="width:6px;height:6px;border-radius:50%;background:'+col+'"></div><span style="font-size:8px;font-weight:700;color:'+col+'">'+cnt+'</span></div>';
+        }
+      });
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+
+  document.getElementById('acelCalendar').innerHTML = h;
+
+  // Build alerts summary
+  var totalVencidas = 0, totalUrgentes = 0, totalSinAtender = 0;
+  Object.values(events).forEach(function(evts) {
+    evts.forEach(function(ev) {
+      if (ev.type === 'vencida') totalVencidas++;
+      else if (ev.type === 'urgente') totalUrgentes++;
+      else if (ev.type === 'sinAtender') totalSinAtender++;
+    });
+  });
+
+  var ah = '';
+  if (totalVencidas > 0) {
+    ah += '<div style="background:#FEE2E2;border:1px solid #DC3545;border-radius:10px;padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px"><span style="font-size:22px">🚨</span><div><div style="font-weight:800;font-size:13px;color:#991B1B">'+totalVencidas+' aceleración(es) VENCIDA(S)</div><div style="font-size:11px;color:#B91C1C">Contactar de inmediato — ya se pueden renovar</div></div></div>';
+  }
+  if (totalUrgentes > 0) {
+    ah += '<div style="background:#FFF3E0;border:1px solid #FF9800;border-radius:10px;padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px"><span style="font-size:22px">⏰</span><div><div style="font-weight:800;font-size:13px;color:#E65100">'+totalUrgentes+' vence(n) en los próximos 3 días</div><div style="font-size:11px;color:#F57C00">Preparar contacto y documentación</div></div></div>';
+  }
+  if (totalSinAtender > 0) {
+    ah += '<div style="background:#E3F2FD;border:1px solid #2196F3;border-radius:10px;padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px"><span style="font-size:22px">📭</span><div><div style="font-weight:800;font-size:13px;color:#1565C0">'+totalSinAtender+' seguimiento(s) sin atender (2+ días)</div><div style="font-size:11px;color:#1976D2">Clientes que necesitan contacto urgente</div></div></div>';
+  }
+  document.getElementById('acelAlertsSummary').innerHTML = ah;
+}
+
+function acelShowDay(dateStr, dateLabel) {
+  var now = new Date(); now.setHours(0,0,0,0);
+  var en3dias = new Date(now.getTime() + 3 * 86400000);
+  var items = [];
+
+  state.cotizaciones.forEach(function(c) {
+    // Aceleraciones on this date
+    if (c.sub_estatus === 'aceleracion' && c.estatus !== 'perdida' && c.estatus !== 'venta' && c.fecha_fin_plazo === dateStr) {
+      var fecha = new Date(dateStr + 'T00:00:00');
+      var color, label;
+      if (fecha <= now) { color = '#DC3545'; label = '🚨 VENCIDA'; }
+      else if (fecha <= en3dias) { color = '#FF9800'; label = '⏰ Urgente'; }
+      else { color = '#FFC107'; label = '⚡ Pendiente'; }
+      items.push({cot: c, color: color, label: label, type: 'acel'});
+    }
+    // Seguimientos sin atender from this date
+    if (c.estatus === 'seguimiento' && c.sub_estatus !== 'aceleracion') {
+      var created = (c.updatedAt || c.createdAt || c.fecha || '').substring(0,10);
+      if (created === dateStr) {
+        var cDate = new Date(created + 'T00:00:00');
+        var daysSince = Math.floor((now - cDate) / 86400000);
+        if (daysSince >= 2) {
+          items.push({cot: c, color: '#2196F3', label: '📭 Sin atender ('+daysSince+' días)', type: 'seg'});
+        }
+      }
+    }
+  });
+
+  document.getElementById('acelDayTitle').innerHTML = '📅 ' + dateLabel + ' <span style="font-size:11px;color:var(--text-3);font-weight:400">' + items.length + ' pendiente(s)</span>';
+
+  var h = '';
+  items.forEach(function(item) {
+    var c = item.cot;
+    var ineLabel = c.tiene_ine === 'con_ine' ? '✅ INE' : '❌ Sin INE';
+    h += '<div onclick="showDetalle(\''+c.folio+'\');document.getElementById(\'acelDayDetail\').style.display=\'none\'" style="cursor:pointer;background:white;border-left:4px solid '+item.color+';border:1px solid var(--border);border-left:4px solid '+item.color+';border-radius:8px;padding:10px 12px;margin-bottom:6px;transition:background 0.15s" onmouseover="this.style.background=\'#F8F9FA\'" onmouseout="this.style.background=\'white\'">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center">';
+    h += '<div style="font-weight:700;font-size:13px">'+c.cliente.nombre+'</div>';
+    h += '<span style="font-size:10px;background:'+item.color+'15;color:'+item.color+';padding:2px 8px;border-radius:10px;font-weight:700">'+item.label+'</span>';
+    h += '</div>';
+    h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;font-size:11px;color:var(--text-2)">';
+    if (c.cliente.telefono) h += '<a href="tel:'+c.cliente.telefono+'" onclick="event.stopPropagation()" style="color:var(--att-blue);text-decoration:none">📞 '+c.cliente.telefono+'</a> <span style="color:var(--text-3)">|</span>';
+    h += '<span>'+ineLabel+'</span>';
+    h += '<span style="color:var(--text-3)">|</span>';
+    h += '<span>Agente: '+(c.ejecutivo?c.ejecutivo.nombre:'N/A')+'</span>';
+    h += '</div>';
+    h += '</div>';
+  });
+
+  if (items.length === 0) h = '<div style="text-align:center;color:var(--text-3);font-size:12px;padding:12px">Sin pendientes este día</div>';
+
+  document.getElementById('acelDayItems').innerHTML = h;
+  document.getElementById('acelDayDetail').style.display = '';
+  document.getElementById('acelDayDetail').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
 function openAceleraciones() {
   showView('aceleraciones', 'Aceleraciones');
   // Populate agent filter
@@ -6418,6 +6642,8 @@ function openAceleraciones() {
       }
     }
   });
+  acelCalMonth = new Date();
+  acelRenderCalendar();
   renderAceleraciones();
 }
 
@@ -6985,7 +7211,7 @@ document.getElementById('waPlanAnterior').addEventListener('change', function() 
 // ============================================================
 // MI NORTE — Personal Goals & Income Simulator
 // ============================================================
-var MN_COMISIONES = {
+var MN_COMISIONES_PUEBLA = {
   'Azul 2':  {n1:75, n2:75, n3:100},
   'Azul 3':  {n1:125,n2:250,n3:350},
   'Plata':   {n1:150,n2:300,n3:400},
@@ -6995,10 +7221,45 @@ var MN_COMISIONES = {
   'Platino': {n1:250,n2:500,n3:700},
   'Titanio': {n1:100,n2:200,n3:250}
 };
+var MN_COMISIONES_YELITZA = {
+  'Azul 2':  {n1:50, n2:50, n3:75, n4:175},
+  'Azul 3':  {n1:75, n2:100,n3:150,n4:275},
+  'Plata':   {n1:100,n2:125,n3:150,n4:300},
+  'Oro':     {n1:125,n2:150,n3:200,n4:325},
+  'Black':   {n1:150,n2:150,n3:225,n4:350},
+  'Titanio': {n1:100,n2:125,n3:175,n4:275},
+  'Platino': {n1:175,n2:150,n3:250,n4:375},
+  'Diamante':{n1:200,n2:225,n3:275,n4:400}
+};
+// Detect which scheme to use
+function mnIsYelitza() {
+  if (!currentUser) return false;
+  // By coordinador ATTUID JI4668
+  if (currentUser.coordinador_id) {
+    var coord = (adminUsers||[]).find(function(u){return u.id === currentUser.coordinador_id;});
+    if (coord && coord.attuid === 'JI4668') return true;
+  }
+  // By centro name containing Yelitza
+  if (currentUser.centro_id) {
+    var centro = (adminCentros||[]).find(function(c){return c.id === currentUser.centro_id;});
+    if (centro && centro.nombre && centro.nombre.toLowerCase().indexOf('yelitza') >= 0) return true;
+  }
+  return false;
+}
+function mnGetComisiones() { return mnIsYelitza() ? MN_COMISIONES_YELITZA : MN_COMISIONES_PUEBLA; }
+function mnGetBase() { return mnIsYelitza() ? 9580 : 9400; }
+function mnGetFalta() { return mnIsYelitza() ? 318.27 : 309.10; }
+var MN_COMISIONES = MN_COMISIONES_PUEBLA; // default, will be overridden
 var MN_BASE = 9400, MN_FALTA = 309.10;
 
 function openMiNorte() {
   showView('miNorte','Mi Norte');
+  // Hide DHL section for Yelitza
+  var dhlSection = document.getElementById('mnDhlSection');
+  if (dhlSection) dhlSection.style.display = mnIsYelitza() ? 'none' : '';
+  // Show scheme label
+  var schemeLabel = document.getElementById('mnSchemeLabel');
+  if (schemeLabel) schemeLabel.textContent = mnIsYelitza() ? 'Esquema Sub Yelitza · Base $9,580 · Falta -$318.27' : 'Esquema Puebla · Base $9,400 · Falta -$309.10';
   mnLoadVision();
   mnCalcSim();
 }
@@ -7077,6 +7338,11 @@ function mnRenderBanner(data) {
 
 // SIMULATOR
 function mnCalcSim() {
+  var isYel = mnIsYelitza();
+  var COMISIONES = mnGetComisiones();
+  var BASE = mnGetBase();
+  var FALTA = mnGetFalta();
+  
   var plans = ['Azul 2','Azul 3','Plata','Oro','Black','Diamante','Platino','Titanio'];
   var ids = ['mnSAzul2','mnSAzul3','mnSPlata','mnSOro','mnSBlack','mnSDiamante','mnSPlatino','mnSTitanio'];
   var ventas = {};
@@ -7087,19 +7353,28 @@ function mnCalcSim() {
     totalVentas += v;
   });
 
-  // Determine level
-  var nivel = 0, nivelLabel = 'SIN BONO (<6)', nivelKey = 'n1';
-  if(totalVentas >= 6 && totalVentas <= 9) { nivel=1; nivelLabel='NIVEL 1 (6-9)'; nivelKey='n1'; }
-  else if(totalVentas >= 10 && totalVentas <= 15) { nivel=2; nivelLabel='⚡ NIVEL 2 (10-15)'; nivelKey='n2'; }
-  else if(totalVentas >= 16) { nivel=3; nivelLabel='🚀 NIVEL 3 (16+)'; nivelKey='n3'; }
+  // Determine level - different thresholds for Yelitza
+  var nivel = 0, nivelLabel = '', nivelKey = 'n1', minActivar = isYel ? 7 : 6;
+  if (isYel) {
+    if(totalVentas >= 22) { nivel=4; nivelLabel='💎 NIVEL 4 (22+)'; nivelKey='n4'; }
+    else if(totalVentas >= 17) { nivel=3; nivelLabel='🚀 NIVEL 3 (17-22)'; nivelKey='n3'; }
+    else if(totalVentas >= 11) { nivel=2; nivelLabel='⚡ NIVEL 2 (11-16)'; nivelKey='n2'; }
+    else if(totalVentas >= 7) { nivel=1; nivelLabel='NIVEL 1 (7-10)'; nivelKey='n1'; }
+    else { nivelLabel = 'SIN BONO (<7)'; }
+  } else {
+    if(totalVentas >= 16) { nivel=3; nivelLabel='🚀 NIVEL 3 (16+)'; nivelKey='n3'; }
+    else if(totalVentas >= 10) { nivel=2; nivelLabel='⚡ NIVEL 2 (10-15)'; nivelKey='n2'; }
+    else if(totalVentas >= 6) { nivel=1; nivelLabel='NIVEL 1 (6-9)'; nivelKey='n1'; }
+    else { nivelLabel = 'SIN BONO (<6)'; }
+  }
 
   // Calculate commissions
   var comisionTotal = 0;
   var desglose = [];
-  if(totalVentas >= 6) {
+  if(totalVentas >= minActivar) {
     plans.forEach(function(p){
-      if(ventas[p] > 0) {
-        var rate = MN_COMISIONES[p][nivelKey];
+      if(ventas[p] > 0 && COMISIONES[p]) {
+        var rate = COMISIONES[p][nivelKey] || 0;
         var sub = ventas[p] * rate;
         comisionTotal += sub;
         desglose.push({plan:p, qty:ventas[p], rate:rate, sub:sub});
@@ -7107,22 +7382,27 @@ function mnCalcSim() {
     });
   }
 
-  // Accelerators
+  // Accelerators - only Puebla
   var acelerador = 0, acelLabel = '';
-  if(totalVentas >= 25) { acelerador = totalVentas * 150; acelLabel = '🔥 25+ → +$150 × '+totalVentas+' = $'+acelerador.toLocaleString(); }
-  else if(totalVentas >= 20) { acelerador = totalVentas * 100; acelLabel = '🚀 20+ → +$100 × '+totalVentas+' = $'+acelerador.toLocaleString(); }
+  if (!isYel) {
+    if(totalVentas >= 25) { acelerador = totalVentas * 150; acelLabel = '🔥 25+ → +$150 × '+totalVentas+' = $'+acelerador.toLocaleString(); }
+    else if(totalVentas >= 20) { acelerador = totalVentas * 100; acelLabel = '🚀 20+ → +$100 × '+totalVentas+' = $'+acelerador.toLocaleString(); }
+  }
 
-  // DHL fees
-  var dhlAzul2 = (parseInt(document.getElementById('mnDhlAzul2').value)||0) * 25;
-  var dhlResto = (parseInt(document.getElementById('mnDhlResto').value)||0) * 50;
-  var dhlTotal = dhlAzul2 + dhlResto;
+  // DHL fees - only Puebla
+  var dhlTotal = 0;
+  if (!isYel) {
+    var dhlAzul2 = (parseInt(document.getElementById('mnDhlAzul2').value)||0) * 25;
+    var dhlResto = (parseInt(document.getElementById('mnDhlResto').value)||0) * 50;
+    dhlTotal = dhlAzul2 + dhlResto;
+  }
 
   // Faltas
   var faltas = parseInt(document.getElementById('mnFaltas').value)||0;
-  var descFaltas = faltas * MN_FALTA;
+  var descFaltas = faltas * FALTA;
 
   // Total
-  var sueldoNeto = MN_BASE - descFaltas;
+  var sueldoNeto = BASE - descFaltas;
   var ingresoTotal = sueldoNeto + comisionTotal + acelerador - dhlTotal;
 
   // Progress bar position
@@ -7160,19 +7440,27 @@ function mnCalcSim() {
   h += '</div>';
   h += '<div style="display:flex;justify-content:space-between;font-size:9px;opacity:0.6;margin-top:3px"><span>0</span><span>6</span><span>10</span><span>16</span><span>20</span><span>25+</span></div>';
 
-  // What-if hints
-  if(totalVentas > 0 && totalVentas < 6) {
-    var faltan = 6 - totalVentas;
-    h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">💡 Te faltan <b>'+faltan+' venta(s)</b> para activar comisiones</div>';
-  } else if(totalVentas >= 6 && totalVentas < 10) {
-    var faltan = 10 - totalVentas;
-    h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">⚡ Con <b>'+faltan+' venta(s) más</b> subes a Nivel 2 y DUPLICAS comisiones</div>';
-  } else if(totalVentas >= 10 && totalVentas < 16) {
-    var faltan = 16 - totalVentas;
-    h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">🚀 Con <b>'+faltan+' venta(s) más</b> subes a Nivel 3 con bonos extra</div>';
-  } else if(totalVentas >= 16 && totalVentas < 20) {
-    var faltan = 20 - totalVentas;
-    h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">🚀 Con <b>'+faltan+' más</b> activas acelerador +$100/venta (+$'+(totalVentas+faltan)*100+' extra)</div>';
+  // What-if hints - adaptive to scheme
+  if (isYel) {
+    if(totalVentas > 0 && totalVentas < 7) {
+      h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">💡 Te faltan <b>'+(7-totalVentas)+' venta(s)</b> para activar comisiones</div>';
+    } else if(totalVentas >= 7 && totalVentas < 11) {
+      h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">⚡ Con <b>'+(11-totalVentas)+' venta(s) más</b> subes a Nivel 2</div>';
+    } else if(totalVentas >= 11 && totalVentas < 17) {
+      h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">🚀 Con <b>'+(17-totalVentas)+' venta(s) más</b> subes a Nivel 3</div>';
+    } else if(totalVentas >= 17 && totalVentas < 22) {
+      h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">💎 Con <b>'+(22-totalVentas)+' más</b> subes a Nivel 4 con comisiones máximas</div>';
+    }
+  } else {
+    if(totalVentas > 0 && totalVentas < 6) {
+      h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">💡 Te faltan <b>'+(6-totalVentas)+' venta(s)</b> para activar comisiones</div>';
+    } else if(totalVentas >= 6 && totalVentas < 10) {
+      h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">⚡ Con <b>'+(10-totalVentas)+' venta(s) más</b> subes a Nivel 2 y DUPLICAS comisiones</div>';
+    } else if(totalVentas >= 10 && totalVentas < 16) {
+      h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">🚀 Con <b>'+(16-totalVentas)+' venta(s) más</b> subes a Nivel 3 con bonos extra</div>';
+    } else if(totalVentas >= 16 && totalVentas < 20) {
+      h += '<div style="margin-top:10px;background:rgba(255,255,255,0.1);border-radius:8px;padding:8px;font-size:11px;text-align:center">🚀 Con <b>'+(20-totalVentas)+' más</b> activas acelerador +$100/venta</div>';
+    }
   }
 
   document.getElementById('mnSimResult').innerHTML = h;
@@ -7221,7 +7509,7 @@ async function mnLoadProgreso() {
     // Calculate actual commission
     var comReal = 0;
     Object.keys(planCount).forEach(function(p){
-      if(MN_COMISIONES[p] && totalV>=6) comReal += planCount[p] * MN_COMISIONES[p][nivelKey];
+      var _comT = mnGetComisiones(); if(_comT[p] && totalV>=(mnIsYelitza()?7:6)) comReal += planCount[p] * (_comT[p][nivelKey]||0);
     });
     var acel = totalV>=25?totalV*150:totalV>=20?totalV*100:0;
 
@@ -7260,7 +7548,7 @@ async function mnLoadProgreso() {
     h += '<div style="background:var(--surface-2);border-radius:8px;padding:10px;margin-bottom:10px">';
     h += '<div style="font-size:11px;font-weight:700;margin-bottom:6px">Desglose por plan</div>';
     Object.keys(planCount).sort().forEach(function(p){
-      h += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span>'+p+' × '+planCount[p]+'</span><span style="font-weight:700">'+(MN_COMISIONES[p]&&totalV>=6?'$'+(planCount[p]*MN_COMISIONES[p][nivelKey]).toLocaleString():'$0')+'</span></div>';
+      var _comT2 = mnGetComisiones(); h += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span>'+p+' × '+planCount[p]+'</span><span style="font-weight:700">'+(_comT2[p]&&totalV>=(mnIsYelitza()?7:6)?'$'+(planCount[p]*(_comT2[p][nivelKey]||0)).toLocaleString():'$0')+'</span></div>';
     });
     h += '</div>';
 
@@ -7293,23 +7581,54 @@ async function mnSaveMetaIngreso(val) {
 async function mnShowHomeBanner() {
   if(!supabase||!currentUser) return;
   try {
-    var {data} = await supabase.from('agent_norte').select('motivacion,meta_ec,foto').eq('user_id',currentUser.id).maybeSingle();
-    if(!data || !data.motivacion) return;
+    var {data} = await supabase.from('agent_norte').select('motivacion,meta_ec,meta_vida,foto').eq('user_id',currentUser.id).maybeSingle();
+    
+    // Set photo in welcome bar
+    var welcomeEl = document.getElementById('homeWelcome');
+    if (welcomeEl && data && data.foto) {
+      var nameEl = document.getElementById('homeWelcomeName');
+      var currentHTML = welcomeEl.innerHTML;
+      if (currentHTML.indexOf('welcomePhoto') < 0) {
+        welcomeEl.innerHTML = '<div style="display:flex;align-items:center;gap:16px">' +
+          '<img id="welcomePhoto" src="'+data.foto+'" style="width:52px;height:52px;object-fit:cover;border-radius:50%;border:3px solid rgba(255,255,255,0.3);flex-shrink:0">' +
+          '<div><div class="home-welcome-name" id="homeWelcomeName">'+(nameEl?nameEl.textContent:'Bienvenido')+'</div>' +
+          '<div class="home-welcome-sub" id="homeWelcomeSub">'+(document.getElementById('homeWelcomeSub')?document.getElementById('homeWelcomeSub').textContent:'')+'</div></div></div>';
+      }
+    }
+
+    if(!data || (!data.motivacion && !data.meta_vida)) return;
     var existing = document.getElementById('mnHomeBanner');
     if(existing) existing.remove();
+    
+    // Build motivational card with larger photo
     var banner = document.createElement('div');
     banner.id = 'mnHomeBanner';
-    banner.style.cssText = 'border-radius:14px;padding:14px;margin-bottom:12px;background:linear-gradient(135deg,#0057B8,#009FDB);color:white;cursor:pointer';
+    banner.style.cssText = 'border-radius:16px;padding:0;margin-bottom:14px;overflow:hidden;cursor:pointer;box-shadow:0 4px 20px rgba(0,87,184,0.12)';
     banner.onclick = function(){ openMiNorte(); };
-    var photoHtml = data.foto ? '<img src="'+data.foto+'" style="width:48px;height:48px;object-fit:cover;border-radius:50%;border:2px solid rgba(255,255,255,0.5)">' : '<span style="font-size:24px">🧭</span>';
-    banner.innerHTML = '<div style="display:flex;align-items:center;gap:12px">'+
-      '<div style="flex-shrink:0">'+photoHtml+'</div>'+
-      '<div><div style="font-size:13px;font-weight:800">'+data.motivacion+'</div>'+
-      (data.meta_ec?'<div style="font-size:10px;opacity:0.85;margin-top:2px">'+data.meta_ec+'</div>':'')+
-      '</div></div>';
-    var container = document.querySelector('#viewHome .container');
-    if(container) container.insertBefore(banner, container.firstChild);
-  } catch(e){}
+    
+    var hasPhoto = data.foto && data.foto.length > 100;
+    var h = '<div style="display:flex;min-height:100px">';
+    
+    if (hasPhoto) {
+      // Photo side
+      h += '<div style="width:120px;flex-shrink:0;position:relative;overflow:hidden">';
+      h += '<img src="'+data.foto+'" style="width:100%;height:100%;object-fit:cover;display:block">';
+      h += '<div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent 60%,rgba(0,57,93,0.3) 100%)"></div>';
+      h += '</div>';
+    }
+    
+    // Content side
+    h += '<div style="flex:1;background:linear-gradient(135deg,#001A2F 0%,#00395D 50%,#005A8C 100%);padding:16px 20px;display:flex;flex-direction:column;justify-content:center;color:white">';
+    h += '<div style="font-size:9px;font-weight:700;letter-spacing:1.5px;opacity:0.6;margin-bottom:4px">MI MOTIVACIÓN</div>';
+    h += '<div style="font-size:15px;font-weight:800;line-height:1.3;margin-bottom:6px">'+(data.motivacion||data.meta_vida)+'</div>';
+    if (data.meta_ec) h += '<div style="font-size:11px;opacity:0.75">🎯 '+data.meta_ec+'</div>';
+    h += '<div style="margin-top:8px"><span style="font-size:9px;background:rgba(255,255,255,0.15);padding:3px 10px;border-radius:12px;font-weight:600">Ver Mi Norte →</span></div>';
+    h += '</div></div>';
+    
+    banner.innerHTML = h;
+    var grid = document.querySelector('#viewHome .home-grid');
+    if(grid) grid.parentNode.insertBefore(banner, grid);
+  } catch(e){ console.log('Banner error:', e); }
 }
 
 // METAS DE VENTAS — Sales Goals Module
@@ -7327,6 +7646,13 @@ async function openMetas() {
   var rol = currentUser ? currentUser.rol : 'agente';
   // Show admin panel for admin and coordinadores
   document.getElementById('metasAdmin').style.display = (rol === 'admin' || rol === 'coordinador') ? '' : 'none';
+  // Hide role filters for agente - they only see their own data
+  var metasFilters = document.querySelector('#viewMetas .section');
+  if (rol === 'agente' && metasFilters) {
+    document.getElementById('metasFilterOp').style.display = 'none';
+    document.getElementById('metasFilterCentro').style.display = 'none';
+    document.getElementById('metasFilterSup').style.display = 'none';
+  }
   // Populate month selectors
   var now = new Date();
   var mesOpts = '';
