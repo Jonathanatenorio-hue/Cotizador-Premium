@@ -1387,6 +1387,23 @@ body{padding-bottom:60px}
         <div id="metasConfigTable"></div>
         <div id="metasWarnings" style="display:none;margin-top:8px"></div>
       </div>
+      <div class="section" style="padding:14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-size:14px;font-weight:700">📅 Días festivos / no laborables</div>
+            <div style="font-size:10px;color:var(--text-3)">Afectan la proyección de metas (domingos y sábados ½ ya se descuentan automáticamente)</div>
+          </div>
+          <button class="btn btn-primary" style="font-size:10px;padding:5px 10px" onclick="toggleFestivosPanel()">➕ Agregar día</button>
+        </div>
+        <div id="festivosAddPanel" style="display:none;background:var(--surface-2);border-radius:8px;padding:10px;margin-bottom:8px">
+          <div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">
+            <div><label style="font-size:9px;font-weight:700;color:var(--text-3)">Fecha</label><input type="date" class="field" id="festivoFecha" style="font-size:11px;padding:5px"></div>
+            <div style="flex:1;min-width:120px"><label style="font-size:9px;font-weight:700;color:var(--text-3)">Motivo</label><input type="text" class="field" id="festivoMotivo" placeholder="Ej: Día de la Candelaria" style="font-size:11px;padding:5px"></div>
+            <button class="btn btn-primary" style="font-size:10px;padding:5px 12px" onclick="saveFestivo()">Guardar</button>
+          </div>
+        </div>
+        <div id="festivosList"></div>
+      </div>
     </div>
     <div class="section" style="padding:10px 14px;margin-bottom:10px">
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -1394,6 +1411,7 @@ body{padding-bottom:60px}
         <select class="field" id="metasFilterCentro" onchange="metasFilterChanged()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todos los centros</option></select>
         <select class="field" id="metasFilterSup" onchange="metasRender()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todos los supervisores</option></select>
         <select class="field" id="metasFilterMes" onchange="metasRender()" style="width:auto;font-size:12px;padding:6px 8px"></select>
+        <button onclick="metasClearFilters()" style="background:none;border:1px solid var(--border);color:var(--text-3);font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer" title="Limpiar filtros">✕ Limpiar</button>
       </div>
     </div>
     <div id="metasKPIs" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px"></div>
@@ -4439,6 +4457,7 @@ var SUB_ESTATUS_LABELS = {
   falta_ine: 'Falta INE',
   falta_contrato: 'Falta contrato firmado',
   aceleracion: 'Aceleración pendiente',
+  adeudo_pendiente: 'Adeudo por pagar',
   renovo_otro: 'Renovó en otro lado',
   no_responde: 'Ya no responde',
   prefiere_tienda: 'Prefiere ir a tienda',
@@ -4572,7 +4591,24 @@ function showDetalle(folio) {
                 <option value="falta_ine" ${cot.sub_estatus==='falta_ine'?'selected':''}>Falta INE</option>
                 <option value="falta_contrato" ${cot.sub_estatus==='falta_contrato'?'selected':''}>Falta contrato firmado</option>
                 <option value="aceleracion" ${cot.sub_estatus==='aceleracion'?'selected':''}>Aceleración pendiente</option>
+                <option value="adeudo_pendiente" ${cot.sub_estatus==='adeudo_pendiente'?'selected':''}>💰 Adeudo por pagar</option>
               </select>
+              <div id="subAdeudo_${cot.folio}" style="display:${cot.sub_estatus==='adeudo_pendiente'?'block':'none'};margin-top:8px;background:#FFF8E1;padding:12px;border-radius:8px;border:1px solid #FFE082">
+                <div style="font-size:12px;font-weight:700;color:#E65100;margin-bottom:8px">💰 Datos del adeudo</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <div style="flex:1;min-width:100px">
+                    <label style="font-size:9px;font-weight:700;color:var(--text-3)">Monto del adeudo ($)</label>
+                    <input type="number" class="field" id="adeudoMonto_${cot.folio}" value="${cot.adeudo_monto||''}" placeholder="0.00" step="0.01" min="0" style="font-size:12px;padding:6px">
+                  </div>
+                  <div style="flex:1;min-width:130px">
+                    <label style="font-size:9px;font-weight:700;color:var(--text-3)">Fecha compromiso de pago</label>
+                    <input type="date" class="field" id="adeudoFecha_${cot.folio}" value="${cot.adeudo_fecha_compromiso||''}" style="font-size:12px;padding:6px">
+                  </div>
+                </div>
+                <div style="background:#E3F2FD;border-radius:6px;padding:6px;margin-top:8px;font-size:10px;color:#1565C0">
+                  ℹ️ Se generará una alerta automática en <b>Mis Pendientes</b> en la fecha de compromiso de pago.
+                </div>
+              </div>
               <div id="subAceleracion_${cot.folio}" style="display:${cot.sub_estatus==='aceleracion'?'block':'none'};margin-top:8px;background:var(--surface-2);padding:10px;border-radius:8px">
                 <div style="background:#FFF3CD;border:1px solid #E6A200;border-radius:6px;padding:8px;margin-bottom:8px">
                   <div style="font-size:11px;color:#856404;line-height:1.4">
@@ -4699,7 +4735,9 @@ function onEstatusChange(folio, init) {
 function onSubSegChange(folio) {
   var val = document.getElementById('subSeg_' + folio).value;
   var acDiv = document.getElementById('subAceleracion_' + folio);
+  var adDiv = document.getElementById('subAdeudo_' + folio);
   if (acDiv) acDiv.style.display = val === 'aceleracion' ? 'block' : 'none';
+  if (adDiv) adDiv.style.display = val === 'adeudo_pendiente' ? 'block' : 'none';
 }
 
 async function guardarEstatus(folio) {
@@ -4709,6 +4747,9 @@ async function guardarEstatus(folio) {
   var fechaFinPlazo = '';
   var tieneIne = '';
 
+  var adeudoMonto = '';
+  var adeudoFechaCompromiso = '';
+
   if (est === 'seguimiento') {
     subEstatus = document.getElementById('subSeg_' + folio).value;
     if (!subEstatus) { alert('Selecciona el motivo de seguimiento.'); return; }
@@ -4717,6 +4758,12 @@ async function guardarEstatus(folio) {
       tieneIne = document.getElementById('tieneIne_' + folio).value;
       if (!fechaFinPlazo) { alert('La fecha de finalización de plazo es obligatoria para aceleración.'); return; }
       if (!tieneIne) { alert('Selecciona el estatus de INE.'); return; }
+    }
+    if (subEstatus === 'adeudo_pendiente') {
+      adeudoMonto = document.getElementById('adeudoMonto_' + folio).value;
+      adeudoFechaCompromiso = document.getElementById('adeudoFecha_' + folio).value;
+      if (!adeudoMonto || parseFloat(adeudoMonto) <= 0) { alert('El monto del adeudo es obligatorio y debe ser mayor a $0.'); return; }
+      if (!adeudoFechaCompromiso) { alert('La fecha de compromiso de pago es obligatoria.'); return; }
     }
   } else if (est === 'perdida') {
     subEstatus = document.getElementById('subPer_' + folio).value;
@@ -4735,6 +4782,8 @@ async function guardarEstatus(folio) {
     cot.folio_att = folioAtt;
     cot.fecha_fin_plazo = fechaFinPlazo;
     cot.tiene_ine = tieneIne;
+    cot.adeudo_monto = adeudoMonto ? parseFloat(adeudoMonto) : null;
+    cot.adeudo_fecha_compromiso = adeudoFechaCompromiso || null;
     saveState();
   }
 
@@ -4747,6 +4796,8 @@ async function guardarEstatus(folio) {
         folio_att: folioAtt || null,
         fecha_fin_plazo: fechaFinPlazo || null,
         tiene_ine: tieneIne || null,
+        adeudo_monto: adeudoMonto ? parseFloat(adeudoMonto) : null,
+        adeudo_fecha_compromiso: adeudoFechaCompromiso || null,
       }).eq('folio', folio);
       console.log('Estatus updated:', folio, est, subEstatus, folioAtt);
     } catch(e) { console.error(e); }
@@ -6284,6 +6335,8 @@ async function openRecuperacion() {
       var isStaleEnv = c.estatus === 'enviada' && new Date(updDate) < staleDate;
       var isStaleSeg = c.estatus === 'seguimiento' && new Date(updDate) < staleDate;
       var dias = Math.max(0, Math.floor((Date.now() - new Date(updDate).getTime()) / 86400000));
+      var isAdeudo = c.estatus === 'seguimiento' && c.sub_estatus === 'adeudo_pendiente' && c.adeudo_fecha_compromiso;
+      var adeudoVence = isAdeudo && new Date(c.adeudo_fecha_compromiso + 'T00:00:00') <= new Date();
       return {
         id: c.id, folio: c.folio, agente_id: c.agente_id,
         agente_nombre: ag ? ag.nombre : 'Desconocido',
@@ -6294,11 +6347,15 @@ async function openRecuperacion() {
         estatus: c.estatus, sub_estatus: c.sub_estatus || '',
         fecha: c.fecha, dias_sin_mov: dias,
         items: itemCount[c.id] || 0,
-        isRecuperable: isLost || isStaleEnv || isStaleSeg,
+        isRecuperable: isLost || isStaleEnv || isStaleSeg || isAdeudo,
         isExAgent: isInactive,
-        tipo: isInactive ? 'exagente' : isLost ? 'perdida' : isStaleEnv ? 'enviada' : isStaleSeg ? 'seguimiento' : 'otro',
+        isAdeudo: isAdeudo,
+        adeudoVence: adeudoVence,
+        adeudo_monto: c.adeudo_monto || null,
+        adeudo_fecha_compromiso: c.adeudo_fecha_compromiso || null,
+        tipo: isInactive ? 'exagente' : adeudoVence ? 'adeudo' : isLost ? 'perdida' : isStaleEnv ? 'enviada' : isStaleSeg ? 'seguimiento' : isAdeudo ? 'adeudo_proximo' : 'otro',
       };
-    }).filter(function(c) { return c.isRecuperable || c.isExAgent; });
+    }).filter(function(c) { return c.isRecuperable || c.isExAgent || c.isAdeudo; });
     console.log('Recup: filtered:', recupCots.length);
 
     // Populate centro filter
@@ -6383,9 +6440,11 @@ function renderRecuperacion() {
   var totalEnviadas = recupCots.filter(function(c){return c.tipo==='enviada'}).length;
   var totalSeguimiento = recupCots.filter(function(c){return c.tipo==='seguimiento'}).length;
   var totalExag = recupCots.filter(function(c){return c.isExAgent}).length;
+  var totalAdeudo = recupCots.filter(function(c){return c.isAdeudo}).length;
   kpis.innerHTML = '<div style="text-align:center;padding:8px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)"><div style="font-size:18px;font-weight:900;color:#DC3545">'+totalPerdidas+'</div><div style="font-size:9px;color:var(--text-3)">Perdidas</div></div>'
     +'<div style="text-align:center;padding:8px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)"><div style="font-size:18px;font-weight:900;color:var(--att-blue)">'+totalEnviadas+'</div><div style="font-size:9px;color:var(--text-3)">Enviadas estancadas</div></div>'
     +'<div style="text-align:center;padding:8px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)"><div style="font-size:18px;font-weight:900;color:#E6A200">'+totalSeguimiento+'</div><div style="font-size:9px;color:var(--text-3)">Seguimiento estancado</div></div>'
+    +'<div style="text-align:center;padding:8px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)"><div style="font-size:18px;font-weight:900;color:#E65100">'+totalAdeudo+'</div><div style="font-size:9px;color:var(--text-3)">Adeudos</div></div>'
     +'<div style="text-align:center;padding:8px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)"><div style="font-size:18px;font-weight:900;color:#8B5CF6">'+totalExag+'</div><div style="font-size:9px;color:var(--text-3)">Ex-agentes</div></div>';
 
   if (list.length === 0) {
@@ -6399,17 +6458,19 @@ function renderRecuperacion() {
   var html = '<div style="font-size:11px;color:var(--text-3);margin-bottom:6px">'+list.length+' cotización(es)</div>';
   html += '<div style="display:flex;flex-direction:column;gap:4px">';
   list.forEach(function(c) {
-    var bgColor = c.isExAgent ? '#F3E8FF' : c.estatus==='perdida' ? '#FEE2E2' : c.estatus==='enviada' ? '#DBEAFE' : '#FEF3C7';
-    html += '<div style="background:'+bgColor+';padding:10px 12px;border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;gap:8px">';
+    var bgColor = c.isExAgent ? '#F3E8FF' : c.adeudoVence ? '#FFF0E0' : c.estatus==='perdida' ? '#FEE2E2' : c.estatus==='enviada' ? '#DBEAFE' : c.isAdeudo ? '#FFF8E1' : '#FEF3C7';
+    html += '<div style="background:'+bgColor+';padding:10px 12px;border-radius:8px;border:1px solid '+(c.adeudoVence?'#E65100':'var(--border)')+';display:flex;align-items:center;gap:8px">';
     html += '<input type="checkbox" class="recup-check" value="'+c.id+'" onchange="recUpdateCount()" style="width:16px;height:16px;flex-shrink:0">';
     html += '<div style="flex:1;min-width:0">';
     html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
     html += '<span style="font-weight:700;font-size:12px">'+c.folio+'</span>';
     html += '<span style="font-size:9px;background:'+(estatusColors[c.estatus]||'#888')+';color:white;padding:1px 6px;border-radius:4px">'+(estatusLabels[c.estatus]||c.estatus)+'</span>';
     if(c.sub_estatus) html += '<span style="font-size:9px;color:var(--text-3)">('+c.sub_estatus.replace(/_/g,' ')+')</span>';
+    if(c.isAdeudo) html += '<span style="font-size:9px;background:#E65100;color:white;padding:1px 6px;border-radius:4px">💰 ADEUDO'+(c.adeudoVence?' ⚠️ VENCIDO':'')+'</span>';
     html += '<span style="font-size:9px;color:#DC3545;font-weight:600">'+c.dias_sin_mov+' días sin movimiento</span>';
     html += '</div>';
     html += '<div style="font-size:11px;color:var(--text-2);margin-top:2px">👤 '+c.cliente+' · 📞 '+(c.telefono||'Sin tel')+' · 📦 '+c.items+' equipo(s) · '+c.fecha+'</div>';
+    if(c.isAdeudo) html += '<div style="font-size:10px;color:#E65100;font-weight:600;margin-top:2px">💰 Adeudo: $'+(c.adeudo_monto?c.adeudo_monto.toLocaleString():'?')+' · Compromiso: '+(c.adeudo_fecha_compromiso||'Sin fecha')+(c.adeudoVence?' · <span style="color:#DC3545;font-weight:800">¡FECHA VENCIDA!</span>':'')+'</div>';
     html += '<div style="font-size:10px;color:var(--text-3)">Agente: <b>'+c.agente_nombre+'</b>'+(c.agente_activo?'':' <span style="color:#DC3545">(BAJA)</span>')+' · '+c.centro+'</div>';
     html += '</div></div>';
   });
@@ -7895,6 +7956,50 @@ async function mnShowHomeBanner() {
 
 // METAS DE VENTAS — Sales Goals Module
 // ============================================================
+// ── DÍAS FESTIVOS OFICIALES DE MÉXICO ──
+var FESTIVOS_OFICIALES = [
+  // 2025
+  '2025-01-01','2025-02-03','2025-03-17','2025-05-01','2025-09-16','2025-11-17','2025-12-25',
+  // 2026
+  '2026-01-01','2026-02-02','2026-03-16','2026-05-01','2026-09-16','2026-11-16','2026-12-25',
+  // 2027
+  '2027-01-01','2027-02-01','2027-03-15','2027-05-01','2027-09-16','2027-11-15','2027-12-25',
+];
+var festivosCustom = [];
+var festivosAll = [];
+
+async function loadFestivos() {
+  festivosAll = FESTIVOS_OFICIALES.slice();
+  if (supabase) {
+    try {
+      var {data} = await supabase.from('dias_festivos').select('*').order('fecha');
+      if (data) {
+        festivosCustom = data;
+        data.forEach(function(f) {
+          if (festivosAll.indexOf(f.fecha) < 0) festivosAll.push(f.fecha);
+        });
+      }
+    } catch(e) { console.error('Error loading festivos:', e); }
+  }
+}
+
+function esFestivo(dateStr) {
+  return festivosAll.indexOf(dateStr) >= 0;
+}
+
+function countWorkDaysGlobal(year, month, fromDay, toDay) {
+  var total = 0;
+  for (var d = fromDay; d <= toDay; d++) {
+    var dt = new Date(year, month, d);
+    var dow = dt.getDay();
+    var dateStr = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+    if (dow === 0 || esFestivo(dateStr)) continue;
+    if (dow === 6) { total += 0.5; continue; }
+    total += 1;
+  }
+  return total;
+}
+
 var METAS_CENTROS = {
   'CC2': {name:'Antequera (CC2)', op:'PUE'},
   'JV': {name:'Juárez (JV)', op:'PUE'},
@@ -7905,6 +8010,8 @@ var metasVentas = [], metasMetas = [];
 async function openMetas() {
   showView('metas', 'Metas de Ventas');
   if (!supabase) return;
+  await loadFestivos();
+  renderFestivosList();
   var rol = currentUser ? currentUser.rol : 'agente';
   // Show admin panel for admin and coordinadores
   document.getElementById('metasAdmin').style.display = (rol === 'admin' || rol === 'coordinador') ? '' : 'none';
@@ -7947,6 +8054,85 @@ async function metasLoadData() {
 function metasGetMeta(tipo, nombre) {
   var m = metasMetas.find(function(x){return x.tipo===tipo && x.nombre===nombre});
   return m ? m.meta : 0;
+}
+
+function toggleFestivosPanel() {
+  var p = document.getElementById('festivosAddPanel');
+  p.style.display = p.style.display === 'none' ? '' : 'none';
+}
+
+async function saveFestivo() {
+  var fecha = document.getElementById('festivoFecha').value;
+  var motivo = document.getElementById('festivoMotivo').value.trim();
+  if (!fecha) { alert('Selecciona una fecha'); return; }
+  if (!motivo) { alert('Escribe el motivo'); return; }
+  if (!supabase) return;
+  try {
+    await supabase.from('dias_festivos').upsert({fecha: fecha, motivo: motivo, creado_por: currentUser ? currentUser.nombre : ''}, {onConflict:'fecha'});
+    document.getElementById('festivoFecha').value = '';
+    document.getElementById('festivoMotivo').value = '';
+    document.getElementById('festivosAddPanel').style.display = 'none';
+    await loadFestivos();
+    renderFestivosList();
+    alert('✅ Día festivo guardado: ' + fecha);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function deleteFestivo(fecha) {
+  if (!confirm('¿Eliminar el día festivo ' + fecha + '?')) return;
+  if (!supabase) return;
+  try {
+    await supabase.from('dias_festivos').delete().eq('fecha', fecha);
+    await loadFestivos();
+    renderFestivosList();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+function renderFestivosList() {
+  var el = document.getElementById('festivosList');
+  if (!el) return;
+  var now = new Date();
+  var year = now.getFullYear();
+  var meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  
+  // Combine official + custom for current year
+  var allForYear = [];
+  FESTIVOS_OFICIALES.forEach(function(f) {
+    if (f.startsWith(year + '-')) allForYear.push({fecha:f, motivo:'Oficial', tipo:'oficial'});
+  });
+  festivosCustom.forEach(function(f) {
+    if (f.fecha.startsWith(year + '-')) {
+      var exists = allForYear.find(function(a){return a.fecha===f.fecha});
+      if (exists) { exists.motivo = f.motivo; exists.tipo = 'custom'; }
+      else allForYear.push({fecha:f.fecha, motivo:f.motivo, tipo:'custom', creado_por:f.creado_por});
+    }
+  });
+  allForYear.sort(function(a,b){return a.fecha.localeCompare(b.fecha)});
+  
+  if (!allForYear.length) { el.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No hay días festivos registrados para ' + year + '</div>'; return; }
+  
+  var h = '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+  allForYear.forEach(function(f) {
+    var d = new Date(f.fecha + 'T12:00:00');
+    var label = d.getDate() + ' ' + meses[d.getMonth()];
+    var isPast = new Date(f.fecha + 'T23:59:59') < now;
+    var bg = f.tipo === 'oficial' ? '#EEF2FF' : '#FEF3C7';
+    var border = f.tipo === 'oficial' ? '#C7D2FE' : '#FCD34D';
+    var opacity = isPast ? '0.5' : '1';
+    h += '<div style="background:'+bg+';border:1px solid '+border+';border-radius:8px;padding:6px 10px;font-size:10px;opacity:'+opacity+';display:flex;align-items:center;gap:6px">';
+    h += '<div><div style="font-weight:700">'+label+'</div><div style="color:var(--text-3)">'+f.motivo+'</div></div>';
+    if (f.tipo === 'custom') h += '<button onclick="deleteFestivo(\''+f.fecha+'\')" style="background:none;border:none;color:#DC3545;cursor:pointer;font-size:12px;padding:0" title="Eliminar">✕</button>';
+    h += '</div>';
+  });
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function metasClearFilters() {
+  document.getElementById('metasFilterOp').value = 'all';
+  document.getElementById('metasFilterCentro').value = 'all';
+  document.getElementById('metasFilterSup').value = 'all';
+  metasFilterChanged();
 }
 
 function metasFilterChanged() {
@@ -8026,12 +8212,17 @@ async function metasRender() {
   var pct = totalMeta > 0 ? Math.round(totalVentas/totalMeta*100) : 0;
   var pctColor = pct >= 100 ? '#10B981' : pct >= 70 ? '#F59E0B' : '#DC3545';
 
-  // Days projection
+  // Days projection (uses global countWorkDaysGlobal with festivos)
   var now = new Date();
-  var mesDate = new Date(mes+'-01');
+  var mesDate = new Date(mes + '-01T12:00:00');
   var daysInMonth = new Date(mesDate.getFullYear(), mesDate.getMonth()+1, 0).getDate();
-  var daysPassed = (now.getFullYear()===mesDate.getFullYear() && now.getMonth()===mesDate.getMonth()) ? now.getDate() : daysInMonth;
-  var projected = daysPassed > 0 ? Math.round(totalVentas / daysPassed * daysInMonth) : totalVentas;
+  var isCurrentMonth = now.getFullYear() === mesDate.getFullYear() && now.getMonth() === mesDate.getMonth();
+  
+  var workDaysTotal = countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, daysInMonth);
+  var workDaysPassed = isCurrentMonth ? countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, now.getDate()) : workDaysTotal;
+  
+  var projected = (isCurrentMonth && workDaysPassed > 0 && workDaysPassed < workDaysTotal) ? 
+    Math.round(totalVentas / workDaysPassed * workDaysTotal) : totalVentas;
   var projPct = totalMeta > 0 ? Math.round(projected/totalMeta*100) : 0;
 
   // KPIs - redesigned as progress card
@@ -8052,15 +8243,37 @@ async function metasRender() {
   kH += '<div><div style="font-size:24px;font-weight:900;color:var(--text-2)">'+totalMeta+'</div><div style="font-size:9px;color:var(--text-3)">META</div></div>';
   kH += '<div><div style="font-size:24px;font-weight:900;color:#8B5CF6">'+projected+'</div><div style="font-size:9px;color:var(--text-3)">PROYECCIÓN</div></div>';
   kH += '<div><div style="font-size:24px;font-weight:900;color:'+(projPct>=100?'#10B981':'#F59E0B')+'">'+projPct+'%</div><div style="font-size:9px;color:var(--text-3)">PROY. VS META</div></div>';
+  if (isCurrentMonth) kH += '<div><div style="font-size:24px;font-weight:900;color:var(--text-2)">'+workDaysPassed+'/'+workDaysTotal+'</div><div style="font-size:9px;color:var(--text-3)">DÍAS HÁBILES</div></div>';
   kH += '</div></div>';
   document.getElementById('metasKPIs').innerHTML = kH;
 
   // ── OPERATIONS VIEW (admin/coord only) ──
   var opsH = '';
   if (rol === 'admin' || rol === 'coordinador') {
+    // Build coordinador map per centro
+    var coordPerCentro = {};
+    if (adminUsers && adminUsers.length && adminCentros && adminCentros.length) {
+      adminUsers.filter(function(u){return u.rol==='coordinador'}).forEach(function(coord) {
+        // Find agents under this coordinator to determine which centros they cover
+        var coordAgents = adminUsers.filter(function(a){return a.coordinador_id===coord.id});
+        var centroIds = {};
+        coordAgents.forEach(function(a){ if(a.centro_id) centroIds[a.centro_id]=true; });
+        Object.keys(centroIds).forEach(function(cid) {
+          var ac = adminCentros.find(function(c){return c.id===parseInt(cid)});
+          if (!ac) return;
+          var cName = ac.nombre.toUpperCase();
+          var ck = '';
+          if (cName.indexOf('ANTEQUERA')>=0||cName.indexOf('CC2')>=0) ck='CC2';
+          else if (cName.indexOf('JUAREZ')>=0||cName.indexOf('JV')>=0||cName.indexOf('JUÁREZ')>=0) ck='JV';
+          else if (cName.indexOf('CDMX')>=0||cName.indexOf('YELITZA')>=0) ck='CDMX';
+          if (ck) coordPerCentro[ck] = coord.nombre;
+        });
+      });
+    }
+
     opsH += '<div class="section" style="padding:16px">';
     opsH += '<div style="font-size:14px;font-weight:800;margin-bottom:12px">🏢 Operaciones</div>';
-    opsH += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">';
+    opsH += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px">';
     ['PUE','CDMX'].forEach(function(op) {
       if (opVal !== 'all' && opVal !== op) return;
       var opVentas = metasVentas.filter(function(v){return METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op===op}).length;
@@ -8069,13 +8282,14 @@ async function metasRender() {
       var opColor = opPct>=100?'#10B981':opPct>=70?'#F59E0B':'#DC3545';
       var opName = op==='PUE'?'Puebla':'CDMX / Sub Yelitza';
       var opIcon = op==='PUE'?'🏛️':'🌆';
-      opsH += '<div style="background:var(--bg-main);border-radius:12px;padding:14px;border:1px solid var(--border)">';
-      opsH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
-      opsH += '<div style="font-size:14px;font-weight:800">'+opIcon+' '+opName+'</div>';
-      opsH += '<span style="font-size:20px;font-weight:900;color:'+opColor+'">'+opPct+'%</span>';
+      opsH += '<div style="background:var(--bg-main);border-radius:12px;padding:16px;border:1px solid var(--border)">';
+      opsH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+      opsH += '<div style="font-size:15px;font-weight:800">'+opIcon+' '+opName+'</div>';
+      opsH += '<span style="font-size:22px;font-weight:900;color:'+opColor+'">'+opPct+'%</span>';
       opsH += '</div>';
-      opsH += '<div style="height:8px;border-radius:4px;background:var(--border);overflow:hidden;margin-bottom:8px"><div style="height:100%;width:'+Math.min(opPct,100)+'%;background:'+opColor+';border-radius:4px;transition:width 0.5s"></div></div>';
-      opsH += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-3);margin-bottom:8px"><span>'+opVentas+' ventas</span><span>Meta: '+opMeta+'</span></div>';
+      opsH += '<div style="height:10px;border-radius:5px;background:var(--border);overflow:hidden;margin-bottom:6px"><div style="height:100%;width:'+Math.min(opPct,100)+'%;background:'+opColor+';border-radius:5px;transition:width 0.5s"></div></div>';
+      opsH += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-3);margin-bottom:12px"><span>'+opVentas+' ventas</span><span>Meta: '+opMeta+'</span></div>';
+      
       // Centros
       Object.keys(METAS_CENTROS).forEach(function(ck) {
         if (METAS_CENTROS[ck].op !== op) return;
@@ -8084,29 +8298,30 @@ async function metasRender() {
         var cm = metasGetMeta('centro', ck);
         var cp = cm>0?Math.round(cv/cm*100):0;
         var cc = cp>=100?'#10B981':cp>=70?'#F59E0B':'#DC3545';
-        opsH += '<div style="padding:6px 0;border-top:1px solid var(--border)">';
-        opsH += '<div style="display:flex;align-items:center;gap:8px">';
-        opsH += '<span style="font-size:11px;font-weight:700;min-width:120px">'+METAS_CENTROS[ck].name+'</span>';
-        opsH += '<div style="flex:1;height:5px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+cc+';border-radius:3px"></div></div>';
-        opsH += '<span style="font-size:10px;font-weight:700;color:'+cc+';min-width:60px;text-align:right">'+cv+'/'+cm+'</span>';
-        opsH += '</div>';
+        var coordName = coordPerCentro[ck] || '';
         
-        // Supervisors in this centro (from ventas data)
+        // Centro header with coordinador
+        opsH += '<div style="background:linear-gradient(135deg,#F0F4FF,#E8F0FE);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid #D0DCEF">';
+        opsH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+        opsH += '<div><div style="font-size:12px;font-weight:800;color:#1A365D">'+METAS_CENTROS[ck].name+'</div>';
+        if (coordName) opsH += '<div style="font-size:9px;color:#4A6FA5;font-weight:600;margin-top:1px">📋 Coord: '+coordName+'</div>';
+        opsH += '</div>';
+        opsH += '<span style="font-size:13px;font-weight:800;color:'+cc+'">'+cv+'/'+cm+'</span>';
+        opsH += '</div>';
+        opsH += '<div style="height:8px;border-radius:4px;background:rgba(0,0,0,0.08);overflow:hidden;margin-bottom:10px"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+cc+';border-radius:4px"></div></div>';
+        
+        // Supervisors in this centro
         var centroSups = {};
         metasVentas.filter(function(v){return v.centro_key===ck && v.supervisor}).forEach(function(v) {
           if (!centroSups[v.supervisor]) centroSups[v.supervisor] = 0;
           centroSups[v.supervisor]++;
         });
-        // Also include supervisors with meta but 0 ventas in this centro
-        // Check adminUsers for supervisor-centro assignment
         if (adminUsers && adminUsers.length) {
           var centroAgents = adminUsers.filter(function(u) { return u.rol==='agente'; });
-          var supCentroMap = {};
           centroAgents.forEach(function(a) {
             if (!a.supervisor_id) return;
             var sup = adminUsers.find(function(s){return s.id===a.supervisor_id});
             if (!sup) return;
-            // Determine centro key for this agent
             var aCentroName = '';
             if (adminCentros && adminCentros.length) {
               var ac = adminCentros.find(function(c){return c.id===a.centro_id});
@@ -8116,7 +8331,7 @@ async function metasRender() {
             if (aCentroName.indexOf('ANTEQUERA')>=0||aCentroName.indexOf('CC2')>=0) aKey='CC2';
             else if (aCentroName.indexOf('JUAREZ')>=0||aCentroName.indexOf('JV')>=0||aCentroName.indexOf('JUÁREZ')>=0) aKey='JV';
             else if (aCentroName.indexOf('CDMX')>=0||aCentroName.indexOf('YELITZA')>=0) aKey='CDMX';
-            if (aKey===ck && !centroSups[sup.nombre]) centroSups[sup.nombre] = 0;
+            if (aKey===ck && centroSups[sup.nombre]===undefined) centroSups[sup.nombre] = 0;
           });
         }
         var supCentroKeys = Object.keys(centroSups).sort(function(a,b){return centroSups[b]-centroSups[a]});
@@ -8125,10 +8340,12 @@ async function metasRender() {
           var sm = metasGetMeta('supervisor', s);
           var sp = sm>0?Math.round(sv/sm*100):0;
           var sc = sp>=100?'#10B981':sp>=70?'#F59E0B':'#DC3545';
-          opsH += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0 3px 16px">';
-          opsH += '<span style="font-size:10px;color:var(--text-2);min-width:140px">👤 '+s+'</span>';
-          opsH += '<div style="flex:1;height:4px;border-radius:2px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(sp,100)+'%;background:'+sc+';border-radius:2px"></div></div>';
-          opsH += '<span style="font-size:9px;font-weight:700;color:'+sc+';min-width:55px;text-align:right">'+sv+'/'+sm+' ('+sp+'%)</span>';
+          opsH += '<div style="margin-bottom:6px">';
+          opsH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">';
+          opsH += '<span style="font-size:10px;font-weight:600;color:var(--text-2)">👤 '+s+'</span>';
+          opsH += '<span style="font-size:10px;font-weight:700;color:'+sc+'">'+sv+'/'+sm+' ('+sp+'%)</span>';
+          opsH += '</div>';
+          opsH += '<div style="height:7px;border-radius:4px;background:rgba(0,0,0,0.06);overflow:hidden"><div style="height:100%;width:'+Math.min(sp,100)+'%;background:'+sc+';border-radius:4px;transition:width 0.4s"></div></div>';
           opsH += '</div>';
         });
         opsH += '</div>';
