@@ -3043,9 +3043,8 @@ function formatAsesorContent(text) {
 
 function buildAsesorContext(userMsg) {
   var vigentes = state.devices.filter(isVigente).filter(function(d){return d.oferta.includes('Premium')});
-  if (!vigentes.length) return 'No hay lista de precios cargada.';
+  if (!vigentes.length) return 'NO_DATA';
   
-  // Filter devices by keywords in user message to keep context manageable
   var msg = (userMsg || '').toLowerCase();
   var filtered = vigentes;
   var brandKeywords = {'iphone':'APPLE','samsung':'SAMSUNG','motorola':'MOTOROLA','moto':'MOTOROLA','xiaomi':'XIAOMI','huawei':'HUAWEI','honor':'HONOR','nokia':'NOKIA','zte':'ZTE','tcl':'TCL','oppo':'OPPO','nothing':'NOTHING','google':'GOOGLE','pixel':'GOOGLE'};
@@ -3056,7 +3055,6 @@ function buildAsesorContext(userMsg) {
   
   if (matchedBrand) {
     filtered = vigentes.filter(function(d){return d.marca.toUpperCase().indexOf(matchedBrand) >= 0});
-    // Also filter by model keywords
     var modelWords = msg.match(/\d+\s*(pro|max|plus|ultra|air|mini|se|lite|fe)?/gi);
     if (modelWords && modelWords.length) {
       var modelFiltered = filtered.filter(function(d) {
@@ -3066,7 +3064,7 @@ function buildAsesorContext(userMsg) {
     }
   }
   
-  // Deduplicate by equipo+precioContado (remove color variants)
+  // Deduplicate
   var seen = {};
   filtered = filtered.filter(function(d) {
     var key = d.equipo + '|' + d.precioContado;
@@ -3074,38 +3072,36 @@ function buildAsesorContext(userMsg) {
     seen[key] = true;
     return true;
   });
+  if (filtered.length > 15) filtered = filtered.slice(0, 15);
   
-  // If too many, limit to top 20 by price
-  if (filtered.length > 20) filtered = filtered.slice(0, 20);
-  
-  var catalog = 'CATÁLOGO AT&T - RENOVACIONES ÚNICAMENTE\n' + filtered.length + ' equipos' + (matchedBrand ? ' de ' + matchedBrand : '') + '\n\n';
-  
-  catalog += 'PLANES DISPONIBLES:\n';
-  PLANS_PREMIUM.forEach(function(p) {
-    catalog += '- ' + p.name + ': ' + p.gb + ' datos, renta $' + p.price + '/mes\n';
-  });
-  
-  catalog += '\nTotal mensual = (monto_financiado ÷ plazo) + renta_plan\n\n';
-  catalog += 'EQUIPOS CON TODAS LAS COMBINACIONES PLAN×PLAZO:\n';
-  
+  // Build FLAT pre-calculated table - model should NOT do any math
+  var rows = [];
   filtered.forEach(function(d) {
-    catalog += '\n▸ ' + d.equipo + ' | Contado: $' + d.precioContado + '\n';
     d.plans.forEach(function(plan) {
       if (!d.pricing[plan.id]) return;
-      var line = '  ' + plan.name + '(' + plan.gb + ',$' + plan.price + '/mes): ';
-      var combos = [];
       d.plazos.forEach(function(plazo) {
         var fin = d.pricing[plan.id][plazo];
         if (fin === null || fin === undefined) return;
-        var mens = Math.round(fin / plazo * 100) / 100;
-        var total = Math.round(mens + plan.price);
-        combos.push(plazo + 'm→$' + total + '/mes(eq:$' + Math.round(mens) + ')');
+        var mensEq = Math.round(fin / plazo * 100) / 100;
+        var totalMes = Math.round((mensEq + plan.price) * 100) / 100;
+        rows.push({
+          equipo: d.equipo, contado: d.precioContado,
+          plan: plan.name, gb: plan.gb, rentaPlan: plan.price,
+          plazo: plazo, mensEquipo: mensEq, totalMensual: totalMes
+        });
       });
-      if (combos.length) catalog += line + combos.join(' | ') + '\n';
     });
   });
   
-  return catalog;
+  rows.sort(function(a,b){return a.totalMensual - b.totalMensual});
+  
+  var table = 'TABLA DE OFERTAS (todos los números ya están calculados, NO hagas matemáticas):\n\n';
+  table += 'Equipo | Plan | GB | Plazo | Mens_Equipo | Renta_Plan | TOTAL_MES\n';
+  rows.forEach(function(r) {
+    table += r.equipo + ' | ' + r.plan + ' | ' + r.gb + ' | ' + r.plazo + 'm | $' + r.mensEquipo.toFixed(2) + ' | $' + r.rentaPlan + ' | $' + r.totalMensual.toFixed(2) + '\n';
+  });
+  
+  return table;
 }
 
 async function sendAsesorMsg() {
@@ -3113,42 +3109,41 @@ async function sendAsesorMsg() {
   var msg = (input.value || '').trim();
   if (!msg) return;
   
-  // Ensure API key is loaded
   if (!TR_API_KEY) await trLoadConfig();
   
   asesorMsgs.push({role:'user', content: msg});
   input.value = '';
   
-  // Show typing
-  asesorMsgs.push({role:'assistant', content:'⏳ Analizando todas las combinaciones...'});
+  asesorMsgs.push({role:'assistant', content:'⏳ Buscando la mejor oferta...'});
   renderAsesorPanel();
   asesorMsgs.pop();
   
   var catalog = buildAsesorContext(msg);
   
-  var systemPrompt = 'Eres un asesor experto de ofertas AT&T México para ExpertCell (distribuidor autorizado). Ayudas a ejecutivos de ventas a encontrar la MEJOR combinación equipo + plan para renovaciones.\n\n';
-  systemPrompt += 'REGLAS CRÍTICAS:\n';
-  systemPrompt += '1. SIEMPRE es renovación, nunca menciones upgrade o línea nueva\n';
-  systemPrompt += '2. SOLO usa equipos y precios del catálogo proporcionado - NUNCA inventes precios\n';
-  systemPrompt += '3. Cuando el cliente tiene PRESUPUESTO MENSUAL: busca la combinación que MAXIMICE los GB dentro del presupuesto. Revisa TODOS los planes y plazos posibles\n';
-  systemPrompt += '4. El total mensual ya está calculado en el catálogo como: mensualidad equipo + renta plan\n';
-  systemPrompt += '5. Prioriza: mayor GB > menor plazo > menor costo, en ese orden cuando el cliente pide "muchos datos"\n';
-  systemPrompt += '6. Da máximo 3 opciones ordenadas de mejor a peor según lo que pide el cliente\n';
-  systemPrompt += '7. Formato limpio: usa **negritas** para precios clave. Sé directo y conciso\n';
-  systemPrompt += '8. Si un equipo dice NA en un plan, ese plan NO está disponible para ese equipo\n';
-  systemPrompt += '9. Renta sin impuestos = precio plan × 0.837\n';
-  systemPrompt += '10. Para cada opción muestra: Equipo, Plan (GB), Plazo, Mensualidad equipo, Renta plan, TOTAL MENSUAL\n\n';
-  systemPrompt += catalog;
+  if (catalog === 'NO_DATA') {
+    asesorMsgs.push({role:'assistant', content:'❌ No hay lista de precios cargada. Sube la lista primero.'});
+    renderAsesorPanel();
+    return;
+  }
   
-  // Build conversation for API
-  var apiMsgs = [{role:'user', content: systemPrompt}];
-  asesorMsgs.forEach(function(m) {
-    apiMsgs.push({role: m.role, content: m.content});
-  });
+  var systemPrompt = 'Eres un asesor de ofertas AT&T para ExpertCell. Solo manejas RENOVACIONES.\n\n';
+  systemPrompt += 'REGLAS ABSOLUTAS - ROMPER CUALQUIERA ES UN ERROR GRAVE:\n';
+  systemPrompt += '1. PROHIBIDO hacer cálculos. Todos los precios están pre-calculados en la tabla. Copia los números EXACTOS de la columna TOTAL_MES, Mens_Equipo y Renta_Plan.\n';
+  systemPrompt += '2. Si el cliente pide un equipo específico (ej: "iPhone 17") → SOLO muestra opciones de ESE equipo. NUNCA sugieras otro modelo diferente.\n';
+  systemPrompt += '3. Si el cliente quiere muchos GB con presupuesto → busca en la tabla las filas de ese equipo donde TOTAL_MES <= presupuesto, y elige las que tengan MÁS GB.\n';
+  systemPrompt += '4. Máximo 3 opciones, ordenadas de MÁS GB a MENOS GB.\n';
+  systemPrompt += '5. Para cada opción muestra exactamente:\n';
+  systemPrompt += '   **Equipo** + **Plan (GB)** a **Plazo** meses\n';
+  systemPrompt += '   Mensualidad equipo: $X (copiar de Mens_Equipo)\n';
+  systemPrompt += '   Renta del plan: $X (copiar de Renta_Plan)\n';
+  systemPrompt += '   **Total mensual: $X** (copiar de TOTAL_MES)\n';
+  systemPrompt += '6. Si no encuentras el equipo que piden, dilo y sugiere alternativas de la misma marca.\n';
+  systemPrompt += '7. Sé conciso y directo. No repitas reglas ni expliques tu proceso.\n\n';
+  systemPrompt += catalog;
   
   try {
     var ak = TR_API_KEY || localStorage.getItem('ec_api_key') || '';
-    if (!ak) { asesorMsgs.push({role:'assistant', content:'❌ No hay API key configurada. Pide al administrador que la configure en Sales Academy > Métricas.'}); renderAsesorPanel(); return; }
+    if (!ak) { asesorMsgs.push({role:'assistant', content:'❌ No hay API key configurada.'}); renderAsesorPanel(); return; }
     
     var response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -3161,10 +3156,10 @@ async function sendAsesorMsg() {
       })
     });
     var data = await response.json();
-    var reply = data.content && data.content[0] ? data.content[0].text : 'No pude procesar tu consulta. Intenta de nuevo.';
+    var reply = data.content && data.content[0] ? data.content[0].text : 'No pude procesar tu consulta.';
     asesorMsgs.push({role:'assistant', content: reply});
   } catch(e) {
-    asesorMsgs.push({role:'assistant', content:'❌ Error de conexión. Verifica tu internet e intenta de nuevo.'});
+    asesorMsgs.push({role:'assistant', content:'❌ Error de conexión. Verifica tu internet.'});
   }
   
   renderAsesorPanel();
