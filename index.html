@@ -1414,11 +1414,31 @@ body{padding-bottom:60px}
         <button onclick="metasClearFilters()" style="background:none;border:1px solid var(--border);color:var(--text-3);font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer" title="Limpiar filtros">✕ Limpiar</button>
       </div>
     </div>
-    <div id="metasKPIs" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px"></div>
-    <div id="metasOpsView" style="margin-bottom:12px"></div>
-    <div id="metasDescansos" style="margin-bottom:12px"></div>
-    <div id="metasSupView" style="margin-bottom:12px"></div>
-    <div id="metasAgentView"></div>
+    <!-- Metas Tabs -->
+    <div style="display:flex;gap:4px;margin-bottom:12px;background:var(--bg-card);padding:4px;border-radius:10px;border:1px solid var(--border)">
+      <button class="btn metasTab" id="metasTabMetas" onclick="metasTabSwitch('metas')" style="flex:1;font-size:12px;padding:8px;border-radius:8px;background:var(--att-blue);color:white;border:none;font-weight:700">📊 Metas</button>
+      <button class="btn metasTab" id="metasTabDescansos" onclick="metasTabSwitch('descansos')" style="flex:1;font-size:12px;padding:8px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);font-weight:700">🏖️ Descansos</button>
+    </div>
+    <!-- Tab: Metas -->
+    <div id="metasTabContentMetas">
+      <div id="metasKPIs" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px"></div>
+      <div id="metasOpsView" style="margin-bottom:12px"></div>
+      <div id="metasSupView" style="margin-bottom:12px"></div>
+      <div id="metasAgentView"></div>
+    </div>
+    <!-- Tab: Descansos -->
+    <div id="metasTabContentDescansos" style="display:none">
+      <div id="metasDescansosFilters" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+        <select class="field" id="descFilterStatus" onchange="metasRender()" style="width:auto;font-size:12px;padding:6px 8px">
+          <option value="all">Todos</option>
+          <option value="descansa">🟢 Descansan</option>
+          <option value="trabaja">🔴 Trabajan</option>
+          <option value="auto">⭐ Auto-descanso</option>
+        </select>
+        <button onclick="exportDescansosExcel()" class="btn btn-primary" style="font-size:11px;padding:6px 12px">📥 Exportar Excel</button>
+      </div>
+      <div id="metasDescansos"></div>
+    </div>
   </div>
 </div>
 
@@ -8493,6 +8513,10 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
   var isFridayOrLater = dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0;
   var weekLabel = monday.getDate() + '-' + friday.getDate() + ' ' + ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][monday.getMonth()];
   
+  // Monthly work days for rhythm calculation
+  var daysInMonth = new Date(mesDate.getFullYear(), mesDate.getMonth()+1, 0).getDate();
+  var workDaysPassed = isCurrentMonth ? countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, now.getDate()) : countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, daysInMonth);
+  
   // Count ventas per agent this week (Mon-Fri only for descanso evaluation)
   var weekVentas = {};
   metasVentas.forEach(function(v) {
@@ -8540,10 +8564,20 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
     var autoThreshold = meta > 0 ? autoDescansoConMeta : autoDescansoSinMeta;
     var isAutoDescanso = monthVentas >= autoThreshold;
     
-    // Descanso logic: auto if monthly threshold met, OR weekly rules
-    var onPace = meta === 0 ? (wv >= minRequired) : (wv >= weekTarget);
-    var meetsMinimum = wv >= minRequired;
-    var earnsDescanso = isAutoDescanso || (meetsMinimum && onPace);
+    // Expected ventas at this point in the month (accumulated rhythm)
+    var expectedToday = workDaysMonth > 0 ? Math.round(meta / workDaysMonth * workDaysPassed * 10) / 10 : 0;
+    var isOnMonthlyPace = monthVentas > expectedToday;
+    
+    // Weekly minimum applies when agent has no meta OR weekly rhythm < 3
+    var weeklyRhythm = workDaysWeek > 0 ? (meta / workDaysMonth * workDaysWeek) : 0;
+    var needsWeeklyMinimum = meta === 0 || weeklyRhythm < 3;
+    var meetsMinimum = wv >= 3;
+    
+    // Descanso logic:
+    // 1) Auto-descanso if monthly threshold met
+    // 2) With meta: must be on monthly accumulated pace
+    // 3) Without meta or low meta: must have ≥3 ventas this week
+    var earnsDescanso = isAutoDescanso || (needsWeeklyMinimum ? meetsMinimum : isOnMonthlyPace);
     
     // Find supervisor and centro for this agent
     var supName = '';
@@ -8582,8 +8616,9 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
     
     agents.push({
       name: m.nombre, meta: meta, weekVentas: wv, monthVentas: monthVentas,
-      weekTarget: weekTarget, minRequired: minRequired,
-      dailyRate: dailyRate, onPace: onPace, meetsMinimum: meetsMinimum,
+      weekTarget: weekTarget, expectedToday: expectedToday,
+      dailyRate: dailyRate, isOnMonthlyPace: isOnMonthlyPace,
+      meetsMinimum: meetsMinimum, needsWeeklyMinimum: needsWeeklyMinimum,
       earnsDescanso: earnsDescanso, isAutoDescanso: isAutoDescanso,
       autoThreshold: autoThreshold,
       supervisor: supName, centroKey: centroKey, op: opKey
@@ -8608,6 +8643,16 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
 
   if (!agents.length) { el.innerHTML = ''; return; }
 
+  // Apply descanso status filter
+  var descFilter = document.getElementById('descFilterStatus');
+  var descFilterVal = descFilter ? descFilter.value : 'all';
+  if (descFilterVal === 'descansa') agents = agents.filter(function(a){return a.earnsDescanso});
+  else if (descFilterVal === 'trabaja') agents = agents.filter(function(a){return !a.earnsDescanso});
+  else if (descFilterVal === 'auto') agents = agents.filter(function(a){return a.isAutoDescanso});
+
+  // Store for export
+  lastDescansosData = agents;
+
   // Sort: earns descanso first, then by weekVentas desc
   agents.sort(function(a,b) {
     if (a.earnsDescanso !== b.earnsDescanso) return a.earnsDescanso ? -1 : 1;
@@ -8630,7 +8675,7 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
 
   // Rules reminder
   h += '<div style="background:#F0F4FF;border:1px solid #C7D2FE;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:#4338CA">';
-  h += '📋 <b>Reglas:</b> Mínimo <b>3 ventas activadas</b> (L-V) + estar en <b>ritmo de meta</b>. Agentes sin meta: solo mínimo de 3. Auto-descanso mensual: <b>≥'+(localStorage.getItem('descThresholdMeta')||'14')+' ventas</b> (con meta) / <b>≥'+(localStorage.getItem('descThresholdNuevo')||'8')+' ventas</b> (nuevos).';
+  h += '📋 <b>Reglas:</b> Agentes con meta deben estar <b>en ritmo mensual acumulado</b> (ventas ≥ esperado al día). Agentes sin meta o meta baja: mínimo <b>3 ventas/semana</b> (L-V). Auto: <b>≥'+(localStorage.getItem('descThresholdMeta')||'14')+'</b> (con meta) / <b>≥'+(localStorage.getItem('descThresholdNuevo')||'8')+'</b> (nuevos) → sábados restantes libres.';
   h += '</div>';
 
   // Config thresholds (admin only)
@@ -8651,8 +8696,8 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
     var icon = a.earnsDescanso ? '🟢' : '🔴';
     var statusText = a.earnsDescanso ? 'DESCANSA' : 'TRABAJA';
     var statusColor = a.earnsDescanso ? '#10B981' : '#DC3545';
-    var pct = a.weekTarget > 0 ? Math.round(a.weekVentas / a.weekTarget * 100) : (a.weekVentas >= 3 ? 100 : Math.round(a.weekVentas / 3 * 100));
-    var barColor = pct >= 100 ? '#10B981' : pct >= 70 ? '#F59E0B' : '#DC3545';
+    var pct = a.meta > 0 ? Math.round(a.monthVentas / a.meta * 100) : (a.weekVentas >= 3 ? 100 : Math.round(a.weekVentas / 3 * 100));
+    var barColor = a.earnsDescanso ? '#10B981' : pct >= 70 ? '#F59E0B' : '#DC3545';
     
     h += '<div style="background:'+bg+';border:1px solid '+border+';border-radius:10px;padding:10px 14px">';
     h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
@@ -8665,22 +8710,26 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
     h += '<div style="text-align:right">';
     h += '<div style="font-size:12px;font-weight:800;color:'+statusColor+'">'+statusText+'</div>';
     if (a.isAutoDescanso) h += '<div style="font-size:8px;background:#10B981;color:white;padding:1px 6px;border-radius:4px;display:inline-block">⭐ AUTO · '+a.monthVentas+' ventas/mes</div>';
-    else h += '<div style="font-size:9px;color:var(--text-3)">'+a.weekVentas+' venta(s) esta semana</div>';
+    else h += '<div style="font-size:9px;color:var(--text-3)">Mes: '+a.monthVentas+(a.meta>0?'/'+a.meta:'')+' · Semana: '+a.weekVentas+'</div>';
     h += '</div></div>';
     
-    // Progress bar
+    // Progress bar (monthly progress)
     h += '<div style="height:6px;border-radius:3px;background:rgba(0,0,0,0.06);overflow:hidden;margin-bottom:4px"><div style="height:100%;width:'+Math.min(pct,100)+'%;background:'+barColor+';border-radius:3px"></div></div>';
     
     // Detail line
     h += '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-3)">';
-    h += '<span>Meta: '+a.meta+' · Mes: '+a.monthVentas+' · Semana: '+a.weekVentas+'/'+Math.ceil(a.weekTarget)+'</span>';
+    if (a.meta > 0) {
+      h += '<span>Meta: '+a.meta+' · Esperado hoy: '+Math.round(a.expectedToday)+' · Lleva: '+a.monthVentas+'</span>';
+    } else {
+      h += '<span>Sin meta · Mín. 3 ventas/semana · Semana: '+a.weekVentas+'</span>';
+    }
     var reasons = [];
-    if (a.isAutoDescanso) reasons.push('⭐ Descansa todos los sábados restantes (≥'+a.autoThreshold+' ventas/mes)');
-    else if (!a.meetsMinimum) reasons.push('Falta mínimo 3 ventas (lleva '+a.weekVentas+')');
-    else if (a.meetsMinimum && !a.onPace && a.meta > 0) reasons.push('Debajo de ritmo (necesita '+Math.ceil(a.weekTarget)+')');
+    if (a.isAutoDescanso) reasons.push('⭐ Sábados restantes libres (≥'+a.autoThreshold+' ventas/mes)');
+    else if (a.needsWeeklyMinimum && !a.meetsMinimum) reasons.push('Falta mínimo 3 ventas semana (lleva '+a.weekVentas+')');
+    else if (!a.needsWeeklyMinimum && !a.isOnMonthlyPace) reasons.push('Debajo de ritmo (esperado: '+Math.round(a.expectedToday)+', lleva: '+a.monthVentas+')');
     if (reasons.length && a.earnsDescanso) h += '<span style="color:#10B981;font-weight:600">'+reasons.join(' · ')+'</span>';
     else if (reasons.length) h += '<span style="color:#DC3545;font-weight:600">'+reasons.join(' · ')+'</span>';
-    else h += '<span style="color:#10B981;font-weight:600">✅ Cumple requisitos</span>';
+    else h += '<span style="color:#10B981;font-weight:600">✅ En meta</span>';
     h += '</div>';
     h += '</div>';
   });
@@ -8688,6 +8737,40 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
   
   el.innerHTML = h;
 }
+var currentMetasTab = 'metas';
+function metasTabSwitch(tab) {
+  currentMetasTab = tab;
+  document.getElementById('metasTabContentMetas').style.display = tab === 'metas' ? '' : 'none';
+  document.getElementById('metasTabContentDescansos').style.display = tab === 'descansos' ? '' : 'none';
+  document.querySelectorAll('.metasTab').forEach(function(b) {
+    b.style.background = 'transparent'; b.style.color = 'var(--text-2)'; b.style.border = '1px solid var(--border)';
+  });
+  var activeBtn = document.getElementById(tab === 'metas' ? 'metasTabMetas' : 'metasTabDescansos');
+  activeBtn.style.background = 'var(--att-blue)'; activeBtn.style.color = 'white'; activeBtn.style.border = 'none';
+  if (tab === 'descansos') metasRender();
+}
+
+var lastDescansosData = [];
+
+function exportDescansosExcel() {
+  if (!lastDescansosData.length) { alert('No hay datos para exportar'); return; }
+  var rows = [['Agente','Supervisor','Centro','Meta Mensual','Ventas Mes','Ventas Semana','Ritmo Semanal','Estatus','Motivo']];
+  lastDescansosData.forEach(function(a) {
+    var motivo = a.isAutoDescanso ? 'Auto-descanso (≥'+a.autoThreshold+' ventas/mes)' : 
+      a.earnsDescanso ? 'Cumple ritmo + mínimo' : 
+      !a.meetsMinimum ? 'No cumple mínimo semanal' : 'Debajo de ritmo mensual';
+    rows.push([a.name, a.supervisor, a.centroKey ? METAS_CENTROS[a.centroKey].name : '', a.meta, a.monthVentas, a.weekVentas, Math.ceil(a.weekTarget), a.earnsDescanso?'DESCANSA':'TRABAJA', motivo]);
+  });
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Descansos');
+  // Column widths
+  ws['!cols'] = [{wch:30},{wch:30},{wch:18},{wch:10},{wch:10},{wch:12},{wch:12},{wch:12},{wch:35}];
+  var now = new Date();
+  var fname = 'Descansos_'+now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0')+'.xlsx';
+  XLSX.writeFile(wb, fname);
+}
+
 function saveDescThresholds() {
   var meta = document.getElementById('descThresholdMeta').value;
   var nuevo = document.getElementById('descThresholdNuevo').value;
