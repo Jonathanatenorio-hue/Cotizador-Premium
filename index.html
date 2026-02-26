@@ -3099,6 +3099,9 @@ async function sendAsesorMsg() {
   var msg = (input.value || '').trim();
   if (!msg) return;
   
+  // Ensure API key is loaded
+  if (!TR_API_KEY) await trLoadConfig();
+  
   asesorMsgs.push({role:'user', content: msg});
   input.value = '';
   
@@ -3131,9 +3134,12 @@ async function sendAsesorMsg() {
   });
   
   try {
+    var ak = TR_API_KEY || localStorage.getItem('ec_api_key') || '';
+    if (!ak) { asesorMsgs.push({role:'assistant', content:'❌ No hay API key configurada. Pide al administrador que la configure en Sales Academy > Métricas.'}); renderAsesorPanel(); return; }
+    
     var response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'x-api-key': ak, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
