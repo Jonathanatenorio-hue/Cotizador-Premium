@@ -9423,6 +9423,7 @@ async function metasLoadConfig() {
     });
     
     var agentMetas = existing.filter(function(e) { return e.tipo === 'agente'; });
+    window._metasConfigData = {agentMetas: agentMetas, agentMap: agentMap};
     var h = '';
     
     if (agentMetas.length > 0) {
@@ -9446,25 +9447,59 @@ async function metasLoadConfig() {
       });
       h += '</table></div>';
       
-      // Show aggregated metas
-      var opMetas = existing.filter(function(e) { return e.tipo === 'operacion'; });
-      var supMetas = existing.filter(function(e) { return e.tipo === 'supervisor'; });
-      if (opMetas.length > 0) {
-        h += '<div style="margin-top:8px;font-size:11px;color:var(--text-2)"><strong>Operaciones:</strong> ';
-        h += opMetas.map(function(o) { return (o.nombre==='PUE'?'Puebla':'CDMX') + ': ' + o.meta; }).join(' | ');
-        h += '</div>';
-      }
-      if (supMetas.length > 0) {
-        h += '<div style="font-size:11px;color:var(--text-2)"><strong>Supervisores:</strong> ';
-        h += supMetas.sort(function(a,b){return a.nombre.localeCompare(b.nombre)}).map(function(s) { return s.nombre + ': ' + s.meta; }).join(' | ');
-        h += '</div>';
-      }
+      // Show aggregated metas — replaced with filters
+      h += '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center">';
+      h += '<select class="field" id="metasConfigFilterSup" onchange="filterMetasConfigTable()" style="width:auto;font-size:10px;padding:4px 8px">';
+      h += '<option value="all">Todos los supervisores</option>';
+      var supNames = {};
+      agentMetas.forEach(function(m) { var u = agentMap[m.nombre]; if (u && u._supNombre) supNames[u._supNombre] = true; });
+      Object.keys(supNames).sort().forEach(function(s) { h += '<option value="'+s+'">'+s+'</option>'; });
+      h += '</select>';
+      h += '<select class="field" id="metasConfigFilterCentro" onchange="filterMetasConfigTable()" style="width:auto;font-size:10px;padding:4px 8px">';
+      h += '<option value="all">Todos los centros</option>';
+      var centroNames = {};
+      agentMetas.forEach(function(m) { var u = agentMap[m.nombre]; if (u && u._centroName) centroNames[u._centroName] = true; });
+      Object.keys(centroNames).sort().forEach(function(s) { h += '<option value="'+s+'">'+s+'</option>'; });
+      h += '</select>';
+      h += '<select class="field" id="metasConfigFilterEstado" onchange="filterMetasConfigTable()" style="width:auto;font-size:10px;padding:4px 8px">';
+      h += '<option value="all">Todos</option><option value="activo">Activos</option><option value="nuevo">Nuevos</option><option value="baja">Bajas</option>';
+      h += '</select>';
+      h += '</div>';
     } else {
       h = '<div style="text-align:center;padding:15px;color:var(--text-3);font-size:12px">No hay metas cargadas para ' + mes + '. Sube un Excel con Nombre y Meta.</div>';
     }
     
     document.getElementById('metasConfigTable').innerHTML = h;
   } catch(e) { console.log('Metas config error:', e); }
+}
+
+function filterMetasConfigTable() {
+  if (!window._metasConfigData) return;
+  var supFilter = document.getElementById('metasConfigFilterSup').value;
+  var centroFilter = document.getElementById('metasConfigFilterCentro').value;
+  var estadoFilter = document.getElementById('metasConfigFilterEstado').value;
+  var agentMap = window._metasConfigData.agentMap;
+  
+  var rows = document.querySelectorAll('#metasConfigTable table tr');
+  rows.forEach(function(tr, i) {
+    if (i === 0) return; // header
+    var cells = tr.querySelectorAll('td');
+    if (cells.length < 5) return;
+    var nombre = cells[0].textContent.trim();
+    var user = agentMap[nombre];
+    var supName = user ? (user._supNombre || '') : '';
+    var centroName = user ? (user._centroName || '') : '';
+    var isBaja = user && user.activo === false;
+    var meta = parseInt(cells[3].textContent) || 0;
+    var estado = isBaja ? 'baja' : (meta === 0 ? 'nuevo' : 'activo');
+    
+    var show = true;
+    if (supFilter !== 'all' && supName !== supFilter) show = false;
+    if (centroFilter !== 'all' && centroName !== centroFilter) show = false;
+    if (estadoFilter !== 'all' && estado !== estadoFilter) show = false;
+    
+    tr.style.display = show ? '' : 'none';
+  });
 }
 
 async function metasUploadMetas() {
