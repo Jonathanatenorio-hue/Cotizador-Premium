@@ -1032,6 +1032,10 @@ body{padding-bottom:60px}
             <label class="field-label">WhatsApp</label>
             <input class="field" id="newUserWhatsapp" placeholder="5512345678" maxlength="10">
           </div>
+          <div id="newUserMetaDiv" style="display:none">
+            <label class="field-label">Meta mensual (ventas)</label>
+            <input class="field" id="newUserMeta" type="number" placeholder="0" min="0" value="0">
+          </div>
         </div>
         <div style="display:flex;gap:8px;margin-top:12px">
           <button class="btn btn-primary" onclick="saveNewUser()">Guardar</button>
@@ -5992,27 +5996,30 @@ function updateNewUserOptions() {
   var rol = document.getElementById('newUserRol').value;
   var supDiv = document.getElementById('newUserSupervisorDiv');
   var coordDiv = document.getElementById('newUserCoordinadorDiv');
+  var metaDiv = document.getElementById('newUserMetaDiv');
   supDiv.style.display = 'none';
   coordDiv.style.display = 'none';
+  if (metaDiv) metaDiv.style.display = 'none';
 
   if (rol === 'agente') {
     supDiv.style.display = '';
     coordDiv.style.display = '';
+    if (metaDiv) metaDiv.style.display = '';
     var supSel = document.getElementById('newUserSupervisor');
-    supSel.innerHTML = '<option value="">Sin supervisor</option>';
-    adminUsers.filter(function(u){return u.rol==='supervisor'&&u.activo}).forEach(function(u) {
+    supSel.innerHTML = '<option value="">Selecciona supervisor *</option>';
+    adminUsers.filter(function(u){return u.rol==='supervisor'&&u.activo!==false}).forEach(function(u) {
       supSel.innerHTML += '<option value="'+u.id+'">'+u.nombre+' ('+u.attuid+')</option>';
     });
     var coordSel = document.getElementById('newUserCoordinador');
     coordSel.innerHTML = '<option value="">Sin coordinador</option>';
-    adminUsers.filter(function(u){return u.rol==='coordinador'&&u.activo}).forEach(function(u) {
+    adminUsers.filter(function(u){return u.rol==='coordinador'&&u.activo!==false}).forEach(function(u) {
       coordSel.innerHTML += '<option value="'+u.id+'">'+u.nombre+' ('+u.attuid+')</option>';
     });
   } else if (rol === 'supervisor') {
     coordDiv.style.display = '';
     var coordSel = document.getElementById('newUserCoordinador');
     coordSel.innerHTML = '<option value="">Sin coordinador</option>';
-    adminUsers.filter(function(u){return u.rol==='coordinador'&&u.activo}).forEach(function(u) {
+    adminUsers.filter(function(u){return u.rol==='coordinador'&&u.activo!==false}).forEach(function(u) {
       coordSel.innerHTML += '<option value="'+u.id+'">'+u.nombre+' ('+u.attuid+')</option>';
     });
   }
@@ -6091,6 +6098,20 @@ async function saveNewUser() {
       document.getElementById('addUserForm').style.display = 'none';
       await loadAdminData();
       renderAdminUsers();
+      
+      // Save meta for new agent if provided
+      if (rol === 'agente' && data) {
+        var metaVal = parseInt(document.getElementById('newUserMeta').value) || 0;
+        var now = new Date();
+        var currentMes = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+        try {
+          await supabase.from('metas').upsert({
+            mes: currentMes, tipo: 'agente', nombre: nombre,
+            attuid: attuid, meta: metaVal, updated_at: new Date().toISOString()
+          }, {onConflict: 'mes,tipo,nombre'});
+        } catch(me) { console.log('Meta save error:', me); }
+      }
+      
       alert('Usuario ' + attuid + ' creado exitosamente.');
     }
   } catch(e) {
@@ -8092,25 +8113,42 @@ async function metasRender() {
   }
   document.getElementById('metasSupView').innerHTML = supH;
 
-  // ── AGENT VIEW (everyone sees this) ──
+  // ── AGENT VIEW ──
+  // For admin/coord: only show when specific supervisor is selected (to avoid massive list)
+  var showAgentList = true;
+  if ((rol === 'admin' || rol === 'coordinador') && supVal === 'all' && centroVal === 'all' && opVal === 'all') {
+    showAgentList = false;
+  }
+  
   // Build agent data from ventas
   var agData = {};
-  fv.forEach(function(v) { if (!v.ejecutivo) return; if (!agData[v.ejecutivo]) agData[v.ejecutivo]={count:0,sup:v.supervisor}; agData[v.ejecutivo].count++; });
-  
-  // Also include agents with metas but 0 ventas (so they still show)
-  metasMetas.filter(function(m) { return m.tipo === 'agente'; }).forEach(function(m) {
-    if (!agData[m.nombre]) {
-      // Check if this agent is in scope based on current filters
-      var inScope = true;
-      if (rol === 'agente') { inScope = m.nombre === (currentUser ? currentUser.nombre : ''); }
-      else if (rol === 'supervisor') {
-        var myName = currentUser ? currentUser.nombre : '';
-        var user = (adminUsers||[]).find(function(u){return u.nombre===m.nombre});
-        inScope = user && user.supervisor && user.supervisor.toUpperCase() === myName.toUpperCase();
+  if (showAgentList) {
+    fv.forEach(function(v) { if (!v.ejecutivo) return; if (!agData[v.ejecutivo]) agData[v.ejecutivo]={count:0,sup:v.supervisor}; agData[v.ejecutivo].count++; });
+    
+    // Also include agents with metas but 0 ventas (so they still show)
+    metasMetas.filter(function(m) { return m.tipo === 'agente'; }).forEach(function(m) {
+      if (!agData[m.nombre]) {
+        var inScope = true;
+        if (rol === 'agente') { inScope = m.nombre === (currentUser ? currentUser.nombre : ''); }
+        else if (rol === 'supervisor') {
+          var myName = currentUser ? currentUser.nombre : '';
+          var user = (adminUsers||[]).find(function(u){return u.nombre===m.nombre});
+          inScope = user && user.supervisor_id && (function(){
+            var sup = (adminUsers||[]).find(function(s){return s.id===user.supervisor_id});
+            return sup && sup.nombre.toUpperCase() === myName.toUpperCase();
+          })();
+        } else if (rol === 'admin' || rol === 'coordinador') {
+          // Filter by selected supervisor
+          if (supVal !== 'all') {
+            var user = (adminUsers||[]).find(function(u){return u.nombre===m.nombre});
+            var supName = user ? ((adminUsers||[]).find(function(s){return s.id===user.supervisor_id})||{}).nombre : '';
+            inScope = supName === supVal;
+          }
+        }
+        if (inScope) agData[m.nombre] = {count:0, sup: ''};
       }
-      if (inScope) agData[m.nombre] = {count:0, sup: ''};
-    }
-  });
+    });
+  }
   
   // Check which agents are baja (inactive)
   var agentActivo = {};
@@ -8129,7 +8167,9 @@ async function metasRender() {
   
   var agH = '<div class="section" style="padding:16px">';
   agH += '<div style="font-size:14px;font-weight:800;margin-bottom:10px">'+(rol==='agente'?'📈 Mi Avance':'👤 Por Agente')+'</div>';
-  if (agKeys.length === 0) { agH += '<div style="text-align:center;padding:15px;color:var(--text-3);font-size:12px">Sin datos para este período</div>'; }
+  if (!showAgentList) {
+    agH += '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">Selecciona una operación, centro o supervisor en los filtros para ver el detalle por agente</div>';
+  } else if (agKeys.length === 0) { agH += '<div style="text-align:center;padding:15px;color:var(--text-3);font-size:12px">Sin datos para este período</div>'; }
   else {
     var activeIdx = 0;
     agKeys.forEach(function(ag) {
@@ -8472,26 +8512,33 @@ async function metasUploadMetas() {
       
       // Auto-calculate supervisor metas (sum of their agents - including bajas, meta stays fixed)
       var supTotals = {};
-      upserts.filter(function(u) { return u.tipo === 'agente'; }).forEach(function(u) {
-        var user = allAgents.find(function(a) { return normName(a.nombre) === normName(u.nombre); });
-        if (user && user._supNombre) {
-          if (!supTotals[user._supNombre]) supTotals[user._supNombre] = 0;
-          supTotals[user._supNombre] += u.meta;
+      var centroTotals = {};
+      
+      // From matched Excel agents
+      matched.forEach(function(m) {
+        if (m.supervisor) {
+          if (!supTotals[m.supervisor]) supTotals[m.supervisor] = 0;
+          supTotals[m.supervisor] += m.meta;
+        }
+        if (m.centro) {
+          if (!centroTotals[m.centro]) centroTotals[m.centro] = 0;
+          centroTotals[m.centro] += m.meta;
         }
       });
+      // From missing agents (meta 0, but they still belong to a supervisor/centro)
+      missingAgents.forEach(function(a) {
+        // meta 0 so no impact on totals, but ensures the supervisor/centro exists
+        if (a._supNombre && !supTotals[a._supNombre]) supTotals[a._supNombre] = 0;
+        if (a._centroKey && !centroTotals[a._centroKey]) centroTotals[a._centroKey] = 0;
+      });
+      
+      console.log('Sup totals:', supTotals);
+      console.log('Centro totals:', centroTotals);
+      
       Object.keys(supTotals).forEach(function(s) {
         upserts.push({mes: mes, tipo: 'supervisor', nombre: s, meta: supTotals[s], updated_at: new Date().toISOString()});
       });
       
-      // Auto-calculate centro metas
-      var centroTotals = {};
-      upserts.filter(function(u) { return u.tipo === 'agente'; }).forEach(function(u) {
-        var user = allAgents.find(function(a) { return normName(a.nombre) === normName(u.nombre); });
-        if (user && user._centroKey) {
-          if (!centroTotals[user._centroKey]) centroTotals[user._centroKey] = 0;
-          centroTotals[user._centroKey] += u.meta;
-        }
-      });
       Object.keys(centroTotals).forEach(function(ck) {
         upserts.push({mes: mes, tipo: 'centro', nombre: ck, meta: centroTotals[ck], updated_at: new Date().toISOString()});
       });
@@ -8502,6 +8549,7 @@ async function metasUploadMetas() {
         var opKey = (METAS_CENTROS[ck] && METAS_CENTROS[ck].op) ? METAS_CENTROS[ck].op : 'PUE';
         opTotals[opKey] += centroTotals[ck];
       });
+      console.log('Op totals:', opTotals);
       Object.keys(opTotals).forEach(function(op) {
         upserts.push({mes: mes, tipo: 'operacion', nombre: op, meta: opTotals[op], updated_at: new Date().toISOString()});
       });
