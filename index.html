@@ -852,7 +852,11 @@ body{padding-bottom:60px}
 
     <!-- Search -->
     <div class="section">
-      <div class="section-title">Buscar Equipo</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="section-title" style="margin:0">Buscar Equipo</div>
+        <button onclick="toggleAsesorIA()" class="btn btn-primary" style="font-size:11px;padding:6px 12px;background:linear-gradient(135deg,#8B5CF6,#6D28D9)">🤖 Asesor IA</button>
+      </div>
+      <div id="asesorIAPanel" style="display:none;margin-bottom:12px"></div>
       <div class="search-row">
         <input class="field" id="searchInput" placeholder="Buscar equipo (ej: iPhone 17, Samsung S25...)" oninput="searchDevices()">
         <select class="field" id="searchFilter" onchange="searchDevices()">
@@ -2981,6 +2985,172 @@ function isVigente(dev) {
 // ============================================================
 // SEARCH & DEVICE CARDS
 // ============================================================
+// ── ASESOR IA DE OFERTAS ──
+var asesorOpen = false;
+var asesorMsgs = [];
+
+function toggleAsesorIA() {
+  asesorOpen = !asesorOpen;
+  var panel = document.getElementById('asesorIAPanel');
+  if (!asesorOpen) { panel.style.display = 'none'; return; }
+  
+  if (asesorMsgs.length === 0) {
+    asesorMsgs.push({role:'assistant', content:'¡Hola! 👋 Soy tu asesor de ofertas AT&T. Dime qué busca el cliente y te recomiendo el mejor equipo + plan.\n\nPuedes preguntarme cosas como:\n• "Cliente quiere un iPhone con plan económico"\n• "Samsung gama media con bastantes datos"\n• "Equipo para regalo, presupuesto de $500/mes"\n• "¿Cuál es el mejor plan para alguien que usa mucho TikTok?"'});
+  }
+  
+  renderAsesorPanel();
+  panel.style.display = '';
+}
+
+function renderAsesorPanel() {
+  var panel = document.getElementById('asesorIAPanel');
+  var h = '<div style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border:1px solid #C4B5FD;border-radius:12px;overflow:hidden">';
+  
+  // Chat area
+  h += '<div id="asesorChat" style="max-height:350px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px">';
+  asesorMsgs.forEach(function(m) {
+    if (m.role === 'assistant') {
+      h += '<div style="background:white;border-radius:10px;padding:10px 12px;font-size:12px;color:var(--text-1);line-height:1.5;max-width:92%;align-self:flex-start;box-shadow:0 1px 3px rgba(0,0,0,0.08)">';
+      h += '<div style="font-size:9px;font-weight:700;color:#8B5CF6;margin-bottom:4px">🤖 Asesor IA</div>';
+      h += formatAsesorContent(m.content);
+      h += '</div>';
+    } else {
+      h += '<div style="background:#8B5CF6;color:white;border-radius:10px;padding:8px 12px;font-size:12px;max-width:80%;align-self:flex-end">';
+      h += m.content;
+      h += '</div>';
+    }
+  });
+  h += '</div>';
+  
+  // Input
+  h += '<div style="display:flex;gap:6px;padding:8px 12px;background:white;border-top:1px solid #E5E7EB">';
+  h += '<input type="text" class="field" id="asesorInput" placeholder="Describe lo que busca el cliente..." style="flex:1;font-size:12px;border-radius:20px;padding:8px 14px" onkeydown="if(event.key===\'Enter\')sendAsesorMsg()">';
+  h += '<button onclick="sendAsesorMsg()" class="btn btn-primary" style="border-radius:20px;padding:8px 14px;font-size:12px;background:#8B5CF6">Enviar</button>';
+  h += '</div></div>';
+  
+  panel.innerHTML = h;
+  // Scroll to bottom
+  var chat = document.getElementById('asesorChat');
+  if (chat) chat.scrollTop = chat.scrollHeight;
+}
+
+function formatAsesorContent(text) {
+  if (!text) return '';
+  text = text.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  text = text.replace(/\n/g, '<br>');
+  return text;
+}
+
+function buildAsesorContext() {
+  var vigentes = state.devices.filter(isVigente);
+  if (!vigentes.length) return 'No hay lista de precios cargada.';
+  
+  // Build compact catalog for the AI
+  var catalog = 'CATÁLOGO AT&T VIGENTE (' + vigentes.length + ' equipos):\n\n';
+  
+  // Plans info
+  catalog += 'PLANES PREMIUM (renovación/upgrade):\n';
+  PLANS_PREMIUM.forEach(function(p) {
+    var rentaSinImp = Math.round(p.price * 0.837);
+    catalog += '- ' + p.name + ': ' + p.gb + ', $' + p.price + '/mes (renta sin imp: $' + rentaSinImp + ')\n';
+  });
+  catalog += '\nPLAN TITANIO (línea nueva con equipo):\n';
+  PLANS_TITANIO.forEach(function(p) {
+    var rentaSinImp = Math.round(p.price * 0.837);
+    catalog += '- ' + p.name + ': ' + p.gb + ', $' + p.price + '/mes (renta sin imp: $' + rentaSinImp + ')\n';
+  });
+  
+  // Devices grouped by brand
+  var byBrand = {};
+  vigentes.forEach(function(d) {
+    var brand = d.marca || 'Otra';
+    if (!byBrand[brand]) byBrand[brand] = [];
+    byBrand[brand].push(d);
+  });
+  
+  catalog += '\nEQUIPOS VIGENTES:\n';
+  Object.keys(byBrand).sort().forEach(function(brand) {
+    catalog += '\n📱 ' + brand + ':\n';
+    byBrand[brand].forEach(function(d) {
+      var prices = [];
+      if (d.oferta.includes('Premium')) {
+        d.plans.forEach(function(plan) {
+          if (d.pricing[plan.id]) {
+            d.plazos.forEach(function(plazo) {
+              var v = d.pricing[plan.id][plazo];
+              if (v !== null && v !== undefined) prices.push(plan.name + ' ' + plazo + 'm: $' + v);
+            });
+          }
+        });
+      } else if (d.oferta.includes('Titanio')) {
+        if (d.pricing.titanio && d.pricing.titanio[24] !== null) prices.push('Titanio 24m: $' + d.pricing.titanio[24]);
+      }
+      catalog += '- ' + d.equipo + ' (' + d.oferta + ') | Contado: $' + d.precioContado;
+      if (prices.length) catalog += ' | ' + prices.slice(0, 4).join(', ');
+      catalog += '\n';
+    });
+  });
+  
+  return catalog;
+}
+
+async function sendAsesorMsg() {
+  var input = document.getElementById('asesorInput');
+  var msg = (input.value || '').trim();
+  if (!msg) return;
+  
+  asesorMsgs.push({role:'user', content: msg});
+  input.value = '';
+  
+  // Show typing
+  asesorMsgs.push({role:'assistant', content:'⏳ Analizando ofertas...'});
+  renderAsesorPanel();
+  
+  // Remove typing indicator
+  asesorMsgs.pop();
+  
+  var catalog = buildAsesorContext();
+  
+  var systemPrompt = 'Eres un asesor experto de ofertas AT&T México para el equipo de ventas de ExpertCell (distribuidor autorizado AT&T). Tu trabajo es recomendar el mejor equipo + plan según lo que el cliente necesita.\n\n';
+  systemPrompt += 'REGLAS:\n';
+  systemPrompt += '- SOLO recomienda equipos y planes del catálogo vigente proporcionado\n';
+  systemPrompt += '- Incluye precio de contado, precio con plan a meses, y datos del plan\n';
+  systemPrompt += '- La renta sin impuestos = precio plan × 0.837\n';
+  systemPrompt += '- Si el cliente tiene presupuesto, calcula: enganche + mensualidad del equipo + renta del plan\n';
+  systemPrompt += '- Premium es para renovaciones/upgrades, Titanio para líneas nuevas\n';
+  systemPrompt += '- Plazos Premium: 24, 30, 36 meses. Titanio: solo 24 meses\n';
+  systemPrompt += '- Da máximo 3 opciones: una económica, una recomendada, una premium (si aplica)\n';
+  systemPrompt += '- Sé conciso y usa formato limpio con **negritas** para destacar\n';
+  systemPrompt += '- Si no hay equipo que coincida, dilo y sugiere alternativas cercanas\n\n';
+  systemPrompt += catalog;
+  
+  // Build conversation for API
+  var apiMsgs = [{role:'user', content: systemPrompt}];
+  asesorMsgs.forEach(function(m) {
+    apiMsgs.push({role: m.role, content: m.content});
+  });
+  
+  try {
+    var response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: asesorMsgs.map(function(m){return {role:m.role, content:m.content}})
+      })
+    });
+    var data = await response.json();
+    var reply = data.content && data.content[0] ? data.content[0].text : 'No pude procesar tu consulta. Intenta de nuevo.';
+    asesorMsgs.push({role:'assistant', content: reply});
+  } catch(e) {
+    asesorMsgs.push({role:'assistant', content:'❌ Error de conexión. Verifica tu internet e intenta de nuevo.'});
+  }
+  
+  renderAsesorPanel();
+}
+
 function searchDevices() {
   const term = document.getElementById('searchInput').value.toLowerCase().trim();
   const filter = document.getElementById('searchFilter').value;
