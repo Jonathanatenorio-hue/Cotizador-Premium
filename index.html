@@ -9146,8 +9146,15 @@ async function generatePlanIA() {
         messages: [{role:'user', content: 'Genera el plan de trabajo basado en estos datos.'}]
       })
     });
+    if (!response.ok) {
+      var errText = await response.text();
+      console.error('Plan IA API error:', response.status, errText);
+      resultEl.innerHTML = '<div class="section" style="padding:16px;text-align:center;color:#DC3545">❌ Error API ('+response.status+'): ' + (errText.substring(0,100)) + '</div>';
+      return;
+    }
     var data = await response.json();
-    var reply = data.content && data.content[0] ? data.content[0].text : 'No se pudo generar el plan.';
+    console.log('Plan IA response:', data);
+    var reply = data.content && data.content[0] ? data.content[0].text : 'No se pudo generar el plan. Respuesta: ' + JSON.stringify(data).substring(0,200);
     
     // Render result
     var h = '<div class="section" style="padding:16px">';
@@ -9218,6 +9225,9 @@ function buildPlanIAContext(target, mes, rol) {
     targetAgents = [target.substring(6)];
   }
   
+  // Limit agents to avoid too-large context
+  if (targetAgents.length > 20) targetAgents = targetAgents.slice(0, 20);
+  
   // Build per-agent metrics
   ctx += 'AGENTES:\n';
   targetAgents.forEach(function(agName) {
@@ -9267,29 +9277,16 @@ function buildPlanIAContext(target, mes, rol) {
   });
   
   // Cotizaciones data if available
-  if (typeof state !== 'undefined' && state.cotizaciones && state.cotizaciones.length) {
-    ctx += '\nCOTIZACIONES (todas):\n';
-    var cotByStatus = {};
-    state.cotizaciones.forEach(function(c) {
-      var st = c.estatus || 'pendiente';
-      cotByStatus[st] = (cotByStatus[st] || 0) + 1;
-    });
-    Object.keys(cotByStatus).forEach(function(st) {
-      ctx += '  ' + st + ': ' + cotByStatus[st] + '\n';
-    });
-    
-    // Per agent if possible
-    targetAgents.forEach(function(agName) {
-      var agCots = state.cotizaciones.filter(function(c) {
-        return c.ejecutivo && c.ejecutivo.toUpperCase() === agName.toUpperCase();
+  try {
+    if (state && state.cotizaciones && state.cotizaciones.length) {
+      var cotByStatus = {};
+      state.cotizaciones.forEach(function(c) {
+        var st = c.estatus || 'pendiente';
+        cotByStatus[st] = (cotByStatus[st] || 0) + 1;
       });
-      if (agCots.length) {
-        var agStatus = {};
-        agCots.forEach(function(c) { var s = c.estatus || 'pendiente'; agStatus[s] = (agStatus[s] || 0) + 1; });
-        ctx += '  ' + agName + ': ' + agCots.length + ' cotiz (' + Object.keys(agStatus).map(function(s){return s+':'+agStatus[s]}).join(', ') + ')\n';
-      }
-    });
-  }
+      ctx += '\nCOTIZACIONES GLOBAL: ' + Object.keys(cotByStatus).map(function(st){return st+':'+cotByStatus[st]}).join(', ') + '\n';
+    }
+  } catch(e) { /* skip if not available */ }
   
   // Training metrics
   try {
