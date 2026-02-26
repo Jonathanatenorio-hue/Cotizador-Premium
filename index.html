@@ -3041,53 +3041,67 @@ function formatAsesorContent(text) {
   return text;
 }
 
-function buildAsesorContext() {
-  var vigentes = state.devices.filter(isVigente);
+function buildAsesorContext(userMsg) {
+  var vigentes = state.devices.filter(isVigente).filter(function(d){return d.oferta.includes('Premium')});
   if (!vigentes.length) return 'No hay lista de precios cargada.';
   
-  // Build compact catalog for the AI
-  var catalog = 'CATÁLOGO AT&T VIGENTE (' + vigentes.length + ' equipos):\n\n';
+  // Filter devices by keywords in user message to keep context manageable
+  var msg = (userMsg || '').toLowerCase();
+  var filtered = vigentes;
+  var brandKeywords = {'iphone':'APPLE','samsung':'SAMSUNG','motorola':'MOTOROLA','moto':'MOTOROLA','xiaomi':'XIAOMI','huawei':'HUAWEI','honor':'HONOR','nokia':'NOKIA','zte':'ZTE','tcl':'TCL','oppo':'OPPO','nothing':'NOTHING','google':'GOOGLE','pixel':'GOOGLE'};
+  var matchedBrand = '';
+  Object.keys(brandKeywords).forEach(function(kw) {
+    if (msg.indexOf(kw) >= 0) matchedBrand = brandKeywords[kw];
+  });
   
-  // Plans info
-  catalog += 'PLANES PREMIUM (renovación/upgrade):\n';
+  if (matchedBrand) {
+    filtered = vigentes.filter(function(d){return d.marca.toUpperCase().indexOf(matchedBrand) >= 0});
+    // Also filter by model keywords
+    var modelWords = msg.match(/\d+\s*(pro|max|plus|ultra|air|mini|se|lite|fe)?/gi);
+    if (modelWords && modelWords.length) {
+      var modelFiltered = filtered.filter(function(d) {
+        return modelWords.some(function(mw){return d.equipo.toLowerCase().indexOf(mw.trim().toLowerCase()) >= 0});
+      });
+      if (modelFiltered.length) filtered = modelFiltered;
+    }
+  }
+  
+  // Deduplicate by equipo+precioContado (remove color variants)
+  var seen = {};
+  filtered = filtered.filter(function(d) {
+    var key = d.equipo + '|' + d.precioContado;
+    if (seen[key]) return false;
+    seen[key] = true;
+    return true;
+  });
+  
+  // If too many, limit to top 20 by price
+  if (filtered.length > 20) filtered = filtered.slice(0, 20);
+  
+  var catalog = 'CATÁLOGO AT&T - RENOVACIONES ÚNICAMENTE\n' + filtered.length + ' equipos' + (matchedBrand ? ' de ' + matchedBrand : '') + '\n\n';
+  
+  catalog += 'PLANES DISPONIBLES:\n';
   PLANS_PREMIUM.forEach(function(p) {
-    var rentaSinImp = Math.round(p.price * 0.837);
-    catalog += '- ' + p.name + ': ' + p.gb + ', $' + p.price + '/mes (renta sin imp: $' + rentaSinImp + ')\n';
-  });
-  catalog += '\nPLAN TITANIO (línea nueva con equipo):\n';
-  PLANS_TITANIO.forEach(function(p) {
-    var rentaSinImp = Math.round(p.price * 0.837);
-    catalog += '- ' + p.name + ': ' + p.gb + ', $' + p.price + '/mes (renta sin imp: $' + rentaSinImp + ')\n';
+    catalog += '- ' + p.name + ': ' + p.gb + ' datos, renta $' + p.price + '/mes\n';
   });
   
-  // Devices grouped by brand
-  var byBrand = {};
-  vigentes.forEach(function(d) {
-    var brand = d.marca || 'Otra';
-    if (!byBrand[brand]) byBrand[brand] = [];
-    byBrand[brand].push(d);
-  });
+  catalog += '\nTotal mensual = (monto_financiado ÷ plazo) + renta_plan\n\n';
+  catalog += 'EQUIPOS CON TODAS LAS COMBINACIONES PLAN×PLAZO:\n';
   
-  catalog += '\nEQUIPOS VIGENTES:\n';
-  Object.keys(byBrand).sort().forEach(function(brand) {
-    catalog += '\n📱 ' + brand + ':\n';
-    byBrand[brand].forEach(function(d) {
-      var prices = [];
-      if (d.oferta.includes('Premium')) {
-        d.plans.forEach(function(plan) {
-          if (d.pricing[plan.id]) {
-            d.plazos.forEach(function(plazo) {
-              var v = d.pricing[plan.id][plazo];
-              if (v !== null && v !== undefined) prices.push(plan.name + ' ' + plazo + 'm: $' + v);
-            });
-          }
-        });
-      } else if (d.oferta.includes('Titanio')) {
-        if (d.pricing.titanio && d.pricing.titanio[24] !== null) prices.push('Titanio 24m: $' + d.pricing.titanio[24]);
-      }
-      catalog += '- ' + d.equipo + ' (' + d.oferta + ') | Contado: $' + d.precioContado;
-      if (prices.length) catalog += ' | ' + prices.slice(0, 4).join(', ');
-      catalog += '\n';
+  filtered.forEach(function(d) {
+    catalog += '\n▸ ' + d.equipo + ' | Contado: $' + d.precioContado + '\n';
+    d.plans.forEach(function(plan) {
+      if (!d.pricing[plan.id]) return;
+      var line = '  ' + plan.name + '(' + plan.gb + ',$' + plan.price + '/mes): ';
+      var combos = [];
+      d.plazos.forEach(function(plazo) {
+        var fin = d.pricing[plan.id][plazo];
+        if (fin === null || fin === undefined) return;
+        var mens = Math.round(fin / plazo * 100) / 100;
+        var total = Math.round(mens + plan.price);
+        combos.push(plazo + 'm→$' + total + '/mes(eq:$' + Math.round(mens) + ')');
+      });
+      if (combos.length) catalog += line + combos.join(' | ') + '\n';
     });
   });
   
@@ -3106,25 +3120,24 @@ async function sendAsesorMsg() {
   input.value = '';
   
   // Show typing
-  asesorMsgs.push({role:'assistant', content:'⏳ Analizando ofertas...'});
+  asesorMsgs.push({role:'assistant', content:'⏳ Analizando todas las combinaciones...'});
   renderAsesorPanel();
-  
-  // Remove typing indicator
   asesorMsgs.pop();
   
-  var catalog = buildAsesorContext();
+  var catalog = buildAsesorContext(msg);
   
-  var systemPrompt = 'Eres un asesor experto de ofertas AT&T México para el equipo de ventas de ExpertCell (distribuidor autorizado AT&T). Tu trabajo es recomendar el mejor equipo + plan según lo que el cliente necesita.\n\n';
-  systemPrompt += 'REGLAS:\n';
-  systemPrompt += '- SOLO recomienda equipos y planes del catálogo vigente proporcionado\n';
-  systemPrompt += '- Incluye precio de contado, precio con plan a meses, y datos del plan\n';
-  systemPrompt += '- La renta sin impuestos = precio plan × 0.837\n';
-  systemPrompt += '- Si el cliente tiene presupuesto, calcula: enganche + mensualidad del equipo + renta del plan\n';
-  systemPrompt += '- Premium es para renovaciones/upgrades, Titanio para líneas nuevas\n';
-  systemPrompt += '- Plazos Premium: 24, 30, 36 meses. Titanio: solo 24 meses\n';
-  systemPrompt += '- Da máximo 3 opciones: una económica, una recomendada, una premium (si aplica)\n';
-  systemPrompt += '- Sé conciso y usa formato limpio con **negritas** para destacar\n';
-  systemPrompt += '- Si no hay equipo que coincida, dilo y sugiere alternativas cercanas\n\n';
+  var systemPrompt = 'Eres un asesor experto de ofertas AT&T México para ExpertCell (distribuidor autorizado). Ayudas a ejecutivos de ventas a encontrar la MEJOR combinación equipo + plan para renovaciones.\n\n';
+  systemPrompt += 'REGLAS CRÍTICAS:\n';
+  systemPrompt += '1. SIEMPRE es renovación, nunca menciones upgrade o línea nueva\n';
+  systemPrompt += '2. SOLO usa equipos y precios del catálogo proporcionado - NUNCA inventes precios\n';
+  systemPrompt += '3. Cuando el cliente tiene PRESUPUESTO MENSUAL: busca la combinación que MAXIMICE los GB dentro del presupuesto. Revisa TODOS los planes y plazos posibles\n';
+  systemPrompt += '4. El total mensual ya está calculado en el catálogo como: mensualidad equipo + renta plan\n';
+  systemPrompt += '5. Prioriza: mayor GB > menor plazo > menor costo, en ese orden cuando el cliente pide "muchos datos"\n';
+  systemPrompt += '6. Da máximo 3 opciones ordenadas de mejor a peor según lo que pide el cliente\n';
+  systemPrompt += '7. Formato limpio: usa **negritas** para precios clave. Sé directo y conciso\n';
+  systemPrompt += '8. Si un equipo dice NA en un plan, ese plan NO está disponible para ese equipo\n';
+  systemPrompt += '9. Renta sin impuestos = precio plan × 0.837\n';
+  systemPrompt += '10. Para cada opción muestra: Equipo, Plan (GB), Plazo, Mensualidad equipo, Renta plan, TOTAL MENSUAL\n\n';
   systemPrompt += catalog;
   
   // Build conversation for API
