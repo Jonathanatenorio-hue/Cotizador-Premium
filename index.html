@@ -8264,10 +8264,21 @@ async function metasLoadConfig() {
     var existing = r.data || [];
     
     // Get all users from system (including inactive for baja detection)
-    var ur = await supabase.from('usuarios').select('attuid,nombre,rol,supervisor,centro,activo');
+    var ur = await supabase.from('usuarios').select('*');
     var allUsers = ur.data || [];
+    // Build supervisor name map
+    var supMap = {};
+    allUsers.filter(function(u) { return u.rol === 'supervisor'; }).forEach(function(u) { supMap[u.id] = u.nombre; });
+    // Load centros
+    var cr = await supabase.from('centros').select('*');
+    var centroNameMap = {};
+    (cr.data||[]).forEach(function(c) { centroNameMap[c.id] = c.nombre; });
     var agentMap = {};
-    allUsers.filter(function(u) { return u.rol === 'agente'; }).forEach(function(u) { agentMap[u.nombre] = u; });
+    allUsers.filter(function(u) { return u.rol === 'agente'; }).forEach(function(u) { 
+      u._supNombre = supMap[u.supervisor_id] || '';
+      u._centroName = centroNameMap[u.centro_id] || '';
+      agentMap[u.nombre] = u; 
+    });
     
     var agentMetas = existing.filter(function(e) { return e.tipo === 'agente'; });
     var h = '';
@@ -8286,8 +8297,8 @@ async function metasLoadConfig() {
                           (m.meta === 0 ? '<span style="font-size:9px;background:#FFC107;color:#333;padding:1px 5px;border-radius:3px;font-weight:700">NUEVO</span>' : 
                           '<span style="font-size:9px;background:#10B981;color:white;padding:1px 5px;border-radius:3px;font-weight:700">ACTIVO</span>');
         h += '<tr style="' + opacity + '"><td style="padding:4px 6px;background:white;border-radius:6px 0 0 6px;font-weight:600">' + m.nombre + '</td>';
-        h += '<td style="padding:4px 6px;background:white;font-size:10px;color:var(--text-3)">' + (user ? (user.supervisor||'') : '') + '</td>';
-        h += '<td style="padding:4px 6px;background:white;font-size:10px;color:var(--text-3)">' + (user ? (user.centro||'') : '') + '</td>';
+        h += '<td style="padding:4px 6px;background:white;font-size:10px;color:var(--text-3)">' + (user ? (user._supNombre||'') : '') + '</td>';
+        h += '<td style="padding:4px 6px;background:white;font-size:10px;color:var(--text-3)">' + (user ? (user._centroName||'') : '') + '</td>';
         h += '<td style="padding:4px 6px;background:white;text-align:center;font-weight:700">' + m.meta + '</td>';
         h += '<td style="padding:4px 6px;background:white;border-radius:0 6px 6px 0;text-align:center">' + estadoLabel + '</td></tr>';
       });
@@ -8361,6 +8372,38 @@ async function metasUploadMetas() {
       var allAgents = allUsers.filter(function(u) { return u.rol === 'agente'; });
       console.log('Metas upload: ' + allAgents.length + ' agents, ' + activeAgents.length + ' active');
       
+      // Build supervisor name map (supervisor_id -> supervisor nombre)
+      var supNameMap = {};
+      allUsers.filter(function(u) { return u.rol === 'supervisor'; }).forEach(function(u) { supNameMap[u.id] = u.nombre; });
+      
+      // Load centros table to map centro_id -> centro key for METAS_CENTROS
+      var cr = await supabase.from('centros').select('*');
+      var centrosData = cr.data || [];
+      var centroIdToName = {};  // centro_id -> centro nombre
+      var centroIdToKey = {};   // centro_id -> METAS_CENTROS key (CC2, JV, CDMX)
+      centrosData.forEach(function(c) {
+        centroIdToName[c.id] = c.nombre;
+        // Map centro nombre to METAS_CENTROS key
+        var nom = (c.nombre||'').toUpperCase();
+        if (nom.indexOf('ANTEQUERA') >= 0 || nom.indexOf('CC2') >= 0) centroIdToKey[c.id] = 'CC2';
+        else if (nom.indexOf('JUAREZ') >= 0 || nom.indexOf('JV') >= 0 || nom.indexOf('JUÁREZ') >= 0) centroIdToKey[c.id] = 'JV';
+        else if (nom.indexOf('CDMX') >= 0 || nom.indexOf('YELITZA') >= 0 || nom.indexOf('NEZAHUALCOYOTL') >= 0 || nom.indexOf('IZTAPALAPA') >= 0) centroIdToKey[c.id] = 'CDMX';
+        else centroIdToKey[c.id] = nom; // fallback
+      });
+      console.log('Centro mapping:', centroIdToKey);
+      
+      // Add supervisor name and centro key to each agent
+      allAgents.forEach(function(a) {
+        a._supNombre = supNameMap[a.supervisor_id] || '';
+        a._centroKey = centroIdToKey[a.centro_id] || '';
+        a._centroName = centroIdToName[a.centro_id] || '';
+      });
+      activeAgents.forEach(function(a) {
+        a._supNombre = supNameMap[a.supervisor_id] || '';
+        a._centroKey = centroIdToKey[a.centro_id] || '';
+        a._centroName = centroIdToName[a.centro_id] || '';
+      });
+      
       // Normalize names for matching (remove accents, uppercase, trim)
       function normName(n) { return (n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim().replace(/\s+/g,' '); }
       
@@ -8375,7 +8418,7 @@ async function metasUploadMetas() {
       excelMetas.forEach(function(m) {
         var user = allAgents.find(function(a) { return normName(a.nombre) === normName(m.nombre); });
         if (user) {
-          matched.push({nombre: user.nombre, attuid: user.attuid, meta: m.meta, supervisor: user.supervisor, centro: user.centro, activo: user.activo});
+          matched.push({nombre: user.nombre, attuid: user.attuid, meta: m.meta, supervisor: user._supNombre, centro: user._centroKey, centroName: user._centroName, activo: user.activo});
         } else {
           unmatched.push(m);
         }
@@ -8394,7 +8437,7 @@ async function metasUploadMetas() {
         warnH += '<div style="font-size:11px;color:#856404;margin-top:4px">Revisa si son baja o si se omitió su meta:</div>';
         warnH += '<div style="font-size:11px;color:#856404;margin-top:2px">';
         missingAgents.forEach(function(a) {
-          warnH += '<div style="padding:2px 0">• <strong>' + a.nombre + '</strong> (' + a.attuid + ') — Sup: ' + (a.supervisor||'N/A') + ' — Centro: ' + (a.centro||'N/A') + '</div>';
+          warnH += '<div style="padding:2px 0">• <strong>' + a.nombre + '</strong> (' + a.attuid + ') — Sup: ' + (a._supNombre||'N/A') + ' — Centro: ' + (a._centroName||'N/A') + '</div>';
         });
         warnH += '</div></div>';
       }
@@ -8431,9 +8474,9 @@ async function metasUploadMetas() {
       var supTotals = {};
       upserts.filter(function(u) { return u.tipo === 'agente'; }).forEach(function(u) {
         var user = allAgents.find(function(a) { return normName(a.nombre) === normName(u.nombre); });
-        if (user && user.supervisor) {
-          if (!supTotals[user.supervisor]) supTotals[user.supervisor] = 0;
-          supTotals[user.supervisor] += u.meta;
+        if (user && user._supNombre) {
+          if (!supTotals[user._supNombre]) supTotals[user._supNombre] = 0;
+          supTotals[user._supNombre] += u.meta;
         }
       });
       Object.keys(supTotals).forEach(function(s) {
@@ -8444,9 +8487,9 @@ async function metasUploadMetas() {
       var centroTotals = {};
       upserts.filter(function(u) { return u.tipo === 'agente'; }).forEach(function(u) {
         var user = allAgents.find(function(a) { return normName(a.nombre) === normName(u.nombre); });
-        if (user && user.centro) {
-          if (!centroTotals[user.centro]) centroTotals[user.centro] = 0;
-          centroTotals[user.centro] += u.meta;
+        if (user && user._centroKey) {
+          if (!centroTotals[user._centroKey]) centroTotals[user._centroKey] = 0;
+          centroTotals[user._centroKey] += u.meta;
         }
       });
       Object.keys(centroTotals).forEach(function(ck) {
