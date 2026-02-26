@@ -583,20 +583,18 @@ body{padding-bottom:60px}
     </div>
   </div>
   <span class="header-title" id="headerTitle"></span>
-  <span class="header-right" id="headerAgent"></span>
-  <img id="headerUserPhoto" src="" onclick="openMiNorte()" style="display:none;width:32px;height:32px;object-fit:cover;border-radius:50%;border:2px solid #009FDB;cursor:pointer;margin-left:6px;flex-shrink:0" title="Mi Propósito">
-  <button onclick="refreshData()" style="background:none;border:1px solid #DDE4ED;color:#0057B8;font-size:12px;padding:4px 8px;border-radius:6px;cursor:pointer;margin-left:4px" title="Actualizar datos" id="btnRefresh">🔄</button>
-  <button onclick="doLogout()" style="background:none;border:1px solid #DDE4ED;color:#8899AA;font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer;margin-left:4px" title="Cerrar sesión">Salir</button>
+  <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+    <span id="headerGreeting" style="font-size:12px;font-weight:600;color:var(--text-2);display:none"></span>
+    <span class="header-right" id="headerAgent"></span>
+    <img id="headerUserPhoto" src="" onclick="openMiNorte()" style="display:none;width:32px;height:32px;object-fit:cover;border-radius:50%;border:2px solid #009FDB;cursor:pointer;flex-shrink:0" title="Mi Propósito">
+    <button onclick="refreshData()" style="background:none;border:1px solid #DDE4ED;color:#0057B8;font-size:12px;padding:4px 8px;border-radius:6px;cursor:pointer" title="Actualizar datos" id="btnRefresh">🔄</button>
+    <button onclick="doLogout()" style="background:none;border:1px solid #DDE4ED;color:#8899AA;font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer" title="Cerrar sesión">Salir</button>
+  </div>
 </div>
 
 <!-- ===== VIEW: HOME ===== -->
 <div class="view active" id="viewHome">
   <div class="container">
-    <div class="home-welcome" id="homeWelcome">
-      <div class="home-welcome-name" id="homeWelcomeName">Bienvenido</div>
-      <div class="home-welcome-sub" id="homeWelcomeSub">ExpertCell CRM · Distribuidor Autorizado AT&T</div>
-    </div>
-    <div id="homeAlerts" style="display:none;margin-bottom:10px"></div>
     <div class="home-grid">
       <div class="home-card" id="cardUpload">
         <div class="card-icon">📋</div>
@@ -683,6 +681,8 @@ body{padding-bottom:60px}
         <div class="card-desc" id="informesDesc">Reporte diario de operación</div>
       </div>
     </div>
+    <div id="homeAlerts" style="display:none;margin-bottom:10px;cursor:pointer" onclick="openAceleraciones()"></div>
+    <div id="homeMotivMsg" style="display:none;border-radius:12px;padding:14px 18px;margin-bottom:10px;text-align:center;font-size:13px;font-weight:700;line-height:1.4"></div>
   </div>
 </div>
 
@@ -1253,16 +1253,31 @@ body{padding-bottom:60px}
 
     <!-- Existing list section -->
     <div class="section" style="padding:14px;margin-bottom:8px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div style="font-size:14px;font-weight:800">⚡ Lista Completa</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+        <div style="font-size:14px;font-weight:800">📋 Lista Completa</div>
+        <div id="acelFiltersBar" style="display:flex;gap:6px;flex-wrap:wrap">
           <select class="field" id="acelFilterIne" onchange="renderAceleraciones()" style="width:auto;font-size:11px;padding:5px 8px">
-            <option value="all">Todos</option>
+            <option value="all">INE: Todos</option>
             <option value="con_ine">Con INE</option>
             <option value="sin_ine">Sin INE</option>
           </select>
-          <select class="field" id="acelFilterAgente" onchange="renderAceleraciones()" style="width:auto;font-size:11px;padding:5px 8px">
-            <option value="all">Todos los agentes</option>
+          <select class="field" id="acelFilterTipo" onchange="renderAceleraciones()" style="width:auto;font-size:11px;padding:5px 8px;display:none">
+            <option value="all">Tipo: Todos</option>
+            <option value="vencidas">Solo vencidas</option>
+            <option value="sin_atender">Sin atender 2+ días</option>
+            <option value="urgentes">Vence en 3 días</option>
+          </select>
+          <select class="field" id="acelFilterCentro" onchange="acelFilterChanged('centro')" style="width:auto;font-size:11px;padding:5px 8px;display:none">
+            <option value="all">Centro: Todos</option>
+          </select>
+          <select class="field" id="acelFilterCoord" onchange="acelFilterChanged('coord')" style="width:auto;font-size:11px;padding:5px 8px;display:none">
+            <option value="all">Coordinador: Todos</option>
+          </select>
+          <select class="field" id="acelFilterSup" onchange="acelFilterChanged('sup')" style="width:auto;font-size:11px;padding:5px 8px;display:none">
+            <option value="all">Supervisor: Todos</option>
+          </select>
+          <select class="field" id="acelFilterAgente" onchange="renderAceleraciones()" style="width:auto;font-size:11px;padding:5px 8px;display:none">
+            <option value="all">Agente: Todos</option>
           </select>
         </div>
       </div>
@@ -1847,11 +1862,14 @@ async function doLogin() {
     document.getElementById('bottomNav').style.display = 'flex';
     await loadCotizacionesFromSupabase();
     updateHome();
-    // Set welcome name
-    var wn = document.getElementById('homeWelcomeName');
-    if (wn) wn.textContent = 'Hola, ' + (state.agente.nombre||'').split(' ')[0] + ' 👋';
-    var ws = document.getElementById('homeWelcomeSub');
-    if (ws) ws.textContent = 'ExpertCell CRM · ' + ({admin:'Administrador',coordinador:'Coordinador',supervisor:'Supervisor',agente:'Ejecutivo'}[state.agente.rol]||'');
+    // Set greeting in header
+    var firstName = (state.agente.nombre||'').split(' ')[0];
+    var rolLabel = {admin:'Administrador',coordinador:'Coordinador',supervisor:'Supervisor',agente:'Ejecutivo'}[state.agente.rol]||'';
+    var greetEl = document.getElementById('headerGreeting');
+    if (greetEl) {
+      greetEl.textContent = 'Hola, ' + firstName + ' 👋';
+      greetEl.style.display = '';
+    }
     mnShowHomeBanner();
     loadCentralPriceList();
     loadYelitzaCheck();
@@ -2533,10 +2551,13 @@ function updateHome() {
     alertsDiv.style.display = 'flex';
     alertsDiv.style.flexDirection = 'column';
     alertsDiv.style.gap = '6px';
-    alertsDiv.innerHTML = alerts.join('');
+    alertsDiv.innerHTML = '<div style="font-size:10px;font-weight:600;color:var(--text-3);margin-bottom:2px">📌 Toca para ver detalles</div>' + alerts.join('');
   } else {
     alertsDiv.style.display = 'none';
   }
+
+  // Motivational daily message
+  showMotivationalMessage();
 }
 
 // ============================================================
@@ -6632,23 +6653,108 @@ function acelShowDay(dateStr, dateLabel) {
 }
 
 function openAceleraciones() {
-  showView('aceleraciones', 'Aceleraciones');
-  // Populate agent filter
+  showView('aceleraciones', 'Mis Pendientes');
+  
+  var rol = currentUser.rol || 'agente';
+  var tipoSel = document.getElementById('acelFilterTipo');
+  var centroSel = document.getElementById('acelFilterCentro');
+  var coordSel = document.getElementById('acelFilterCoord');
+  var supSel = document.getElementById('acelFilterSup');
   var agenteSel = document.getElementById('acelFilterAgente');
-  agenteSel.innerHTML = '<option value="all">Todos los agentes</option>';
-  var agentes = {};
-  state.cotizaciones.forEach(function(c) {
-    if (c.sub_estatus === 'aceleracion' && c.ejecutivo) {
-      var key = c.ejecutivo.attuid || c.ejecutivo.nombre;
-      if (!agentes[key]) {
-        agentes[key] = c.ejecutivo.nombre;
-        agenteSel.innerHTML += '<option value="' + key + '">' + c.ejecutivo.nombre + '</option>';
-      }
-    }
-  });
+  
+  // Show tipo filter for everyone
+  tipoSel.style.display = '';
+  
+  // Role-based filters
+  if (rol === 'agente') {
+    centroSel.style.display = 'none';
+    coordSel.style.display = 'none';
+    supSel.style.display = 'none';
+    agenteSel.style.display = 'none';
+  } else if (rol === 'supervisor') {
+    centroSel.style.display = 'none';
+    coordSel.style.display = 'none';
+    supSel.style.display = 'none';
+    agenteSel.style.display = '';
+  } else if (rol === 'coordinador') {
+    centroSel.style.display = 'none';
+    coordSel.style.display = 'none';
+    supSel.style.display = '';
+    agenteSel.style.display = '';
+  } else {
+    centroSel.style.display = '';
+    coordSel.style.display = '';
+    supSel.style.display = '';
+    agenteSel.style.display = '';
+  }
+  
+  acelPopulateFilters();
   acelCalMonth = new Date();
   acelRenderCalendar();
   renderAceleraciones();
+}
+
+function acelPopulateFilters() {
+  var rol = currentUser.rol || 'agente';
+  var centroSel = document.getElementById('acelFilterCentro');
+  var coordSel = document.getElementById('acelFilterCoord');
+  var supSel = document.getElementById('acelFilterSup');
+  var agenteSel = document.getElementById('acelFilterAgente');
+  
+  var pendientes = acelGetAllPendientes();
+  var centros = {}, coords = {}, sups = {}, agentes = {};
+  pendientes.forEach(function(c) {
+    if (c.centro) centros[c.centro] = true;
+    if (c.coordinador) coords[c.coordinador] = true;
+    if (c.ejecutivo && c.ejecutivo.supervisor) sups[c.ejecutivo.supervisor] = true;
+    if (c.ejecutivo) {
+      var key = c.ejecutivo.attuid || c.ejecutivo.nombre;
+      agentes[key] = c.ejecutivo.nombre;
+    }
+  });
+  
+  if (rol === 'admin') {
+    centroSel.innerHTML = '<option value="all">Centro: Todos</option>';
+    Object.keys(centros).sort().forEach(function(c) { centroSel.innerHTML += '<option value="'+c+'">'+c+'</option>'; });
+    coordSel.innerHTML = '<option value="all">Coordinador: Todos</option>';
+    Object.keys(coords).sort().forEach(function(c) { coordSel.innerHTML += '<option value="'+c+'">'+c+'</option>'; });
+  }
+  if (rol === 'coordinador' || rol === 'admin') {
+    supSel.innerHTML = '<option value="all">Supervisor: Todos</option>';
+    Object.keys(sups).sort().forEach(function(s) { supSel.innerHTML += '<option value="'+s+'">'+s+'</option>'; });
+  }
+  if (rol !== 'agente') {
+    agenteSel.innerHTML = '<option value="all">Agente: Todos</option>';
+    var sortedAgentes = Object.entries(agentes).sort(function(a,b) { return a[1].localeCompare(b[1]); });
+    sortedAgentes.forEach(function(e) { agenteSel.innerHTML += '<option value="'+e[0]+'">'+e[1]+'</option>'; });
+  }
+}
+
+function acelFilterChanged(level) {
+  if (level === 'centro') { document.getElementById('acelFilterCoord').value='all'; document.getElementById('acelFilterSup').value='all'; document.getElementById('acelFilterAgente').value='all'; }
+  else if (level === 'coord') { document.getElementById('acelFilterSup').value='all'; document.getElementById('acelFilterAgente').value='all'; }
+  else if (level === 'sup') { document.getElementById('acelFilterAgente').value='all'; }
+  renderAceleraciones();
+}
+
+function acelGetAllPendientes() {
+  var rol = currentUser.rol || 'agente';
+  return state.cotizaciones.filter(function(c) {
+    if (c.estatus === 'perdida' || c.estatus === 'venta') return false;
+    var isAcel = c.sub_estatus === 'aceleracion';
+    var isSinAtender = false;
+    if (!isAcel) {
+      var lastDate = c.updated_at || c.created_at;
+      if (lastDate) {
+        var diff = (new Date() - new Date(lastDate)) / 86400000;
+        if (diff >= 2 && c.estatus === 'seguimiento') isSinAtender = true;
+      }
+    }
+    if (!isAcel && !isSinAtender) return false;
+    if (rol === 'agente') return c.agente_id === currentUser.id;
+    if (rol === 'supervisor') return c.ejecutivo && c.ejecutivo.supervisor === currentUser.nombre;
+    return true;
+  });
 }
 
 var acelSeccionFilter = 'all';
@@ -6656,17 +6762,22 @@ var acelSeccionFilter = 'all';
 function renderAceleraciones() {
   var ineFilter = document.getElementById('acelFilterIne').value;
   var agenteFilter = document.getElementById('acelFilterAgente').value;
+  var tipoFilter = document.getElementById('acelFilterTipo').value;
+  var centroFilter = document.getElementById('acelFilterCentro').value;
+  var coordFilter = document.getElementById('acelFilterCoord').value;
+  var supFilter = document.getElementById('acelFilterSup').value;
   var now = new Date();
   now.setHours(0,0,0,0);
 
-  var acels = state.cotizaciones.filter(function(c) {
-    if (c.sub_estatus !== 'aceleracion') return false;
-    if (c.estatus === 'perdida' || c.estatus === 'venta') return false;
+  var acels = acelGetAllPendientes().filter(function(c) {
     if (ineFilter !== 'all' && c.tiene_ine !== ineFilter) return false;
     if (agenteFilter !== 'all') {
       var key = c.ejecutivo ? (c.ejecutivo.attuid || c.ejecutivo.nombre) : '';
       if (key !== agenteFilter) return false;
     }
+    if (centroFilter !== 'all' && c.centro !== centroFilter) return false;
+    if (coordFilter !== 'all' && c.coordinador !== coordFilter) return false;
+    if (supFilter !== 'all' && (!c.ejecutivo || c.ejecutivo.supervisor !== supFilter)) return false;
     return true;
   });
 
@@ -6676,19 +6787,31 @@ function renderAceleraciones() {
     return da - db;
   });
 
-  var vencidas = [], estaSemana = [], proximas = [];
+  var vencidas = [], estaSemana = [], proximas = [], sinAtender = [];
+  var en3dias = new Date(now.getTime() + 3 * 86400000);
   var en7dias = new Date(now.getTime() + 7 * 86400000);
 
   acels.forEach(function(c) {
+    // Check if sin_atender (seguimiento without contact 2+ days)
+    var isAcel = c.sub_estatus === 'aceleracion';
+    if (!isAcel) {
+      sinAtender.push(c);
+      return;
+    }
     var fecha = c.fecha_fin_plazo ? new Date(c.fecha_fin_plazo + 'T00:00:00') : null;
     if (!fecha || fecha <= now) {
       vencidas.push(c);
-    } else if (fecha <= en7dias) {
-      estaSemana.push(c);
+    } else if (fecha <= en3dias) {
+      estaSemana.push(c); // urgentes (3 días)
     } else {
       proximas.push(c);
     }
   });
+
+  // Apply tipo filter
+  if (tipoFilter === 'vencidas') { estaSemana = []; proximas = []; sinAtender = []; }
+  else if (tipoFilter === 'sin_atender') { vencidas = []; estaSemana = []; proximas = []; }
+  else if (tipoFilter === 'urgentes') { vencidas = []; proximas = []; sinAtender = []; }
 
   var html = '';
 
@@ -6714,8 +6837,9 @@ function renderAceleraciones() {
     '<div style="font-size:20px;font-weight:700;color:var(--text-1)">' + acels.length + '</div>' +
     '<div style="font-size:10px;color:var(--text-2)">Todas</div></div>';
   html += sumCard('vencidas', vencidas.length, 'Vencidas', '#F8D7DA', '#721C24', '#DC3545');
-  html += sumCard('semana', estaSemana.length, 'Esta semana', '#FFF3CD', '#856404', '#E6A200');
+  html += sumCard('semana', estaSemana.length, 'Urgentes', '#FFF3CD', '#856404', '#E6A200');
   html += sumCard('proximas', proximas.length, 'Próximas', '#D1ECF1', '#0C5460', '#17A2B8');
+  html += sumCard('sinAtender', sinAtender.length, 'Sin atender', '#E8EAF6', '#283593', '#5C6BC0');
   html += '</div>';
 
   function renderSection(title, icon, items, borderColor, textColor) {
@@ -6759,10 +6883,13 @@ function renderAceleraciones() {
     html += renderSection('VENCIDAS — ¡Contactar de inmediato!', '🚨', vencidas, '#DC3545', '#721C24');
   }
   if (acelSeccionFilter === 'all' || acelSeccionFilter === 'semana') {
-    html += renderSection('ESTA SEMANA — Preparar contacto', '📅', estaSemana, '#E6A200', '#856404');
+    html += renderSection('URGENTES — Vence en 3 días', '⏰', estaSemana, '#E6A200', '#856404');
   }
   if (acelSeccionFilter === 'all' || acelSeccionFilter === 'proximas') {
     html += renderSection('PRÓXIMAMENTE', '🗓️', proximas, '#17A2B8', '#0C5460');
+  }
+  if (acelSeccionFilter === 'all' || acelSeccionFilter === 'sinAtender') {
+    html += renderSection('SIN ATENDER — 2+ días sin contacto', '📭', sinAtender, '#5C6BC0', '#283593');
   }
 
   document.getElementById('acelList').innerHTML = html;
@@ -7614,6 +7741,76 @@ async function mnSaveMetaIngreso(val) {
   } catch(e){}
 }
 
+async function showMotivationalMessage() {
+  var msgDiv = document.getElementById('homeMotivMsg');
+  if (!msgDiv) return;
+  
+  // Count today's sales
+  var today = new Date().toISOString().slice(0, 10);
+  var ventasHoy = state.cotizaciones.filter(function(c) {
+    return c.estatus === 'venta' && c.fecha_venta && c.fecha_venta.slice(0, 10) === today;
+  }).length;
+  
+  // Get motivacion from agent_norte if available
+  var motivacion = '';
+  if (supabase && currentUser) {
+    try {
+      var {data} = await supabase.from('agent_norte').select('motivacion').eq('user_id', currentUser.id).maybeSingle();
+      if (data && data.motivacion) motivacion = data.motivacion;
+    } catch(e) {}
+  }
+  
+  var msg = '', bg = '', color = '', icon = '';
+  
+  if (ventasHoy > 0) {
+    // Celebration messages
+    var celebraciones = [
+      '¡' + ventasHoy + ' venta(s) hoy! Vas imparable 🔥',
+      '¡Ya llevas ' + ventasHoy + '! Cada venta te acerca más a tu meta 💪',
+      '¡' + ventasHoy + ' y contando! Tu esfuerzo está dando frutos 🚀',
+      '¡Excelente! ' + ventasHoy + ' venta(s) hoy. ¡Sigue así, campeón! 🏆'
+    ];
+    msg = celebraciones[Math.floor(Math.random() * celebraciones.length)];
+    if (motivacion) msg += '<div style="font-size:11px;opacity:0.8;margin-top:4px">Recuerda por qué lo haces: <em>' + motivacion + '</em></div>';
+    bg = 'linear-gradient(135deg, #E8F5E9, #C8E6C9)';
+    color = '#2E7D32';
+    icon = '🎉';
+  } else {
+    // No sales yet today - motivational push
+    var hora = new Date().getHours();
+    if (hora < 12) {
+      var matutinos = [
+        '¡Nuevo día, nuevas oportunidades! Tu primera venta te está esperando 💪',
+        'Hoy es tu día. Sal a comerte el mundo 🌟',
+        'Cada llamada es una oportunidad. ¡Arranca con todo! 🔥'
+      ];
+      msg = matutinos[Math.floor(Math.random() * matutinos.length)];
+    } else if (hora < 17) {
+      var tarde = [
+        'Aún hay tiempo. Una sola llamada puede cambiar tu día 📞',
+        'Los mejores vendedores no se rinden. ¡Tu venta viene en camino! 💎',
+        'Cada "no" te acerca al "sí". Sigue marcando 🎯'
+      ];
+      msg = tarde[Math.floor(Math.random() * tarde.length)];
+    } else {
+      var noche = [
+        'Día sin venta, pero mañana arrancas con todo. Descansa bien 🌙',
+        'Los grandes campeones también tienen días de preparación. Mañana es tuyo 💪'
+      ];
+      msg = noche[Math.floor(Math.random() * noche.length)];
+    }
+    if (motivacion) msg += '<div style="font-size:11px;opacity:0.8;margin-top:4px">Hazlo por: <em>' + motivacion + '</em></div>';
+    bg = 'linear-gradient(135deg, #E3F2FD, #BBDEFB)';
+    color = '#1565C0';
+    icon = '💪';
+  }
+  
+  msgDiv.innerHTML = '<span style="font-size:18px;margin-right:6px">' + icon + '</span>' + msg;
+  msgDiv.style.background = bg;
+  msgDiv.style.color = color;
+  msgDiv.style.display = '';
+}
+
 // Show motivational banner on home screen
 async function mnShowHomeBanner() {
   if(!supabase||!currentUser) return;
@@ -7621,24 +7818,12 @@ async function mnShowHomeBanner() {
     var {data} = await supabase.from('agent_norte').select('motivacion,meta_ec,meta_vida,foto').eq('user_id',currentUser.id).maybeSingle();
     
     // Set photo in welcome bar
-    var welcomeEl = document.getElementById('homeWelcome');
     if (data && data.foto) {
       // Set photo in global header (visible in ALL views)
       var headerPhoto = document.getElementById('headerUserPhoto');
       if (headerPhoto) {
         headerPhoto.src = data.foto;
         headerPhoto.style.display = '';
-      }
-      // Set photo in home welcome bar
-      if (welcomeEl) {
-        var nameEl = document.getElementById('homeWelcomeName');
-        var currentHTML = welcomeEl.innerHTML;
-        if (currentHTML.indexOf('welcomePhoto') < 0) {
-          welcomeEl.innerHTML = '<div style="display:flex;align-items:center;gap:16px">' +
-            '<img id="welcomePhoto" src="'+data.foto+'" style="width:52px;height:52px;object-fit:cover;border-radius:50%;border:3px solid rgba(255,255,255,0.3);flex-shrink:0">' +
-            '<div><div class="home-welcome-name" id="homeWelcomeName">'+(nameEl?nameEl.textContent:'Bienvenido')+'</div>' +
-            '<div class="home-welcome-sub" id="homeWelcomeSub">'+(document.getElementById('homeWelcomeSub')?document.getElementById('homeWelcomeSub').textContent:'')+'</div></div></div>';
-        }
       }
     }
 
