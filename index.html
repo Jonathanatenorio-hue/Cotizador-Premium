@@ -8209,7 +8209,9 @@ async function metasRender() {
   // Apply dropdown filters (for admin/coord)
   if (rol === 'admin' || rol === 'coordinador') {
     fv = fv.filter(function(v) {
-      if (opVal !== 'all' && METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op !== opVal) return false;
+      if (opVal !== 'all') {
+        if (!v.centro_key || !METAS_CENTROS[v.centro_key] || METAS_CENTROS[v.centro_key].op !== opVal) return false;
+      }
       if (centroVal !== 'all' && v.centro_key !== centroVal) return false;
       if (supVal !== 'all' && v.supervisor !== supVal) return false;
       return true;
@@ -8545,7 +8547,7 @@ function renderMetasChart(mes, filteredVentas) {
   h += '</div></div>';
 
   // Full-width chart container
-  h += '<div style="position:relative;height:200px;padding-bottom:24px">';
+  h += '<div style="position:relative;height:230px;padding-bottom:32px">';
   
   // Average line positioned with bottom percentage
   h += '<div style="position:absolute;left:0;right:0;bottom:calc('+avgPct+'% * 176 / 100 + 24px);border-top:2px dashed #F59E0B;z-index:2;pointer-events:none">';
@@ -8566,10 +8568,14 @@ function renderMetasChart(mes, filteredVentas) {
   });
   h += '</div>';
 
-  // Date labels below
-  h += '<div style="display:flex;gap:1px;margin-top:2px">';
-  dates.forEach(function(dd) {
-    h += '<div style="flex:1;text-align:center;font-size:7px;color:var(--text-3);min-width:0;overflow:hidden">'+dd.dayLetter+dd.day+'</div>';
+  // Date labels below - rotated to avoid overlap
+  h += '<div style="display:flex;gap:1px;margin-top:4px;height:28px">';
+  dates.forEach(function(dd, i) {
+    var showFull = (i % 3 === 0) || dd.day === 1;
+    var label = showFull ? dd.day+'/'+String(mesDate.getMonth()+1).padStart(2,'0') : dd.day;
+    h += '<div style="flex:1;text-align:center;min-width:0;overflow:visible;position:relative">';
+    h += '<div style="font-size:7px;color:'+(dd.isSat?'#8B5CF6':'var(--text-3)')+';position:absolute;left:50%;transform:translateX(-50%) rotate(-50deg);transform-origin:top center;white-space:nowrap">'+label+'</div>';
+    h += '</div>';
   });
   h += '</div>';
 
