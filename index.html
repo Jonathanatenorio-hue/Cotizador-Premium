@@ -8359,7 +8359,7 @@ async function metasUploadMetas() {
       var allAgents = allUsers.filter(function(u) { return u.rol === 'agente'; });
       
       // Normalize names for matching
-      function normName(n) { return (n||'').toUpperCase().trim().replace(/\s+/g,' '); }
+      function normName(n) { return (n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim().replace(/\s+/g,' '); }
       
       // Match Excel names to system users
       var matched = [], unmatched = [];
