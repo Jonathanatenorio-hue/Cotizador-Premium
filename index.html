@@ -1422,6 +1422,7 @@ body{padding-bottom:60px}
     <div style="display:flex;gap:4px;margin-bottom:12px;background:var(--bg-card);padding:4px;border-radius:10px;border:1px solid var(--border)">
       <button class="btn metasTab" id="metasTabMetas" onclick="metasTabSwitch('metas')" style="flex:1;font-size:12px;padding:8px;border-radius:8px;background:var(--att-blue);color:white;border:none;font-weight:700">📊 Metas</button>
       <button class="btn metasTab" id="metasTabDescansos" onclick="metasTabSwitch('descansos')" style="flex:1;font-size:12px;padding:8px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);font-weight:700">🏖️ Descansos</button>
+      <button class="btn metasTab" id="metasTabPlanIA" onclick="metasTabSwitch('plania')" style="flex:1;font-size:12px;padding:8px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);font-weight:700">📋 Plan IA</button>
     </div>
     <!-- Tab: Metas -->
     <div id="metasTabContentMetas">
@@ -1442,6 +1443,22 @@ body{padding-bottom:60px}
         <button onclick="exportDescansosExcel()" class="btn btn-primary" style="font-size:11px;padding:6px 12px">📥 Exportar Excel</button>
       </div>
       <div id="metasDescansos"></div>
+    </div>
+    <!-- Plan IA Tab -->
+    <div id="metasTabContentPlanIA" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:16px;font-weight:800">📋 Plan de Trabajo con IA</div>
+          <div style="font-size:10px;color:var(--text-3)">Análisis y recomendaciones basadas en métricas reales</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select class="field" id="planIATarget" style="width:auto;font-size:11px;padding:6px 8px">
+            <option value="equipo">👥 Mi equipo completo</option>
+          </select>
+          <button onclick="generatePlanIA()" class="btn btn-primary" style="font-size:11px;padding:7px 14px;background:linear-gradient(135deg,#8B5CF6,#6D28D9)">🤖 Generar Plan</button>
+        </div>
+      </div>
+      <div id="planIAResult"></div>
     </div>
   </div>
 </div>
@@ -3042,13 +3059,15 @@ function formatAsesorContent(text) {
 }
 
 function buildAsesorContext(userMsg) {
-  var vigentes = state.devices.filter(isVigente).filter(function(d){return d.oferta.includes('Premium')});
+  var vigentes = state.devices.filter(isVigente).filter(function(d){
+    return d.oferta.includes('Premium') && d.estatus && d.estatus.toUpperCase().indexOf('RESURTIBLE') >= 0 && d.estatus.toUpperCase().indexOf('NO RESURTIBLE') < 0;
+  });
   if (!vigentes.length) return 'NO_DATA';
   
   var msg = (userMsg || '').toLowerCase();
   var filtered = vigentes;
-  var brandKeywords = {'iphone':'APPLE','samsung':'SAMSUNG','motorola':'MOTOROLA','moto':'MOTOROLA','xiaomi':'XIAOMI','huawei':'HUAWEI','honor':'HONOR','nokia':'NOKIA','zte':'ZTE','tcl':'TCL','oppo':'OPPO','nothing':'NOTHING','google':'GOOGLE','pixel':'GOOGLE'};
   var matchedBrand = '';
+  var brandKeywords = {'iphone':'APPLE','samsung':'SAMSUNG','motorola':'MOTOROLA','moto':'MOTOROLA','xiaomi':'XIAOMI','huawei':'HUAWEI','honor':'HONOR','nokia':'NOKIA','zte':'ZTE','tcl':'TCL','oppo':'OPPO','nothing':'NOTHING','google':'GOOGLE','pixel':'GOOGLE'};
   Object.keys(brandKeywords).forEach(function(kw) {
     if (msg.indexOf(kw) >= 0) matchedBrand = brandKeywords[kw];
   });
@@ -3064,7 +3083,7 @@ function buildAsesorContext(userMsg) {
     }
   }
   
-  // Deduplicate
+  // Deduplicate by equipo+precioContado
   var seen = {};
   filtered = filtered.filter(function(d) {
     var key = d.equipo + '|' + d.precioContado;
@@ -3072,36 +3091,71 @@ function buildAsesorContext(userMsg) {
     seen[key] = true;
     return true;
   });
-  if (filtered.length > 15) filtered = filtered.slice(0, 15);
   
-  // Build FLAT pre-calculated table - model should NOT do any math
-  var rows = [];
-  filtered.forEach(function(d) {
-    d.plans.forEach(function(plan) {
-      if (!d.pricing[plan.id]) return;
-      d.plazos.forEach(function(plazo) {
-        var fin = d.pricing[plan.id][plazo];
-        if (fin === null || fin === undefined) return;
-        var mensEq = Math.round(fin / plazo * 100) / 100;
-        var totalMes = Math.round((mensEq + plan.price) * 100) / 100;
-        rows.push({
-          equipo: d.equipo, contado: d.precioContado,
-          plan: plan.name, gb: plan.gb, rentaPlan: plan.price,
-          plazo: plazo, mensEquipo: mensEq, totalMensual: totalMes
+  // If specific (brand/model matched, <=15 devices) → flat table with all combos
+  if (matchedBrand && filtered.length <= 15) {
+    var rows = [];
+    filtered.forEach(function(d) {
+      d.plans.forEach(function(plan) {
+        if (!d.pricing[plan.id]) return;
+        d.plazos.forEach(function(plazo) {
+          var fin = d.pricing[plan.id][plazo];
+          if (fin === null || fin === undefined) return;
+          var mensEq = Math.round(fin / plazo * 100) / 100;
+          var totalMes = Math.round((mensEq + plan.price) * 100) / 100;
+          rows.push({
+            equipo: d.equipo, contado: d.precioContado,
+            plan: plan.name, gb: plan.gb, rentaPlan: plan.price,
+            plazo: plazo, mensEquipo: mensEq, totalMensual: totalMes
+          });
         });
       });
     });
+    rows.sort(function(a,b){return a.totalMensual - b.totalMensual});
+    
+    var table = 'TABLA DE OFERTAS PRE-CALCULADAS (NO hagas matemáticas, copia estos números):\n\n';
+    table += 'Equipo | Plan | GB | Plazo | Mens_Equipo | Renta_Plan | TOTAL_MES\n';
+    rows.forEach(function(r) {
+      table += r.equipo + ' | ' + r.plan + ' | ' + r.gb + ' | ' + r.plazo + 'm | $' + r.mensEquipo.toFixed(2) + ' | $' + r.rentaPlan + ' | $' + r.totalMensual.toFixed(2) + '\n';
+    });
+    return table;
+  }
+  
+  // Generic query → compact catalog showing all available brands/models with price range
+  var byBrand = {};
+  filtered.forEach(function(d) {
+    var brand = d.marca || 'Otra';
+    if (!byBrand[brand]) byBrand[brand] = [];
+    byBrand[brand].push(d);
   });
   
-  rows.sort(function(a,b){return a.totalMensual - b.totalMensual});
-  
-  var table = 'TABLA DE OFERTAS (todos los números ya están calculados, NO hagas matemáticas):\n\n';
-  table += 'Equipo | Plan | GB | Plazo | Mens_Equipo | Renta_Plan | TOTAL_MES\n';
-  rows.forEach(function(r) {
-    table += r.equipo + ' | ' + r.plan + ' | ' + r.gb + ' | ' + r.plazo + 'm | $' + r.mensEquipo.toFixed(2) + ' | $' + r.rentaPlan + ' | $' + r.totalMensual.toFixed(2) + '\n';
+  var catalog = 'CATÁLOGO AT&T VIGENTE - RENOVACIONES (' + filtered.length + ' equipos)\n\n';
+  catalog += 'PLANES: ';
+  PLANS_PREMIUM.forEach(function(p) {
+    catalog += p.name + '(' + p.gb + ',$' + p.price + ') | ';
   });
-  
-  return table;
+  catalog += '\nPlazos: 24, 30, 36 meses\n\n';
+  catalog += 'EQUIPOS DISPONIBLES:\n';
+  Object.keys(byBrand).sort().forEach(function(brand) {
+    catalog += '\n' + brand + ':\n';
+    byBrand[brand].forEach(function(d) {
+      // Show cheapest and most expensive total mensual for quick reference
+      var minTotal = Infinity, maxTotal = 0;
+      d.plans.forEach(function(plan) {
+        if (!d.pricing[plan.id]) return;
+        d.plazos.forEach(function(plazo) {
+          var fin = d.pricing[plan.id][plazo];
+          if (fin === null || fin === undefined) return;
+          var total = Math.round(fin / plazo + plan.price);
+          if (total < minTotal) minTotal = total;
+          if (total > maxTotal) maxTotal = total;
+        });
+      });
+      catalog += '- ' + d.equipo + ' | Contado: $' + d.precioContado + ' | Desde $' + minTotal + ' hasta $' + maxTotal + '/mes\n';
+    });
+  });
+  catalog += '\nPara ver combinaciones específicas, pregunta por marca y modelo.\n';
+  return catalog;
 }
 
 async function sendAsesorMsg() {
@@ -8831,12 +8885,15 @@ function metasTabSwitch(tab) {
   currentMetasTab = tab;
   document.getElementById('metasTabContentMetas').style.display = tab === 'metas' ? '' : 'none';
   document.getElementById('metasTabContentDescansos').style.display = tab === 'descansos' ? '' : 'none';
+  document.getElementById('metasTabContentPlanIA').style.display = tab === 'plania' ? '' : 'none';
   document.querySelectorAll('.metasTab').forEach(function(b) {
     b.style.background = 'transparent'; b.style.color = 'var(--text-2)'; b.style.border = '1px solid var(--border)';
   });
-  var activeBtn = document.getElementById(tab === 'metas' ? 'metasTabMetas' : 'metasTabDescansos');
-  activeBtn.style.background = 'var(--att-blue)'; activeBtn.style.color = 'white'; activeBtn.style.border = 'none';
+  var btnId = tab === 'metas' ? 'metasTabMetas' : tab === 'descansos' ? 'metasTabDescansos' : 'metasTabPlanIA';
+  var activeBtn = document.getElementById(btnId);
+  if (activeBtn) { activeBtn.style.background = 'var(--att-blue)'; activeBtn.style.color = 'white'; activeBtn.style.border = 'none'; }
   if (tab === 'descansos') metasRender();
+  if (tab === 'plania') populatePlanIATargets();
 }
 
 function renderDescansos(mes, rol, supVal, opVal, centroVal) {
@@ -9019,6 +9076,227 @@ function saveDescThresholds() {
   localStorage.setItem('descThresholdNuevo', nuevo);
   alert('✅ Objetivos guardados: Con meta ≥ '+meta+' · Sin meta ≥ '+nuevo);
   metasRender();
+}
+
+// ── PLAN DE TRABAJO CON IA ──
+function populatePlanIATargets() {
+  var sel = document.getElementById('planIATarget');
+  if (!sel) return;
+  var rol = currentUser ? currentUser.rol : 'agente';
+  var h = '<option value="equipo">👥 Mi equipo completo</option>';
+  
+  // For supervisor: show their agents
+  // For admin/coord: show supervisors and agents
+  if (rol === 'admin' || rol === 'coordinador') {
+    // Add supervisors
+    var sups = {};
+    metasVentas.forEach(function(v) { if (v.supervisor) sups[v.supervisor] = true; });
+    Object.keys(sups).sort().forEach(function(s) {
+      h += '<option value="sup:'+s+'">📊 Sup: '+s+'</option>';
+    });
+  }
+  // Add individual agents
+  var agents = {};
+  metasMetas.filter(function(m){return m.tipo==='agente'}).forEach(function(m) { agents[m.nombre] = true; });
+  Object.keys(agents).sort().forEach(function(a) {
+    h += '<option value="agent:'+a+'">👤 '+a+'</option>';
+  });
+  sel.innerHTML = h;
+}
+
+async function generatePlanIA() {
+  var resultEl = document.getElementById('planIAResult');
+  if (!resultEl) return;
+  
+  if (!TR_API_KEY) await trLoadConfig();
+  var ak = TR_API_KEY || localStorage.getItem('ec_api_key') || '';
+  if (!ak) { resultEl.innerHTML = '<div class="section" style="padding:16px;text-align:center;color:#DC3545">❌ No hay API key configurada</div>'; return; }
+  
+  resultEl.innerHTML = '<div class="section" style="padding:20px;text-align:center"><div style="font-size:24px;margin-bottom:8px">🤖</div><div style="font-size:12px;color:var(--text-3)">Analizando métricas y generando plan de trabajo...</div></div>';
+  
+  var target = document.getElementById('planIATarget').value;
+  var mes = document.getElementById('metasFilterMes').value;
+  var rol = currentUser ? currentUser.rol : 'agente';
+  
+  // Gather data
+  var dataContext = buildPlanIAContext(target, mes, rol);
+  
+  var systemPrompt = 'Eres un coach de ventas experto para ExpertCell, distribuidor autorizado AT&T en México. Generas planes de trabajo accionables basados en datos reales.\n\n';
+  systemPrompt += 'REGLAS:\n';
+  systemPrompt += '1. Sé específico y accionable. Nada genérico como "mejorar ventas".\n';
+  systemPrompt += '2. Basa todo en los datos proporcionados. Si un agente va bien, reconócelo.\n';
+  systemPrompt += '3. Identifica patrones: días débiles, tendencias, agentes que necesitan coaching.\n';
+  systemPrompt += '4. Para supervisores: da acciones concretas de coaching por agente.\n';
+  systemPrompt += '5. Para agentes: da un plan diario/semanal con metas claras.\n';
+  systemPrompt += '6. Usa formato con **negritas** para destacar lo importante.\n';
+  systemPrompt += '7. Incluye: diagnóstico breve, prioridades, acciones específicas, meta a corto plazo.\n';
+  systemPrompt += '8. Si hay agentes muy por debajo de meta, sugiere intervención inmediata.\n';
+  systemPrompt += '9. Si hay agentes arriba de meta, sugiere cómo mantener o acelerar.\n';
+  systemPrompt += '10. Máximo 500 palabras. Sé directo.\n\n';
+  systemPrompt += dataContext;
+  
+  try {
+    var response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'x-api-key': ak, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1500,
+        system: systemPrompt,
+        messages: [{role:'user', content: 'Genera el plan de trabajo basado en estos datos.'}]
+      })
+    });
+    var data = await response.json();
+    var reply = data.content && data.content[0] ? data.content[0].text : 'No se pudo generar el plan.';
+    
+    // Render result
+    var h = '<div class="section" style="padding:16px">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+    h += '<div style="font-size:13px;font-weight:700">📋 Plan de Trabajo — ' + new Date().toLocaleDateString('es-MX') + '</div>';
+    h += '<button onclick="generatePlanIA()" style="font-size:10px;padding:4px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer">🔄 Regenerar</button>';
+    h += '</div>';
+    h += '<div style="font-size:12px;color:var(--text-2);line-height:1.7;white-space:pre-wrap">' + formatPlanIAContent(reply) + '</div>';
+    h += '</div>';
+    resultEl.innerHTML = h;
+  } catch(e) {
+    resultEl.innerHTML = '<div class="section" style="padding:16px;text-align:center;color:#DC3545">❌ Error de conexión</div>';
+  }
+}
+
+function formatPlanIAContent(text) {
+  if (!text) return '';
+  text = text.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  text = text.replace(/^### (.+)$/gm, '<div style="font-size:14px;font-weight:800;color:var(--att-blue);margin:12px 0 6px">$1</div>');
+  text = text.replace(/^## (.+)$/gm, '<div style="font-size:15px;font-weight:800;color:var(--text-1);margin:14px 0 6px">$1</div>');
+  text = text.replace(/^- /gm, '• ');
+  text = text.replace(/^(\d+)\.\s/gm, '<span style="color:var(--att-blue);font-weight:700">$1.</span> ');
+  return text;
+}
+
+function buildPlanIAContext(target, mes, rol) {
+  var ctx = 'DATOS DEL MES: ' + mes + '\n';
+  var now = new Date();
+  var mesDate = new Date(mes + '-01T12:00:00');
+  var isCurrentMonth = now.getFullYear() === mesDate.getFullYear() && now.getMonth() === mesDate.getMonth();
+  var daysInMonth = new Date(mesDate.getFullYear(), mesDate.getMonth()+1, 0).getDate();
+  var workDaysTotal = countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, daysInMonth);
+  var dayOfMonth = isCurrentMonth ? now.getDate() : daysInMonth;
+  var workDaysPassed = isCurrentMonth ? countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, dayOfMonth) : workDaysTotal;
+  
+  ctx += 'Día hábil ' + workDaysPassed + ' de ' + workDaysTotal + ' (' + Math.round(workDaysPassed/workDaysTotal*100) + '% del mes)\n\n';
+  
+  // Filter agents based on target
+  var targetAgents = [];
+  var targetSup = '';
+  
+  if (target === 'equipo') {
+    if (rol === 'agente') {
+      targetAgents = [currentUser ? currentUser.nombre : ''];
+    } else if (rol === 'supervisor') {
+      var myName = currentUser ? currentUser.nombre : '';
+      targetAgents = metasMetas.filter(function(m){return m.tipo==='agente'}).map(function(m){return m.nombre});
+      // Filter to my team
+      var myAgents = {};
+      metasVentas.forEach(function(v) {
+        if (v.supervisor && v.supervisor.toUpperCase() === myName.toUpperCase()) {
+          myAgents[v.ejecutivo.toUpperCase()] = true;
+        }
+      });
+      targetAgents = targetAgents.filter(function(a){return myAgents[a.toUpperCase()]});
+    } else {
+      targetAgents = metasMetas.filter(function(m){return m.tipo==='agente'}).map(function(m){return m.nombre});
+    }
+  } else if (target.indexOf('sup:') === 0) {
+    targetSup = target.substring(4);
+    var supAgents = {};
+    metasVentas.forEach(function(v) {
+      if (v.supervisor === targetSup && v.ejecutivo) supAgents[v.ejecutivo.toUpperCase()] = true;
+    });
+    targetAgents = metasMetas.filter(function(m){return m.tipo==='agente' && supAgents[m.nombre.toUpperCase()]}).map(function(m){return m.nombre});
+    ctx += 'SUPERVISOR: ' + targetSup + '\n\n';
+  } else if (target.indexOf('agent:') === 0) {
+    targetAgents = [target.substring(6)];
+  }
+  
+  // Build per-agent metrics
+  ctx += 'AGENTES:\n';
+  targetAgents.forEach(function(agName) {
+    var meta = 0;
+    metasMetas.forEach(function(m) { if (m.tipo === 'agente' && m.nombre === agName) meta = m.meta || 0; });
+    
+    // Ventas count
+    var ventas = metasVentas.filter(function(v){return v.ejecutivo && v.ejecutivo.toUpperCase() === agName.toUpperCase()});
+    var totalVentas = ventas.length;
+    var pctMeta = meta > 0 ? Math.round(totalVentas/meta*100) : 0;
+    
+    // Weekly trend
+    var byWeek = {};
+    ventas.forEach(function(v) {
+      if (!v.fecha) return;
+      var fd = new Date(typeof v.fecha === 'string' ? v.fecha.substring(0,10) + 'T12:00:00' : v.fecha);
+      var weekNum = Math.ceil(fd.getDate() / 7);
+      byWeek[weekNum] = (byWeek[weekNum] || 0) + 1;
+    });
+    var weekTrend = [];
+    for (var w = 1; w <= 5; w++) {
+      if (byWeek[w] !== undefined) weekTrend.push('S'+w+':'+byWeek[w]);
+    }
+    
+    // Daily pattern (best/worst days)
+    var byDay = [0,0,0,0,0,0,0]; // Sun-Sat
+    ventas.forEach(function(v) {
+      if (!v.fecha) return;
+      var fd = new Date(typeof v.fecha === 'string' ? v.fecha.substring(0,10) + 'T12:00:00' : v.fecha);
+      byDay[fd.getDay()]++;
+    });
+    var dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    var bestDay = '', worstDay = '', bestV = 0, worstV = Infinity;
+    for (var di = 1; di <= 6; di++) {
+      if (byDay[di] > bestV) { bestV = byDay[di]; bestDay = dayNames[di]; }
+      if (byDay[di] < worstV && di < 6) { worstV = byDay[di]; worstDay = dayNames[di]; }
+    }
+    
+    // Projection
+    var proyeccion = workDaysPassed > 0 ? Math.round(totalVentas / workDaysPassed * workDaysTotal) : 0;
+    
+    ctx += '\n' + agName + ':\n';
+    ctx += '  Meta: ' + meta + ' | Ventas: ' + totalVentas + ' (' + pctMeta + '%) | Proyección: ' + proyeccion + '\n';
+    ctx += '  Tendencia semanal: ' + (weekTrend.length ? weekTrend.join(', ') : 'Sin datos') + '\n';
+    ctx += '  Mejor día: ' + bestDay + '(' + bestV + ') | Peor día: ' + worstDay + '(' + worstV + ')\n';
+    ctx += '  Promedio diario: ' + (workDaysPassed > 0 ? (totalVentas/workDaysPassed).toFixed(1) : '0') + ' ventas/día\n';
+  });
+  
+  // Cotizaciones data if available
+  if (typeof state !== 'undefined' && state.cotizaciones && state.cotizaciones.length) {
+    ctx += '\nCOTIZACIONES (todas):\n';
+    var cotByStatus = {};
+    state.cotizaciones.forEach(function(c) {
+      var st = c.estatus || 'pendiente';
+      cotByStatus[st] = (cotByStatus[st] || 0) + 1;
+    });
+    Object.keys(cotByStatus).forEach(function(st) {
+      ctx += '  ' + st + ': ' + cotByStatus[st] + '\n';
+    });
+    
+    // Per agent if possible
+    targetAgents.forEach(function(agName) {
+      var agCots = state.cotizaciones.filter(function(c) {
+        return c.ejecutivo && c.ejecutivo.toUpperCase() === agName.toUpperCase();
+      });
+      if (agCots.length) {
+        var agStatus = {};
+        agCots.forEach(function(c) { var s = c.estatus || 'pendiente'; agStatus[s] = (agStatus[s] || 0) + 1; });
+        ctx += '  ' + agName + ': ' + agCots.length + ' cotiz (' + Object.keys(agStatus).map(function(s){return s+':'+agStatus[s]}).join(', ') + ')\n';
+      }
+    });
+  }
+  
+  // Training metrics
+  try {
+    ctx += '\nNOTA: Para datos detallados de Sales Academy, consulta la pestaña de Métricas en Academy.\n';
+  } catch(e) {}
+  
+  return ctx;
 }
 
 // Excel Parser - Auto-detects Puebla vs CDMX format
