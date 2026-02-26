@@ -8281,7 +8281,7 @@ async function metasRender() {
   document.getElementById('metasKPIs').innerHTML = kH;
 
   // ── DAILY VENTAS CHART ──
-  renderMetasChart(mes, opVal, centroVal, supVal);
+  renderMetasChart(mes, fv);
 
   // ── OPERATIONS VIEW (admin/coord only) ──
   var opsH = '';
@@ -8502,94 +8502,78 @@ async function metasRender() {
   renderDescansos(mes, rol, supVal, opVal, centroVal);
 }
 
-function renderMetasChart(mes, opVal, centroVal, supVal) {
+function renderMetasChart(mes, filteredVentas) {
   var el = document.getElementById('metasChartView');
   if (!el) return;
-  if (!metasVentas.length) { el.innerHTML = ''; return; }
+  if (!filteredVentas || !filteredVentas.length) { el.innerHTML = ''; return; }
 
-  // Filter ventas by current filters
-  var filtered = metasVentas.filter(function(v) {
-    if (opVal !== 'all') {
-      var vOp = v.centro_key && METAS_CENTROS[v.centro_key] ? METAS_CENTROS[v.centro_key].op : '';
-      if (vOp !== opVal) return false;
-    }
-    if (centroVal !== 'all' && v.centro_key !== centroVal) return false;
-    if (supVal !== 'all' && v.supervisor !== supVal) return false;
-    return true;
-  });
-
-  // Group by date
   var byDate = {};
-  filtered.forEach(function(v) {
+  filteredVentas.forEach(function(v) {
     var d = v.fecha ? (typeof v.fecha === 'string' ? v.fecha.substring(0,10) : '') : '';
     if (!d) return;
     byDate[d] = (byDate[d] || 0) + 1;
   });
 
-  // Build full date range for the month
   var mesDate = new Date(mes + '-01T12:00:00');
   var daysInMonth = new Date(mesDate.getFullYear(), mesDate.getMonth()+1, 0).getDate();
   var dates = [];
   var meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var dayNames = ['D','L','M','X','J','V','S'];
   for (var d = 1; d <= daysInMonth; d++) {
     var dt = new Date(mesDate.getFullYear(), mesDate.getMonth(), d);
     var dow = dt.getDay();
-    if (dow === 0) continue; // Skip Sundays
+    if (dow === 0) continue;
     var ds = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
-    var label = d + ' ' + meses[dt.getMonth()];
-    var dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-    dates.push({date: ds, label: label, day: dayNames[dow], ventas: byDate[ds] || 0, isSat: dow === 6});
+    dates.push({date: ds, day: d, dayLetter: dayNames[dow], ventas: byDate[ds] || 0, isSat: dow === 6});
   }
-
   if (!dates.length) { el.innerHTML = ''; return; }
 
-  // Stats
-  var totalVentas = filtered.length;
+  var totalVentas = filteredVentas.length;
   var daysWithVentas = dates.filter(function(d){return d.ventas > 0}).length;
   var avg = daysWithVentas > 0 ? Math.round(totalVentas / daysWithVentas * 10) / 10 : 0;
   var maxV = Math.max.apply(null, dates.map(function(d){return d.ventas}));
   var maxDay = dates.find(function(d){return d.ventas === maxV});
-
-  // Chart dimensions
-  var barWidth = Math.max(12, Math.min(28, Math.floor(280 / dates.length)));
-  var chartHeight = 160;
-  var chartMax = Math.max(maxV + 5, 10);
+  var chartMax = Math.max(maxV * 1.15, 10);
+  var avgPct = chartMax > 0 ? (avg / chartMax * 100) : 0;
 
   var h = '<div class="section" style="padding:16px">';
-  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:6px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:6px">';
   h += '<div style="font-size:14px;font-weight:800">📈 Ventas por Día</div>';
-  h += '<div style="display:flex;gap:12px;font-size:10px;color:var(--text-3)">';
-  h += '<span>Promedio: <b style="color:var(--att-blue)">'+avg+'</b>/día</span>';
-  h += '<span>Máximo: <b style="color:#10B981">'+maxV+'</b>'+(maxDay?' ('+maxDay.label+')':'')+'</span>';
+  h += '<div style="display:flex;gap:14px;font-size:11px;color:var(--text-3)">';
+  h += '<span>Promedio: <b style="color:#F59E0B">'+avg+'</b>/día</span>';
+  h += '<span>Máximo: <b style="color:#10B981">'+maxV+'</b> ('+maxDay.day+' '+meses[mesDate.getMonth()]+')</span>';
   h += '</div></div>';
 
-  // Chart
-  h += '<div style="position:relative;overflow-x:auto;padding-bottom:8px">';
-  h += '<div style="display:flex;align-items:flex-end;gap:2px;min-width:'+((barWidth+2)*dates.length)+'px;height:'+(chartHeight+40)+'px;position:relative">';
+  // Full-width chart container
+  h += '<div style="position:relative;height:200px;padding-bottom:24px">';
   
-  // Average line
-  var avgY = chartMax > 0 ? Math.round(avg / chartMax * chartHeight) : 0;
-  h += '<div style="position:absolute;left:0;right:0;bottom:'+(avgY+20)+'px;border-top:2px dashed #F59E0B;z-index:1"><span style="position:absolute;right:0;top:-14px;font-size:8px;color:#F59E0B;font-weight:700;background:var(--bg-card);padding:0 4px">Prom: '+avg+'</span></div>';
-
-  dates.forEach(function(d) {
-    var barH = chartMax > 0 ? Math.round(d.ventas / chartMax * chartHeight) : 0;
-    var color = d.ventas === 0 ? '#E5E7EB' : d.ventas >= avg ? '#10B981' : d.ventas >= avg * 0.7 ? '#F59E0B' : '#EF4444';
-    if (d.isSat) color = d.ventas === 0 ? '#E5E7EB' : '#8B5CF6';
+  // Average line positioned with bottom percentage
+  h += '<div style="position:absolute;left:0;right:0;bottom:calc('+avgPct+'% * 176 / 100 + 24px);border-top:2px dashed #F59E0B;z-index:2;pointer-events:none">';
+  h += '<span style="position:absolute;right:0;top:-13px;font-size:9px;color:#F59E0B;font-weight:700;background:var(--bg-card);padding:0 4px">'+avg+'</span>';
+  h += '</div>';
+  
+  // Bars container - flex fills width
+  h += '<div style="display:flex;align-items:flex-end;height:176px;gap:1px">';
+  dates.forEach(function(dd) {
+    var barPct = chartMax > 0 ? Math.round(dd.ventas / chartMax * 100) : 0;
+    var color = dd.ventas === 0 ? '#E5E7EB' : dd.isSat ? '#8B5CF6' : dd.ventas >= avg ? '#10B981' : dd.ventas >= avg * 0.7 ? '#F59E0B' : '#EF4444';
     
-    h += '<div style="display:flex;flex-direction:column;align-items:center;width:'+barWidth+'px;flex-shrink:0">';
-    // Value on top
-    if (d.ventas > 0) h += '<div style="font-size:8px;font-weight:700;color:'+color+';margin-bottom:1px">'+d.ventas+'</div>';
+    h += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;height:100%;justify-content:flex-end">';
+    if (dd.ventas > 0) h += '<div style="font-size:8px;font-weight:700;color:'+color+';margin-bottom:1px;overflow:hidden">'+dd.ventas+'</div>';
     else h += '<div style="height:11px"></div>';
-    // Bar
-    h += '<div style="width:'+(barWidth-2)+'px;height:'+Math.max(barH,2)+'px;background:'+color+';border-radius:3px 3px 0 0;transition:height 0.3s"></div>';
-    // Date label
-    h += '<div style="font-size:7px;color:var(--text-3);margin-top:2px;transform:rotate(-45deg);transform-origin:top left;white-space:nowrap">'+d.day.charAt(0)+d.label.split(' ')[0]+'</div>';
+    h += '<div style="width:80%;max-width:28px;height:'+Math.max(barPct,1)+'%;background:'+color+';border-radius:3px 3px 0 0;min-height:1px"></div>';
     h += '</div>';
   });
-
-  h += '</div></div>';
   h += '</div>';
 
+  // Date labels below
+  h += '<div style="display:flex;gap:1px;margin-top:2px">';
+  dates.forEach(function(dd) {
+    h += '<div style="flex:1;text-align:center;font-size:7px;color:var(--text-3);min-width:0;overflow:hidden">'+dd.dayLetter+dd.day+'</div>';
+  });
+  h += '</div>';
+
+  h += '</div></div>';
   el.innerHTML = h;
 }
 
