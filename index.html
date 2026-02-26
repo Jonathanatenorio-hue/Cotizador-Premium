@@ -8078,10 +8078,53 @@ async function metasRender() {
         var cm = metasGetMeta('centro', ck);
         var cp = cm>0?Math.round(cv/cm*100):0;
         var cc = cp>=100?'#10B981':cp>=70?'#F59E0B':'#DC3545';
-        opsH += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-top:1px solid var(--border)">';
-        opsH += '<span style="font-size:11px;font-weight:600;min-width:120px">'+METAS_CENTROS[ck].name+'</span>';
+        opsH += '<div style="padding:6px 0;border-top:1px solid var(--border)">';
+        opsH += '<div style="display:flex;align-items:center;gap:8px">';
+        opsH += '<span style="font-size:11px;font-weight:700;min-width:120px">'+METAS_CENTROS[ck].name+'</span>';
         opsH += '<div style="flex:1;height:5px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+cc+';border-radius:3px"></div></div>';
         opsH += '<span style="font-size:10px;font-weight:700;color:'+cc+';min-width:60px;text-align:right">'+cv+'/'+cm+'</span>';
+        opsH += '</div>';
+        
+        // Supervisors in this centro (from ventas data)
+        var centroSups = {};
+        metasVentas.filter(function(v){return v.centro_key===ck && v.supervisor}).forEach(function(v) {
+          if (!centroSups[v.supervisor]) centroSups[v.supervisor] = 0;
+          centroSups[v.supervisor]++;
+        });
+        // Also include supervisors with meta but 0 ventas in this centro
+        // Check adminUsers for supervisor-centro assignment
+        if (adminUsers && adminUsers.length) {
+          var centroAgents = adminUsers.filter(function(u) { return u.rol==='agente'; });
+          var supCentroMap = {};
+          centroAgents.forEach(function(a) {
+            if (!a.supervisor_id) return;
+            var sup = adminUsers.find(function(s){return s.id===a.supervisor_id});
+            if (!sup) return;
+            // Determine centro key for this agent
+            var aCentroName = '';
+            if (adminCentros && adminCentros.length) {
+              var ac = adminCentros.find(function(c){return c.id===a.centro_id});
+              if (ac) aCentroName = ac.nombre.toUpperCase();
+            }
+            var aKey = '';
+            if (aCentroName.indexOf('ANTEQUERA')>=0||aCentroName.indexOf('CC2')>=0) aKey='CC2';
+            else if (aCentroName.indexOf('JUAREZ')>=0||aCentroName.indexOf('JV')>=0||aCentroName.indexOf('JUÁREZ')>=0) aKey='JV';
+            else if (aCentroName.indexOf('CDMX')>=0||aCentroName.indexOf('YELITZA')>=0) aKey='CDMX';
+            if (aKey===ck && !centroSups[sup.nombre]) centroSups[sup.nombre] = 0;
+          });
+        }
+        var supCentroKeys = Object.keys(centroSups).sort(function(a,b){return centroSups[b]-centroSups[a]});
+        supCentroKeys.forEach(function(s) {
+          var sv = centroSups[s];
+          var sm = metasGetMeta('supervisor', s);
+          var sp = sm>0?Math.round(sv/sm*100):0;
+          var sc = sp>=100?'#10B981':sp>=70?'#F59E0B':'#DC3545';
+          opsH += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0 3px 16px">';
+          opsH += '<span style="font-size:10px;color:var(--text-2);min-width:140px">👤 '+s+'</span>';
+          opsH += '<div style="flex:1;height:4px;border-radius:2px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(sp,100)+'%;background:'+sc+';border-radius:2px"></div></div>';
+          opsH += '<span style="font-size:9px;font-weight:700;color:'+sc+';min-width:55px;text-align:right">'+sv+'/'+sm+' ('+sp+'%)</span>';
+          opsH += '</div>';
+        });
         opsH += '</div>';
       });
       opsH += '</div>';
