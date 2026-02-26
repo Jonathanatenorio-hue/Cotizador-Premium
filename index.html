@@ -1452,6 +1452,7 @@ body{padding-bottom:60px}
       <button class="btn trTab" id="trTabExercises" onclick="trTab('exercises')" style="flex:1;font-size:11px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);min-width:70px">🏋️ Ejercicios</button>
       <button class="btn trTab" id="trTabEval" onclick="trTab('eval')" style="flex:1;font-size:11px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);min-width:70px">📝 Evaluación</button>
       <button class="btn trTab" id="trTabMetrics" onclick="trTab('metrics')" style="flex:1;font-size:11px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);min-width:70px">📊 Métricas</button>
+      <button class="btn trTab" id="trTabSpeech" onclick="trTab('speech')" style="flex:1;font-size:11px;padding:8px 4px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border);min-width:70px">🎙️ Speech</button>
     </div>
 
     <!-- LEVEL BAR -->
@@ -1575,6 +1576,52 @@ body{padding-bottom:60px}
       <div id="trMetricsKPIs" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px"></div>
       <div id="trMetricsTable"></div>
       <div id="trMetricsRoleplays" style="margin-top:14px"></div>
+    </div>
+    <div id="trSpeech" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:16px;font-weight:800">🎙️ Banco de Speech</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select class="field" id="speechFilterCat" onchange="renderSpeechList()" style="width:auto;font-size:11px;padding:6px 8px">
+            <option value="all">Todas las categorías</option>
+            <option value="apertura">Bienvenida/Apertura</option>
+            <option value="cierre">Cierre de venta</option>
+            <option value="objeciones">Manejo de objeciones</option>
+            <option value="monetizacion">Monetización/Valorización</option>
+          </select>
+          <input type="text" class="field" id="speechSearch" oninput="renderSpeechList()" placeholder="🔍 Buscar..." style="width:140px;font-size:11px;padding:6px 8px">
+          <button id="speechAddBtn" onclick="toggleSpeechForm()" class="btn btn-primary" style="font-size:11px;padding:6px 12px;display:none">➕ Nuevo</button>
+        </div>
+      </div>
+      <div id="speechFormPanel" style="display:none;margin-bottom:12px"></div>
+      <div id="speechList"></div>
+      <!-- Buzón de peticiones (supervisor+) -->
+      <div id="buzonSection" style="display:none;margin-top:16px">
+        <div class="section" style="padding:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+            <div style="font-size:14px;font-weight:800">📬 Buzón de Necesidades</div>
+            <button onclick="toggleBuzonForm()" class="btn btn-primary" style="font-size:11px;padding:6px 12px">➕ Nueva petición</button>
+          </div>
+          <div style="font-size:10px;color:var(--text-3);margin-bottom:10px">Reporta preguntas de clientes, necesidades de capacitación o temas que la operación necesita reforzar.</div>
+          <div id="buzonFormPanel" style="display:none;margin-bottom:10px"></div>
+          <div id="buzonList"></div>
+        </div>
+      </div>
+      <!-- Checklist admin -->
+      <div id="buzonChecklist" style="display:none;margin-top:16px">
+        <div class="section" style="padding:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+            <div style="font-size:14px;font-weight:800">✅ Checklist de Peticiones</div>
+            <div style="display:flex;gap:6px">
+              <select class="field" id="checklistFilter" onchange="renderBuzonChecklist()" style="width:auto;font-size:11px;padding:5px 8px">
+                <option value="pendiente">Pendientes</option>
+                <option value="completada">Completadas</option>
+                <option value="all">Todas</option>
+              </select>
+            </div>
+          </div>
+          <div id="checklistContent"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1922,6 +1969,7 @@ async function doLogin() {
     mnShowHomeBanner();
     loadCentralPriceList();
     loadYelitzaCheck();
+    checkNewContentNotification();
 
   } catch(e) {
     errEl.textContent = 'Error de conexión. Intenta de nuevo.';
@@ -1971,6 +2019,7 @@ async function tryAutoLogin() {
       mnShowHomeBanner();
       loadCentralPriceList();
       loadYelitzaCheck();
+      checkNewContentNotification();
   } catch(e) { console.error('Auto-login error:', e); }
 }
 
@@ -9642,9 +9691,9 @@ function trTab(tab){
     return;
   }
   // Pause timer on guía, resume on interactive tabs
-  if (tab === 'guia') { trPauseTimer(); }
+  if (tab === 'guia' || tab === 'speech') { trPauseTimer(); }
   else if (blockedTabs.indexOf(tab) !== -1 && trSessionElapsedBefore > 0) { trResumeTimer(); }
-  ['Chat','Guia','Roleplay','Exercises','Eval','Metrics'].forEach(function(t){
+  ['Chat','Guia','Roleplay','Exercises','Eval','Metrics','Speech'].forEach(function(t){
     var id=t.charAt(0).toLowerCase()+t.slice(1);
     var el=document.getElementById('tr'+t);
     if(el) el.style.display=id===tab?'':'none';
@@ -9652,6 +9701,7 @@ function trTab(tab){
     if(btn){btn.style.background=id===tab?'var(--att-blue)':'transparent';btn.style.color=id===tab?'white':'var(--text-2)'}
   });
   if(tab==='chat'&&trChatMsgs.length===0)trInitChat();
+  if(tab==='speech'){loadSpeechBank();loadBuzon();}
   if(tab==='metrics'&&(currentUser.rol==='supervisor'||currentUser.rol==='coordinador'||currentUser.rol==='admin')){
     setTimeout(function(){
       var mc=document.getElementById('trMetrics');
@@ -9666,6 +9716,401 @@ function trTab(tab){
   if(tab==='metrics')trLoadMetrics();
   if(tab==='guia')trRenderGuia();
   if(tab==='eval')trRenderEvalSummary();
+}
+
+// ── SPEECH BANK ──
+var speechData = [];
+var speechEditId = null;
+
+var SPEECH_CATEGORIES = {
+  apertura: {name:'Bienvenida/Apertura', icon:'👋', color:'#3B82F6'},
+  cierre: {name:'Cierre de venta', icon:'🤝', color:'#10B981'},
+  objeciones: {name:'Manejo de objeciones', icon:'🛡️', color:'#F59E0B'},
+  monetizacion: {name:'Monetización/Valorización', icon:'💰', color:'#8B5CF6'}
+};
+
+async function loadSpeechBank() {
+  // Show add button for admin only
+  var addBtn = document.getElementById('speechAddBtn');
+  if (addBtn) addBtn.style.display = (currentUser && currentUser.rol === 'admin') ? '' : 'none';
+  
+  if (!supabase) return;
+  try {
+    var {data} = await supabase.from('speech_bank').select('*').order('categoria').order('titulo');
+    speechData = data || [];
+  } catch(e) { console.error('Error loading speech:', e); speechData = []; }
+  renderSpeechList();
+}
+
+function renderSpeechList() {
+  var el = document.getElementById('speechList');
+  if (!el) return;
+  
+  var catFilter = document.getElementById('speechFilterCat').value;
+  var search = (document.getElementById('speechSearch').value || '').toLowerCase().trim();
+  
+  var filtered = speechData.filter(function(s) {
+    if (catFilter !== 'all' && s.categoria !== catFilter) return false;
+    if (search && s.titulo.toLowerCase().indexOf(search) < 0 && s.contenido.toLowerCase().indexOf(search) < 0) return false;
+    return true;
+  });
+
+  if (!filtered.length) {
+    el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3)"><div style="font-size:32px;margin-bottom:8px">🎙️</div><div style="font-size:12px">No hay speech en esta categoría</div></div>';
+    return;
+  }
+
+  // Group by category
+  var grouped = {};
+  filtered.forEach(function(s) {
+    if (!grouped[s.categoria]) grouped[s.categoria] = [];
+    grouped[s.categoria].push(s);
+  });
+
+  var isAdmin = currentUser && currentUser.rol === 'admin';
+  var h = '';
+  Object.keys(grouped).forEach(function(cat) {
+    var catInfo = SPEECH_CATEGORIES[cat] || {name:cat, icon:'📄', color:'#888'};
+    h += '<div style="margin-bottom:16px">';
+    h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">';
+    h += '<span style="font-size:16px">'+catInfo.icon+'</span>';
+    h += '<span style="font-size:13px;font-weight:700;color:'+catInfo.color+'">'+catInfo.name+'</span>';
+    h += '<span style="font-size:10px;color:var(--text-3);background:var(--surface-2);padding:2px 8px;border-radius:10px">'+grouped[cat].length+'</span>';
+    h += '</div>';
+    
+    grouped[cat].forEach(function(s) {
+      h += '<div class="section" style="padding:14px;margin-bottom:8px;border-left:3px solid '+catInfo.color+'">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">';
+      h += '<div style="font-size:13px;font-weight:700;color:var(--text-1)">'+s.titulo+'</div>';
+      if (isAdmin) {
+        h += '<div style="display:flex;gap:4px;flex-shrink:0">';
+        h += '<button onclick="editSpeech(\''+s.id+'\')" style="background:none;border:none;cursor:pointer;font-size:12px;padding:2px" title="Editar">✏️</button>';
+        h += '<button onclick="deleteSpeech(\''+s.id+'\')" style="background:none;border:none;cursor:pointer;font-size:12px;padding:2px" title="Eliminar">🗑️</button>';
+        h += '</div>';
+      }
+      h += '</div>';
+      // Render content with basic formatting
+      h += '<div style="font-size:12px;color:var(--text-2);line-height:1.6;white-space:pre-wrap">'+formatSpeechContent(s.contenido)+'</div>';
+      if (s.updated_at) {
+        var d = new Date(s.updated_at);
+        h += '<div style="font-size:9px;color:var(--text-3);margin-top:8px;text-align:right">Actualizado: '+d.toLocaleDateString('es-MX')+'</div>';
+      }
+      h += '</div>';
+    });
+    h += '</div>';
+  });
+  
+  el.innerHTML = h;
+}
+
+function formatSpeechContent(text) {
+  if (!text) return '';
+  // Bold: **text** → <b>text</b>
+  text = text.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  // Italic: *text* → <i>text</i>
+  text = text.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<i>$1</i>');
+  // Numbered lists: lines starting with 1. 2. etc
+  text = text.replace(/^(\d+)\.\s/gm, '<span style="color:var(--att-blue);font-weight:700">$1.</span> ');
+  // Bullet: lines starting with - 
+  text = text.replace(/^-\s/gm, '<span style="color:var(--att-blue)">●</span> ');
+  return text;
+}
+
+function toggleSpeechForm(editData) {
+  var panel = document.getElementById('speechFormPanel');
+  if (panel.style.display !== 'none' && !editData) {
+    panel.style.display = 'none';
+    speechEditId = null;
+    return;
+  }
+  speechEditId = editData ? editData.id : null;
+  var h = '<div class="section" style="padding:14px;border:2px solid var(--att-blue)">';
+  h += '<div style="font-size:13px;font-weight:700;margin-bottom:10px">'+(speechEditId ? '✏️ Editar Speech' : '➕ Nuevo Speech')+'</div>';
+  h += '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">';
+  h += '<div style="flex:1;min-width:150px"><label style="font-size:9px;font-weight:700;color:var(--text-3)">Título</label>';
+  h += '<input type="text" class="field" id="speechTitle" value="'+(editData?editData.titulo:'')+'" placeholder="Ej: Apertura telefónica estándar" style="font-size:12px"></div>';
+  h += '<div style="min-width:150px"><label style="font-size:9px;font-weight:700;color:var(--text-3)">Categoría</label>';
+  h += '<select class="field" id="speechCat" style="font-size:12px">';
+  Object.keys(SPEECH_CATEGORIES).forEach(function(k) {
+    h += '<option value="'+k+'"'+(editData&&editData.categoria===k?' selected':'')+'>'+SPEECH_CATEGORIES[k].icon+' '+SPEECH_CATEGORIES[k].name+'</option>';
+  });
+  h += '</select></div></div>';
+  h += '<div><label style="font-size:9px;font-weight:700;color:var(--text-3)">Contenido <span style="font-weight:400">(usa **negrita**, *cursiva*, 1. listas numeradas, - viñetas)</span></label>';
+  h += '<textarea class="field" id="speechContent" rows="10" style="font-size:12px;font-family:inherit;line-height:1.5" placeholder="Escribe el speech aquí...">'+(editData?editData.contenido:'')+'</textarea></div>';
+  h += '<div style="display:flex;gap:6px;margin-top:8px">';
+  h += '<button onclick="saveSpeech()" class="btn btn-primary" style="font-size:11px;padding:6px 16px">💾 Guardar</button>';
+  h += '<button onclick="toggleSpeechForm()" class="btn" style="font-size:11px;padding:6px 16px;background:var(--surface-2);border:1px solid var(--border)">Cancelar</button>';
+  h += '</div></div>';
+  panel.innerHTML = h;
+  panel.style.display = '';
+}
+
+async function saveSpeech() {
+  var titulo = document.getElementById('speechTitle').value.trim();
+  var categoria = document.getElementById('speechCat').value;
+  var contenido = document.getElementById('speechContent').value.trim();
+  if (!titulo) { alert('El título es obligatorio'); return; }
+  if (!contenido) { alert('El contenido es obligatorio'); return; }
+  if (!supabase) return;
+  
+  try {
+    if (speechEditId) {
+      await supabase.from('speech_bank').update({titulo:titulo, categoria:categoria, contenido:contenido, updated_at:new Date().toISOString()}).eq('id', speechEditId);
+    } else {
+      await supabase.from('speech_bank').insert({titulo:titulo, categoria:categoria, contenido:contenido, creado_por:currentUser?currentUser.nombre:''});
+    }
+    document.getElementById('speechFormPanel').style.display = 'none';
+    speechEditId = null;
+    await loadSpeechBank();
+    alert('✅ Speech guardado');
+  } catch(e) { alert('Error: '+e.message); }
+}
+
+function editSpeech(id) {
+  var s = speechData.find(function(x){return x.id===id});
+  if (s) toggleSpeechForm(s);
+}
+
+async function deleteSpeech(id) {
+  if (!confirm('¿Eliminar este speech?')) return;
+  if (!supabase) return;
+  try {
+    await supabase.from('speech_bank').delete().eq('id', id);
+    await loadSpeechBank();
+  } catch(e) { alert('Error: '+e.message); }
+}
+
+// ── BUZÓN DE NECESIDADES ──
+var buzonData = [];
+
+async function loadBuzon() {
+  var rol = currentUser ? currentUser.rol : 'agente';
+  // Show buzón for supervisor+
+  var buzonEl = document.getElementById('buzonSection');
+  if (buzonEl) buzonEl.style.display = (rol !== 'agente') ? '' : 'none';
+  // Show checklist only for admin
+  var checkEl = document.getElementById('buzonChecklist');
+  if (checkEl) checkEl.style.display = (rol === 'admin') ? '' : 'none';
+  
+  if (!supabase) return;
+  try {
+    var {data} = await supabase.from('buzon_necesidades').select('*').order('created_at', {ascending:false});
+    buzonData = data || [];
+  } catch(e) { buzonData = []; }
+  renderBuzonList();
+  if (rol === 'admin') renderBuzonChecklist();
+}
+
+function toggleBuzonForm() {
+  var panel = document.getElementById('buzonFormPanel');
+  if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+  var h = '<div style="background:var(--surface-2);border-radius:8px;padding:12px">';
+  h += '<div style="margin-bottom:8px"><label style="font-size:9px;font-weight:700;color:var(--text-3)">Tipo</label>';
+  h += '<select class="field" id="buzonTipo" style="font-size:12px">';
+  h += '<option value="pregunta_cliente">Pregunta frecuente de cliente</option>';
+  h += '<option value="necesidad_capacitacion">Necesidad de capacitación</option>';
+  h += '<option value="objecion_nueva">Objeción nueva</option>';
+  h += '<option value="proceso_faltante">Proceso/procedimiento faltante</option>';
+  h += '<option value="otro">Otro</option>';
+  h += '</select></div>';
+  h += '<div style="margin-bottom:8px"><label style="font-size:9px;font-weight:700;color:var(--text-3)">Describe la necesidad</label>';
+  h += '<textarea class="field" id="buzonDesc" rows="4" style="font-size:12px;line-height:1.4" placeholder="Ej: Los clientes preguntan mucho por la diferencia entre plan con equipo y plan solo..."></textarea></div>';
+  h += '<div id="buzonSimilares" style="display:none;margin-bottom:8px"></div>';
+  h += '<div style="display:flex;gap:6px">';
+  h += '<button onclick="checkBuzonDuplicates()" class="btn btn-primary" style="font-size:11px;padding:6px 14px">🔍 Verificar y enviar</button>';
+  h += '<button onclick="toggleBuzonForm()" class="btn" style="font-size:11px;padding:6px 14px;background:var(--surface-2);border:1px solid var(--border)">Cancelar</button>';
+  h += '</div></div>';
+  panel.innerHTML = h;
+  panel.style.display = '';
+}
+
+async function checkBuzonDuplicates() {
+  var desc = (document.getElementById('buzonDesc').value || '').trim();
+  if (!desc) { alert('Escribe una descripción'); return; }
+  
+  // Search for similar content in speech_bank and existing peticiones
+  var words = desc.toLowerCase().split(/\s+/).filter(function(w){return w.length > 3});
+  var similares = [];
+  
+  // Check speech_bank
+  speechData.forEach(function(s) {
+    var text = (s.titulo + ' ' + s.contenido).toLowerCase();
+    var matches = words.filter(function(w){return text.indexOf(w) >= 0}).length;
+    if (matches >= 2 || (words.length <= 2 && matches >= 1)) {
+      similares.push({tipo:'speech', titulo:s.titulo, cat:s.categoria});
+    }
+  });
+  
+  // Check existing peticiones
+  buzonData.forEach(function(b) {
+    var text = b.descripcion.toLowerCase();
+    var matches = words.filter(function(w){return text.indexOf(w) >= 0}).length;
+    if (matches >= 2 || (words.length <= 2 && matches >= 1)) {
+      similares.push({tipo:'peticion', titulo:b.descripcion.substring(0,60)+'...', estatus:b.estatus});
+    }
+  });
+  
+  var simDiv = document.getElementById('buzonSimilares');
+  if (similares.length > 0) {
+    var sh = '<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:10px;font-size:11px">';
+    sh += '<div style="font-weight:700;color:#92400E;margin-bottom:6px">⚠️ Se encontró contenido similar:</div>';
+    similares.forEach(function(s) {
+      var badge = s.tipo === 'speech' ? '<span style="background:#3B82F6;color:white;padding:1px 6px;border-radius:4px;font-size:9px">Speech</span>' : '<span style="background:#F59E0B;color:white;padding:1px 6px;border-radius:4px;font-size:9px">Petición '+(s.estatus||'')+'</span>';
+      sh += '<div style="margin:4px 0">'+badge+' '+s.titulo+'</div>';
+    });
+    sh += '<div style="margin-top:8px;display:flex;gap:6px">';
+    sh += '<button onclick="saveBuzon(true)" class="btn btn-primary" style="font-size:10px;padding:5px 12px">Enviar de todas formas</button>';
+    sh += '<button onclick="toggleBuzonForm()" class="btn" style="font-size:10px;padding:5px 12px;background:white;border:1px solid var(--border)">Cancelar</button>';
+    sh += '</div></div>';
+    simDiv.innerHTML = sh;
+    simDiv.style.display = '';
+  } else {
+    saveBuzon(false);
+  }
+}
+
+async function saveBuzon(override) {
+  var tipo = document.getElementById('buzonTipo').value;
+  var desc = document.getElementById('buzonDesc').value.trim();
+  if (!desc || !supabase) return;
+  
+  try {
+    await supabase.from('buzon_necesidades').insert({
+      tipo: tipo, descripcion: desc, 
+      enviado_por: currentUser ? currentUser.nombre : '',
+      rol_enviado: currentUser ? currentUser.rol : '',
+      estatus: 'pendiente'
+    });
+    document.getElementById('buzonFormPanel').style.display = 'none';
+    await loadBuzon();
+    alert('✅ Petición enviada. El equipo de administración la revisará.');
+  } catch(e) { alert('Error: '+e.message); }
+}
+
+function renderBuzonList() {
+  var el = document.getElementById('buzonList');
+  if (!el) return;
+  var rol = currentUser ? currentUser.rol : 'agente';
+  
+  // Supervisors see recent peticiones (last 10)
+  var recent = buzonData.slice(0, 10);
+  if (!recent.length) {
+    el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-3);font-size:11px">No hay peticiones aún</div>';
+    return;
+  }
+  
+  var tipoLabels = {pregunta_cliente:'❓ Pregunta cliente', necesidad_capacitacion:'📚 Capacitación', objecion_nueva:'🛡️ Objeción', proceso_faltante:'📋 Proceso', otro:'📌 Otro'};
+  var statusColors = {pendiente:'#F59E0B', en_proceso:'#3B82F6', completada:'#10B981', descartada:'#9CA3AF'};
+  
+  var h = '<div style="font-size:10px;color:var(--text-3);margin-bottom:6px">Últimas peticiones</div>';
+  recent.forEach(function(b) {
+    var sc = statusColors[b.estatus] || '#888';
+    h += '<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border)">';
+    h += '<div style="flex:1;min-width:0">';
+    h += '<div style="font-size:10px;color:var(--text-3)">'+(tipoLabels[b.tipo]||b.tipo)+' · '+b.enviado_por+'</div>';
+    h += '<div style="font-size:11px;color:var(--text-2);margin-top:2px">'+b.descripcion.substring(0,100)+(b.descripcion.length>100?'...':'')+'</div>';
+    h += '</div>';
+    h += '<span style="font-size:9px;background:'+sc+';color:white;padding:2px 8px;border-radius:10px;white-space:nowrap;flex-shrink:0">'+b.estatus.replace('_',' ')+'</span>';
+    h += '</div>';
+  });
+  el.innerHTML = h;
+}
+
+function renderBuzonChecklist() {
+  var el = document.getElementById('checklistContent');
+  if (!el) return;
+  
+  var filter = document.getElementById('checklistFilter').value;
+  var items = buzonData.filter(function(b) {
+    if (filter === 'all') return true;
+    return b.estatus === filter;
+  });
+  
+  if (!items.length) {
+    el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-3);font-size:11px">No hay peticiones '+(filter==='pendiente'?'pendientes':'en esta categoría')+'</div>';
+    return;
+  }
+  
+  var tipoLabels = {pregunta_cliente:'❓ Pregunta', necesidad_capacitacion:'📚 Capacitación', objecion_nueva:'🛡️ Objeción', proceso_faltante:'📋 Proceso', otro:'📌 Otro'};
+  
+  var h = '';
+  items.forEach(function(b) {
+    var isComplete = b.estatus === 'completada';
+    var bgColor = isComplete ? '#F0FDF4' : b.estatus === 'en_proceso' ? '#EFF6FF' : 'var(--bg-main)';
+    h += '<div style="background:'+bgColor+';border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px">';
+    h += '<div style="display:flex;gap:8px;align-items:flex-start">';
+    // Checkbox
+    h += '<input type="checkbox" '+(isComplete?'checked':'')+' onchange="toggleBuzonStatus(\''+b.id+'\', this.checked)" style="width:18px;height:18px;flex-shrink:0;margin-top:2px;cursor:pointer">';
+    h += '<div style="flex:1;min-width:0">';
+    h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px">';
+    h += '<span style="font-size:10px;font-weight:600;color:var(--text-3)">'+(tipoLabels[b.tipo]||b.tipo)+'</span>';
+    h += '<span style="font-size:9px;color:var(--text-3)">· '+b.enviado_por+' ('+b.rol_enviado+') · '+new Date(b.created_at).toLocaleDateString('es-MX')+'</span>';
+    h += '</div>';
+    h += '<div style="font-size:11px;color:var(--text-2);'+(isComplete?'text-decoration:line-through;opacity:0.6':'')+'">'+b.descripcion+'</div>';
+    if (b.nota_admin) h += '<div style="font-size:10px;color:#3B82F6;margin-top:4px">📝 '+b.nota_admin+'</div>';
+    h += '</div>';
+    // Status selector + note
+    if (!isComplete) {
+      h += '<div style="flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end">';
+      h += '<select onchange="updateBuzonStatus(\''+b.id+'\', this.value)" style="font-size:9px;padding:3px 6px;border:1px solid var(--border);border-radius:4px">';
+      h += '<option value="pendiente"'+(b.estatus==='pendiente'?' selected':'')+'>Pendiente</option>';
+      h += '<option value="en_proceso"'+(b.estatus==='en_proceso'?' selected':'')+'>En proceso</option>';
+      h += '<option value="descartada"'+(b.estatus==='descartada'?' selected':'')+'>Descartada</option>';
+      h += '</select>';
+      h += '<button onclick="addBuzonNote(\''+b.id+'\')" style="font-size:9px;background:none;border:none;color:var(--att-blue);cursor:pointer">📝 Nota</button>';
+      h += '</div>';
+    }
+    h += '</div></div>';
+  });
+  el.innerHTML = h;
+}
+
+async function toggleBuzonStatus(id, checked) {
+  if (!supabase) return;
+  var estatus = checked ? 'completada' : 'pendiente';
+  await supabase.from('buzon_necesidades').update({estatus:estatus, updated_at:new Date().toISOString()}).eq('id', id);
+  var item = buzonData.find(function(b){return b.id===id});
+  if (item) item.estatus = estatus;
+  renderBuzonChecklist();
+  renderBuzonList();
+}
+
+async function updateBuzonStatus(id, estatus) {
+  if (!supabase) return;
+  await supabase.from('buzon_necesidades').update({estatus:estatus, updated_at:new Date().toISOString()}).eq('id', id);
+  var item = buzonData.find(function(b){return b.id===id});
+  if (item) item.estatus = estatus;
+  renderBuzonChecklist();
+  renderBuzonList();
+}
+
+async function addBuzonNote(id) {
+  var nota = prompt('Agregar nota a esta petición:');
+  if (!nota) return;
+  if (!supabase) return;
+  await supabase.from('buzon_necesidades').update({nota_admin:nota, updated_at:new Date().toISOString()}).eq('id', id);
+  var item = buzonData.find(function(b){return b.id===id});
+  if (item) item.nota_admin = nota;
+  renderBuzonChecklist();
+}
+
+// ── LOGIN NOTIFICATION: new content ──
+async function checkNewContentNotification() {
+  if (!supabase || !currentUser) return;
+  var lastSeen = localStorage.getItem('lastContentCheck_' + currentUser.attuid) || '2000-01-01';
+  try {
+    var {data} = await supabase.from('speech_bank').select('id,titulo,categoria,created_at').gt('created_at', lastSeen).order('created_at', {ascending:false}).limit(5);
+    if (data && data.length > 0) {
+      var names = data.map(function(s) { 
+        var cat = SPEECH_CATEGORIES[s.categoria] || {icon:'📄'};
+        return cat.icon + ' ' + s.titulo;
+      }).join('\n');
+      setTimeout(function() {
+        alert('📢 Nuevo contenido en Sales Academy:\n\n' + names + '\n\nConsúltalo en la pestaña 🎙️ Speech');
+      }, 1500);
+    }
+    localStorage.setItem('lastContentCheck_' + currentUser.attuid, new Date().toISOString());
+  } catch(e) { console.error('Notification check error:', e); }
 }
 
 // ── CHAT ──
