@@ -1416,6 +1416,7 @@ body{padding-bottom:60px}
     </div>
     <div id="metasKPIs" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px"></div>
     <div id="metasOpsView" style="margin-bottom:12px"></div>
+    <div id="metasDescansos" style="margin-bottom:12px"></div>
     <div id="metasSupView" style="margin-bottom:12px"></div>
     <div id="metasAgentView"></div>
   </div>
@@ -8461,8 +8462,205 @@ async function metasRender() {
   }
   agH += '</div>';
   document.getElementById('metasAgentView').innerHTML = agH;
+
+  // ── DESCANSOS SABATINOS ──
+  renderDescansos(mes, rol, supVal, opVal, centroVal);
 }
 
+function renderDescansos(mes, rol, supVal, opVal, centroVal) {
+  var el = document.getElementById('metasDescansos');
+  if (!el) return;
+
+  // Determine current week boundaries (Mon-Sat)
+  var now = new Date();
+  var mesDate = new Date(mes + '-01T12:00:00');
+  var isCurrentMonth = now.getFullYear() === mesDate.getFullYear() && now.getMonth() === mesDate.getMonth();
+  
+  // Find this week's Monday
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var dayOfWeek = today.getDay(); // 0=Sun
+  var mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  var monday = new Date(today); monday.setDate(today.getDate() + mondayOffset);
+  var friday = new Date(monday); friday.setDate(monday.getDate() + 4);
+  var saturday = new Date(monday); saturday.setDate(monday.getDate() + 5);
+  
+  // Format date for comparison
+  function fmtDate(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  var monStr = fmtDate(monday);
+  var friStr = fmtDate(friday);
+  var satStr = fmtDate(saturday);
+  
+  var isFridayOrLater = dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0;
+  var weekLabel = monday.getDate() + '-' + friday.getDate() + ' ' + ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][monday.getMonth()];
+  
+  // Count ventas per agent this week (Mon-Fri only for descanso evaluation)
+  var weekVentas = {};
+  metasVentas.forEach(function(v) {
+    if (!v.fecha || !v.ejecutivo) return;
+    var vDate = v.fecha;
+    if (typeof vDate === 'string' && vDate.length >= 10) vDate = vDate.substring(0, 10);
+    if (vDate >= monStr && vDate <= friStr) {
+      var name = v.ejecutivo.toUpperCase().trim();
+      weekVentas[name] = (weekVentas[name] || 0) + 1;
+    }
+  });
+
+  // Build agent list with meta and week ventas
+  var agents = [];
+  // Get all agents from metas
+  metasMetas.filter(function(m){return m.tipo==='agente'}).forEach(function(m) {
+    var name = m.nombre.toUpperCase().trim();
+    var meta = m.meta || 0;
+    var wv = weekVentas[name] || 0;
+    
+    // Calculate expected daily rate
+    var workDaysMonth = countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, new Date(mesDate.getFullYear(), mesDate.getMonth()+1, 0).getDate());
+    var dailyRate = workDaysMonth > 0 ? meta / workDaysMonth : 0;
+    // Work days this week (Mon-Fri) = ~5 unless festivos
+    var workDaysWeek = 0;
+    for (var wd = 0; wd < 5; wd++) {
+      var wdt = new Date(monday); wdt.setDate(monday.getDate() + wd);
+      var wdStr = fmtDate(wdt);
+      var wdow = wdt.getDay();
+      if (wdow === 0 || esFestivo(wdStr)) continue;
+      workDaysWeek += 1;
+    }
+    var weekTarget = Math.round(dailyRate * workDaysWeek * 10) / 10;
+    var minRequired = 3; // minimum per week
+    
+    // Descanso logic: must have >= 3 AND be on pace (ventas >= weekTarget)
+    var onPace = meta === 0 ? (wv >= minRequired) : (wv >= weekTarget);
+    var meetsMinimum = wv >= minRequired;
+    var earnsDescanso = meetsMinimum && onPace;
+    
+    // Find supervisor and centro for this agent
+    var supName = '';
+    var centroKey = '';
+    metasVentas.forEach(function(v) {
+      if (v.ejecutivo && v.ejecutivo.toUpperCase().trim() === name) {
+        if (v.supervisor) supName = v.supervisor;
+        if (v.centro_key) centroKey = v.centro_key;
+      }
+    });
+    // Also check from adminUsers if no ventas
+    if ((!supName || !centroKey) && adminUsers) {
+      var normN = name.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      adminUsers.forEach(function(u) {
+        if (u.rol !== 'agente') return;
+        var uNorm = (u.nombre||'').toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+        if (uNorm === normN) {
+          if (!supName && u.supervisor_id) {
+            var sup = adminUsers.find(function(s){return s.id===u.supervisor_id});
+            if (sup) supName = sup.nombre;
+          }
+          if (!centroKey && u.centro_id && adminCentros) {
+            var ac = adminCentros.find(function(c){return c.id===u.centro_id});
+            if (ac) {
+              var cn = ac.nombre.toUpperCase();
+              if (cn.indexOf('ANTEQUERA')>=0||cn.indexOf('CC2')>=0) centroKey='CC2';
+              else if (cn.indexOf('JUAREZ')>=0||cn.indexOf('JV')>=0||cn.indexOf('JUÁREZ')>=0) centroKey='JV';
+              else if (cn.indexOf('CDMX')>=0||cn.indexOf('YELITZA')>=0) centroKey='CDMX';
+            }
+          }
+        }
+      });
+    }
+    
+    var opKey = centroKey && METAS_CENTROS[centroKey] ? METAS_CENTROS[centroKey].op : '';
+    
+    agents.push({
+      name: m.nombre, meta: meta, weekVentas: wv,
+      weekTarget: weekTarget, minRequired: minRequired,
+      dailyRate: dailyRate, onPace: onPace, meetsMinimum: meetsMinimum,
+      earnsDescanso: earnsDescanso, supervisor: supName, centroKey: centroKey, op: opKey
+    });
+  });
+
+  // Apply filters
+  agents = agents.filter(function(a) {
+    if (opVal !== 'all' && a.op !== opVal) return false;
+    if (centroVal !== 'all' && a.centroKey !== centroVal) return false;
+    if (supVal !== 'all' && a.supervisor !== supVal) return false;
+    return true;
+  });
+
+  // Agente: only show their own
+  if (rol === 'agente' && currentUser) {
+    var myName = currentUser.nombre.toUpperCase().trim();
+    agents = agents.filter(function(a) {
+      return a.name.toUpperCase().trim() === myName;
+    });
+  }
+
+  if (!agents.length) { el.innerHTML = ''; return; }
+
+  // Sort: earns descanso first, then by weekVentas desc
+  agents.sort(function(a,b) {
+    if (a.earnsDescanso !== b.earnsDescanso) return a.earnsDescanso ? -1 : 1;
+    return b.weekVentas - a.weekVentas;
+  });
+
+  var totalGanan = agents.filter(function(a){return a.earnsDescanso}).length;
+  var totalNoGanan = agents.length - totalGanan;
+
+  var h = '<div class="section" style="padding:16px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">';
+  h += '<div>';
+  h += '<div style="font-size:14px;font-weight:800">🏖️ Descansos Sabatinos</div>';
+  h += '<div style="font-size:10px;color:var(--text-3)">Semana ' + weekLabel + (isFridayOrLater ? ' · <span style="color:#10B981;font-weight:700">✅ Evaluación disponible</span>' : ' · <span style="color:#F59E0B;font-weight:700">⏳ Se evalúa el viernes</span>') + '</div>';
+  h += '</div>';
+  h += '<div style="display:flex;gap:8px">';
+  h += '<div style="text-align:center;background:#ECFDF5;border-radius:8px;padding:6px 14px"><div style="font-size:18px;font-weight:900;color:#10B981">'+totalGanan+'</div><div style="font-size:8px;color:#059669">DESCANSAN</div></div>';
+  h += '<div style="text-align:center;background:#FEF2F2;border-radius:8px;padding:6px 14px"><div style="font-size:18px;font-weight:900;color:#DC3545">'+totalNoGanan+'</div><div style="font-size:8px;color:#DC3545">TRABAJAN</div></div>';
+  h += '</div></div>';
+
+  // Rules reminder
+  h += '<div style="background:#F0F4FF;border:1px solid #C7D2FE;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:#4338CA">';
+  h += '📋 <b>Reglas:</b> Mínimo <b>3 ventas activadas</b> (L-V) + estar en <b>ritmo de meta</b> (ventas ≥ meta semanal proporcional). Agentes sin meta: solo aplica el mínimo de 3.';
+  h += '</div>';
+
+  // Agent cards
+  h += '<div style="display:flex;flex-direction:column;gap:6px">';
+  agents.forEach(function(a) {
+    var bg = a.earnsDescanso ? '#ECFDF5' : '#FEF2F2';
+    var border = a.earnsDescanso ? '#A7F3D0' : '#FECACA';
+    var icon = a.earnsDescanso ? '🟢' : '🔴';
+    var statusText = a.earnsDescanso ? 'DESCANSA' : 'TRABAJA';
+    var statusColor = a.earnsDescanso ? '#10B981' : '#DC3545';
+    var pct = a.weekTarget > 0 ? Math.round(a.weekVentas / a.weekTarget * 100) : (a.weekVentas >= 3 ? 100 : Math.round(a.weekVentas / 3 * 100));
+    var barColor = pct >= 100 ? '#10B981' : pct >= 70 ? '#F59E0B' : '#DC3545';
+    
+    h += '<div style="background:'+bg+';border:1px solid '+border+';border-radius:10px;padding:10px 14px">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+    h += '<div style="display:flex;align-items:center;gap:6px">';
+    h += '<span style="font-size:14px">'+icon+'</span>';
+    h += '<div>';
+    h += '<div style="font-size:11px;font-weight:700">'+a.name+'</div>';
+    h += '<div style="font-size:9px;color:var(--text-3)">'+a.supervisor+(a.centroKey?' · '+METAS_CENTROS[a.centroKey].name:'')+'</div>';
+    h += '</div></div>';
+    h += '<div style="text-align:right">';
+    h += '<div style="font-size:12px;font-weight:800;color:'+statusColor+'">'+statusText+'</div>';
+    h += '<div style="font-size:9px;color:var(--text-3)">'+a.weekVentas+' venta(s) esta semana</div>';
+    h += '</div></div>';
+    
+    // Progress bar
+    h += '<div style="height:6px;border-radius:3px;background:rgba(0,0,0,0.06);overflow:hidden;margin-bottom:4px"><div style="height:100%;width:'+Math.min(pct,100)+'%;background:'+barColor+';border-radius:3px"></div></div>';
+    
+    // Detail line
+    h += '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-3)">';
+    h += '<span>Meta mensual: '+a.meta+' · Ritmo semanal: '+Math.round(a.weekTarget*10)/10+'</span>';
+    var reasons = [];
+    if (!a.meetsMinimum) reasons.push('Falta mínimo 3 ventas (lleva '+a.weekVentas+')');
+    if (a.meetsMinimum && !a.onPace && a.meta > 0) reasons.push('Debajo de ritmo (necesita '+Math.ceil(a.weekTarget)+')');
+    if (reasons.length) h += '<span style="color:#DC3545;font-weight:600">'+reasons.join(' · ')+'</span>';
+    else h += '<span style="color:#10B981;font-weight:600">✅ Cumple requisitos</span>';
+    h += '</div>';
+    h += '</div>';
+  });
+  h += '</div></div>';
+  
+  el.innerHTML = h;
+}
 // Excel Parser - Auto-detects Puebla vs CDMX format
 async function metasParseExcel() {
   var file = document.getElementById('metasFileInput').files[0];
