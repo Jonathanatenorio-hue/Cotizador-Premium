@@ -1408,7 +1408,7 @@ body{padding-bottom:60px}
     <div class="section" style="padding:10px 14px;margin-bottom:10px">
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <select class="field" id="metasFilterOp" onchange="metasFilterChanged()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todas las operaciones</option><option value="PUE">Puebla</option><option value="CDMX">CDMX / Sub Yelitza</option></select>
-        <select class="field" id="metasFilterCentro" onchange="metasFilterChanged()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todos los centros</option></select>
+        <select class="field" id="metasFilterCentro" onchange="metasCentroChanged()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todos los centros</option></select>
         <select class="field" id="metasFilterSup" onchange="metasRender()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todos los supervisores</option></select>
         <select class="field" id="metasFilterMes" onchange="metasRender()" style="width:auto;font-size:12px;padding:6px 8px"></select>
         <button onclick="metasClearFilters()" style="background:none;border:1px solid var(--border);color:var(--text-3);font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer" title="Limpiar filtros">✕ Limpiar</button>
@@ -8159,22 +8159,30 @@ function metasClearFilters() {
 function metasFilterChanged() {
   var opVal = document.getElementById('metasFilterOp').value;
   var centroSel = document.getElementById('metasFilterCentro');
-  var supSel = document.getElementById('metasFilterSup');
-  // Populate centros
   centroSel.innerHTML = '<option value="all">Todos los centros</option>';
   Object.keys(METAS_CENTROS).forEach(function(k) {
     if (opVal !== 'all' && METAS_CENTROS[k].op !== opVal) return;
     centroSel.innerHTML += '<option value="'+k+'">'+METAS_CENTROS[k].name+'</option>';
   });
-  // Populate supervisors from ventas AND metas
-  var centroVal = centroSel.value;
+  metasPopulateSups();
+}
+
+function metasCentroChanged() {
+  metasPopulateSups();
+}
+
+function metasPopulateSups() {
+  var opVal = document.getElementById('metasFilterOp').value;
+  var centroVal = document.getElementById('metasFilterCentro').value;
+  var supSel = document.getElementById('metasFilterSup');
   var sups = {};
   metasVentas.forEach(function(v) {
-    if (opVal !== 'all' && METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op !== opVal) return;
+    if (opVal !== 'all') {
+      if (!v.centro_key || !METAS_CENTROS[v.centro_key] || METAS_CENTROS[v.centro_key].op !== opVal) return;
+    }
     if (centroVal !== 'all' && v.centro_key !== centroVal) return;
     if (v.supervisor) sups[v.supervisor] = true;
   });
-  // Also add supervisors from metas table (so they appear even with 0 ventas)
   metasMetas.filter(function(m) { return m.tipo === 'supervisor'; }).forEach(function(m) {
     sups[m.nombre] = true;
   });
