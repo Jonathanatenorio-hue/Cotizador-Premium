@@ -8528,10 +8528,22 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
     var weekTarget = Math.round(dailyRate * workDaysWeek * 10) / 10;
     var minRequired = 3; // minimum per week
     
-    // Descanso logic: must have >= 3 AND be on pace (ventas >= weekTarget)
+    // Monthly total ventas for this agent
+    var monthVentas = 0;
+    metasVentas.forEach(function(v) {
+      if (v.ejecutivo && v.ejecutivo.toUpperCase().trim() === name) monthVentas++;
+    });
+    
+    // Auto-descanso thresholds (configurable)
+    var autoDescansoConMeta = parseInt(localStorage.getItem('descThresholdMeta') || '14');
+    var autoDescansoSinMeta = parseInt(localStorage.getItem('descThresholdNuevo') || '8');
+    var autoThreshold = meta > 0 ? autoDescansoConMeta : autoDescansoSinMeta;
+    var isAutoDescanso = monthVentas >= autoThreshold;
+    
+    // Descanso logic: auto if monthly threshold met, OR weekly rules
     var onPace = meta === 0 ? (wv >= minRequired) : (wv >= weekTarget);
     var meetsMinimum = wv >= minRequired;
-    var earnsDescanso = meetsMinimum && onPace;
+    var earnsDescanso = isAutoDescanso || (meetsMinimum && onPace);
     
     // Find supervisor and centro for this agent
     var supName = '';
@@ -8569,10 +8581,12 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
     var opKey = centroKey && METAS_CENTROS[centroKey] ? METAS_CENTROS[centroKey].op : '';
     
     agents.push({
-      name: m.nombre, meta: meta, weekVentas: wv,
+      name: m.nombre, meta: meta, weekVentas: wv, monthVentas: monthVentas,
       weekTarget: weekTarget, minRequired: minRequired,
       dailyRate: dailyRate, onPace: onPace, meetsMinimum: meetsMinimum,
-      earnsDescanso: earnsDescanso, supervisor: supName, centroKey: centroKey, op: opKey
+      earnsDescanso: earnsDescanso, isAutoDescanso: isAutoDescanso,
+      autoThreshold: autoThreshold,
+      supervisor: supName, centroKey: centroKey, op: opKey
     });
   });
 
@@ -8616,8 +8630,18 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
 
   // Rules reminder
   h += '<div style="background:#F0F4FF;border:1px solid #C7D2FE;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:10px;color:#4338CA">';
-  h += '📋 <b>Reglas:</b> Mínimo <b>3 ventas activadas</b> (L-V) + estar en <b>ritmo de meta</b> (ventas ≥ meta semanal proporcional). Agentes sin meta: solo aplica el mínimo de 3.';
+  h += '📋 <b>Reglas:</b> Mínimo <b>3 ventas activadas</b> (L-V) + estar en <b>ritmo de meta</b>. Agentes sin meta: solo mínimo de 3. Auto-descanso mensual: <b>≥'+(localStorage.getItem('descThresholdMeta')||'14')+' ventas</b> (con meta) / <b>≥'+(localStorage.getItem('descThresholdNuevo')||'8')+' ventas</b> (nuevos).';
   h += '</div>';
+
+  // Config thresholds (admin only)
+  if (rol === 'admin') {
+    h += '<div style="background:var(--surface-2);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">';
+    h += '<span style="font-size:10px;font-weight:700;color:var(--text-3)">⚙️ Auto-descanso mensual:</span>';
+    h += '<div style="display:flex;align-items:center;gap:4px"><label style="font-size:10px">Con meta ≥</label><input type="number" id="descThresholdMeta" value="'+(localStorage.getItem('descThresholdMeta')||'14')+'" min="1" style="width:50px;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;text-align:center"> ventas</div>';
+    h += '<div style="display:flex;align-items:center;gap:4px"><label style="font-size:10px">Nuevos ≥</label><input type="number" id="descThresholdNuevo" value="'+(localStorage.getItem('descThresholdNuevo')||'8')+'" min="1" style="width:50px;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;text-align:center"> ventas</div>';
+    h += '<button onclick="saveDescThresholds()" class="btn btn-primary" style="font-size:10px;padding:4px 12px">Guardar</button>';
+    h += '</div>';
+  }
 
   // Agent cards
   h += '<div style="display:flex;flex-direction:column;gap:6px">';
@@ -8640,7 +8664,8 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
     h += '</div></div>';
     h += '<div style="text-align:right">';
     h += '<div style="font-size:12px;font-weight:800;color:'+statusColor+'">'+statusText+'</div>';
-    h += '<div style="font-size:9px;color:var(--text-3)">'+a.weekVentas+' venta(s) esta semana</div>';
+    if (a.isAutoDescanso) h += '<div style="font-size:8px;background:#10B981;color:white;padding:1px 6px;border-radius:4px;display:inline-block">⭐ AUTO · '+a.monthVentas+' ventas/mes</div>';
+    else h += '<div style="font-size:9px;color:var(--text-3)">'+a.weekVentas+' venta(s) esta semana</div>';
     h += '</div></div>';
     
     // Progress bar
@@ -8648,11 +8673,13 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
     
     // Detail line
     h += '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-3)">';
-    h += '<span>Meta mensual: '+a.meta+' · Ritmo semanal: '+Math.round(a.weekTarget*10)/10+'</span>';
+    h += '<span>Meta: '+a.meta+' · Mes: '+a.monthVentas+' · Semana: '+a.weekVentas+'/'+Math.ceil(a.weekTarget)+'</span>';
     var reasons = [];
-    if (!a.meetsMinimum) reasons.push('Falta mínimo 3 ventas (lleva '+a.weekVentas+')');
-    if (a.meetsMinimum && !a.onPace && a.meta > 0) reasons.push('Debajo de ritmo (necesita '+Math.ceil(a.weekTarget)+')');
-    if (reasons.length) h += '<span style="color:#DC3545;font-weight:600">'+reasons.join(' · ')+'</span>';
+    if (a.isAutoDescanso) reasons.push('⭐ Descansa todos los sábados restantes (≥'+a.autoThreshold+' ventas/mes)');
+    else if (!a.meetsMinimum) reasons.push('Falta mínimo 3 ventas (lleva '+a.weekVentas+')');
+    else if (a.meetsMinimum && !a.onPace && a.meta > 0) reasons.push('Debajo de ritmo (necesita '+Math.ceil(a.weekTarget)+')');
+    if (reasons.length && a.earnsDescanso) h += '<span style="color:#10B981;font-weight:600">'+reasons.join(' · ')+'</span>';
+    else if (reasons.length) h += '<span style="color:#DC3545;font-weight:600">'+reasons.join(' · ')+'</span>';
     else h += '<span style="color:#10B981;font-weight:600">✅ Cumple requisitos</span>';
     h += '</div>';
     h += '</div>';
@@ -8661,6 +8688,16 @@ function renderDescansos(mes, rol, supVal, opVal, centroVal) {
   
   el.innerHTML = h;
 }
+function saveDescThresholds() {
+  var meta = document.getElementById('descThresholdMeta').value;
+  var nuevo = document.getElementById('descThresholdNuevo').value;
+  if (!meta || parseInt(meta) < 1 || !nuevo || parseInt(nuevo) < 1) { alert('Los valores deben ser ≥ 1'); return; }
+  localStorage.setItem('descThresholdMeta', meta);
+  localStorage.setItem('descThresholdNuevo', nuevo);
+  alert('✅ Umbrales guardados: Con meta ≥ '+meta+' · Nuevos ≥ '+nuevo);
+  metasRender();
+}
+
 // Excel Parser - Auto-detects Puebla vs CDMX format
 async function metasParseExcel() {
   var file = document.getElementById('metasFileInput').files[0];
