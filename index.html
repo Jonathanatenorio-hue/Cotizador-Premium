@@ -1368,14 +1368,20 @@ body{padding-bottom:60px}
         </div>
       </div>
       <div class="section" style="padding:14px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div style="font-size:14px;font-weight:700">🎯 Configurar metas mensuales</div>
-          <div style="display:flex;gap:4px;align-items:center">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-size:14px;font-weight:700">🎯 Cargar metas del mes</div>
+            <div style="font-size:10px;color:var(--text-3)">Excel con columnas: Nombre | Meta</div>
+          </div>
+          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
             <select class="field" id="metasMesConfig" onchange="metasLoadConfig()" style="width:auto;font-size:11px;padding:5px 8px"></select>
-            <button class="btn btn-primary" style="font-size:10px;padding:5px 10px" onclick="metasSaveAll()">💾 Guardar</button>
+            <input type="file" id="metasMetaFileInput" accept=".xlsx,.xls,.csv" style="font-size:11px;width:180px">
+            <button class="btn btn-primary" style="font-size:10px;padding:5px 10px" onclick="metasUploadMetas()">📤 Subir metas</button>
           </div>
         </div>
+        <div id="metasMetaUploadStatus" style="font-size:11px;color:var(--text-3);margin-bottom:6px"></div>
         <div id="metasConfigTable"></div>
+        <div id="metasWarnings" style="display:none;margin-top:8px"></div>
       </div>
     </div>
     <div class="section" style="padding:10px 14px;margin-bottom:10px">
@@ -8087,21 +8093,57 @@ async function metasRender() {
   document.getElementById('metasSupView').innerHTML = supH;
 
   // ── AGENT VIEW (everyone sees this) ──
+  // Build agent data from ventas
   var agData = {};
   fv.forEach(function(v) { if (!v.ejecutivo) return; if (!agData[v.ejecutivo]) agData[v.ejecutivo]={count:0,sup:v.supervisor}; agData[v.ejecutivo].count++; });
-  var agKeys = Object.keys(agData).sort(function(a,b){return agData[b].count-agData[a].count});
+  
+  // Also include agents with metas but 0 ventas (so they still show)
+  metasMetas.filter(function(m) { return m.tipo === 'agente'; }).forEach(function(m) {
+    if (!agData[m.nombre]) {
+      // Check if this agent is in scope based on current filters
+      var inScope = true;
+      if (rol === 'agente') { inScope = m.nombre === (currentUser ? currentUser.nombre : ''); }
+      else if (rol === 'supervisor') {
+        var myName = currentUser ? currentUser.nombre : '';
+        var user = (adminUsers||[]).find(function(u){return u.nombre===m.nombre});
+        inScope = user && user.supervisor && user.supervisor.toUpperCase() === myName.toUpperCase();
+      }
+      if (inScope) agData[m.nombre] = {count:0, sup: ''};
+    }
+  });
+  
+  // Check which agents are baja (inactive)
+  var agentActivo = {};
+  if (adminUsers && adminUsers.length) {
+    adminUsers.forEach(function(u) { agentActivo[u.nombre] = u.activo !== false; });
+  }
+  
+  // Sort: active first (by ventas desc), then bajas
+  var agKeys = Object.keys(agData).sort(function(a,b) {
+    var aActivo = agentActivo[a] !== false;
+    var bActivo = agentActivo[b] !== false;
+    if (aActivo && !bActivo) return -1;
+    if (!aActivo && bActivo) return 1;
+    return agData[b].count - agData[a].count;
+  });
+  
   var agH = '<div class="section" style="padding:16px">';
   agH += '<div style="font-size:14px;font-weight:800;margin-bottom:10px">'+(rol==='agente'?'📈 Mi Avance':'👤 Por Agente')+'</div>';
   if (agKeys.length === 0) { agH += '<div style="text-align:center;padding:15px;color:var(--text-3);font-size:12px">Sin datos para este período</div>'; }
   else {
-    agKeys.forEach(function(ag, idx) {
+    var activeIdx = 0;
+    agKeys.forEach(function(ag) {
       var av = agData[ag].count, am = metasGetMeta('agente',ag);
       var ap = am>0?Math.round(av/am*100):0;
       var ac = ap>=100?'#10B981':ap>=70?'#F59E0B':'#DC3545';
-      var medal = idx===0?'🥇 ':idx===1?'🥈 ':idx===2?'🥉 ':'';
-      agH += '<div style="background:var(--bg-main);border-radius:10px;padding:10px 12px;margin-bottom:6px;border-left:4px solid '+ac+'">';
+      var isBaja = agentActivo[ag] === false;
+      var medal = '';
+      if (!isBaja) { activeIdx++; medal = activeIdx===1?'🥇 ':activeIdx===2?'🥈 ':activeIdx===3?'🥉 ':''; }
+      var opacity = isBaja ? 'opacity:0.45;' : '';
+      var bajaLabel = isBaja ? ' <span style="font-size:9px;background:#DC3545;color:white;padding:1px 6px;border-radius:4px;font-weight:700;vertical-align:middle">BAJA</span>' : '';
+      agH += '<div style="background:var(--bg-main);border-radius:10px;padding:10px 12px;margin-bottom:6px;border-left:4px solid '+ac+';'+opacity+'">';
       agH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
-      agH += '<div style="font-size:12px;font-weight:700">'+medal+ag+'</div>';
+      agH += '<div style="font-size:12px;font-weight:700">'+medal+ag+bajaLabel+'</div>';
       agH += '<span style="font-size:14px;font-weight:900;color:'+ac+'">'+ap+'%</span>';
       agH += '</div>';
       agH += '<div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden;margin-bottom:4px"><div style="height:100%;width:'+Math.min(ap,100)+'%;background:'+ac+';border-radius:3px;transition:width 0.4s"></div></div>';
@@ -8220,66 +8262,218 @@ async function metasLoadConfig() {
   try {
     var r = await supabase.from('metas').select('*').eq('mes', mes);
     var existing = r.data || [];
-    var h = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:separate;border-spacing:0 4px">';
-    // Operations
-    h += '<tr><td colspan="3" style="padding:8px 6px;font-size:11px;font-weight:700;color:var(--att-blue);text-transform:uppercase">Operaciones</td></tr>';
-    [{t:'operacion',n:'PUE',l:'Puebla'},{t:'operacion',n:'CDMX',l:'CDMX / Sub Yelitza'}].forEach(function(item) {
-      var ex = existing.find(function(e){return e.tipo===item.t && e.nombre===item.n});
-      h += '<tr><td style="padding:5px 6px;background:white;border-radius:6px 0 0 6px;font-size:11px;font-weight:600">'+item.l+'</td>';
-      h += '<td style="padding:5px 6px;background:white;font-size:10px;color:var(--text-3)">'+item.t+'</td>';
-      h += '<td style="padding:5px 6px;background:white;border-radius:0 6px 6px 0"><input class="field metaInput" data-tipo="'+item.t+'" data-nombre="'+item.n+'" type="number" value="'+(ex?ex.meta:0)+'" style="width:80px;font-size:11px;padding:4px 6px;text-align:center"></td></tr>';
-    });
-    // Centros
-    h += '<tr><td colspan="3" style="padding:8px 6px;font-size:11px;font-weight:700;color:var(--att-blue);text-transform:uppercase">Centros</td></tr>';
-    Object.keys(METAS_CENTROS).forEach(function(ck) {
-      var ex = existing.find(function(e){return e.tipo==='centro' && e.nombre===ck});
-      h += '<tr><td style="padding:5px 6px;background:white;border-radius:6px 0 0 6px;font-size:11px;font-weight:600">'+METAS_CENTROS[ck].name+'</td>';
-      h += '<td style="padding:5px 6px;background:white;font-size:10px;color:var(--text-3)">centro</td>';
-      h += '<td style="padding:5px 6px;background:white;border-radius:0 6px 6px 0"><input class="field metaInput" data-tipo="centro" data-nombre="'+ck+'" type="number" value="'+(ex?ex.meta:0)+'" style="width:80px;font-size:11px;padding:4px 6px;text-align:center"></td></tr>';
-    });
-    // Get supervisors and agents from ventas for this month
-    var vr = await supabase.from('ventas_global').select('supervisor,ejecutivo').eq('mes', mes);
-    var vdata = vr.data || [];
-    var sups = {}, agents = {};
-    vdata.forEach(function(v) { if (v.supervisor) sups[v.supervisor]=true; if (v.ejecutivo) agents[v.ejecutivo]=v.supervisor; });
-    // Supervisors
-    h += '<tr><td colspan="3" style="padding:8px 6px;font-size:11px;font-weight:700;color:var(--att-blue);text-transform:uppercase">Supervisores</td></tr>';
-    Object.keys(sups).sort().forEach(function(s) {
-      var ex = existing.find(function(e){return e.tipo==='supervisor' && e.nombre===s});
-      h += '<tr><td style="padding:5px 6px;background:white;border-radius:6px 0 0 6px;font-size:11px;font-weight:600">'+s+'</td>';
-      h += '<td style="padding:5px 6px;background:white;font-size:10px;color:var(--text-3)">supervisor</td>';
-      h += '<td style="padding:5px 6px;background:white;border-radius:0 6px 6px 0"><input class="field metaInput" data-tipo="supervisor" data-nombre="'+s+'" type="number" value="'+(ex?ex.meta:0)+'" style="width:80px;font-size:11px;padding:4px 6px;text-align:center"></td></tr>';
-    });
-    // Agents
-    h += '<tr><td colspan="3" style="padding:8px 6px;font-size:11px;font-weight:700;color:var(--att-blue);text-transform:uppercase">Agentes</td></tr>';
-    Object.keys(agents).sort().forEach(function(ag) {
-      var ex = existing.find(function(e){return e.tipo==='agente' && e.nombre===ag});
-      h += '<tr><td style="padding:5px 6px;background:white;border-radius:6px 0 0 6px;font-size:11px;font-weight:600">'+ag+'</td>';
-      h += '<td style="padding:5px 6px;background:white;font-size:10px;color:var(--text-3)">'+agents[ag]+'</td>';
-      h += '<td style="padding:5px 6px;background:white;border-radius:0 6px 6px 0"><input class="field metaInput" data-tipo="agente" data-nombre="'+ag+'" type="number" value="'+(ex?ex.meta:0)+'" style="width:80px;font-size:11px;padding:4px 6px;text-align:center"></td></tr>';
-    });
-    h += '</table></div>';
+    
+    // Get all users from system (including inactive for baja detection)
+    var ur = await supabase.from('usuarios').select('attuid,nombre,rol,supervisor,centro,activo');
+    var allUsers = ur.data || [];
+    var agentMap = {};
+    allUsers.filter(function(u) { return u.rol === 'agente'; }).forEach(function(u) { agentMap[u.nombre] = u; });
+    
+    var agentMetas = existing.filter(function(e) { return e.tipo === 'agente'; });
+    var h = '';
+    
+    if (agentMetas.length > 0) {
+      h += '<div style="font-size:12px;font-weight:700;margin-bottom:6px">Metas cargadas para ' + mes + ':</div>';
+      h += '<div style="max-height:300px;overflow-y:auto"><table style="width:100%;border-collapse:separate;border-spacing:0 3px;font-size:11px">';
+      h += '<tr style="font-size:10px;color:var(--text-3);text-transform:uppercase"><td style="padding:4px 6px">Nombre</td><td>Supervisor</td><td>Centro</td><td style="text-align:center">Meta</td><td style="text-align:center">Estado</td></tr>';
+      
+      agentMetas.sort(function(a,b) { return (a.nombre||'').localeCompare(b.nombre||''); });
+      agentMetas.forEach(function(m) {
+        var user = agentMap[m.nombre];
+        var isBaja = user && user.activo === false;
+        var opacity = isBaja ? 'opacity:0.45;' : '';
+        var estadoLabel = isBaja ? '<span style="font-size:9px;background:#DC3545;color:white;padding:1px 5px;border-radius:3px;font-weight:700">BAJA</span>' : 
+                          (m.meta === 0 ? '<span style="font-size:9px;background:#FFC107;color:#333;padding:1px 5px;border-radius:3px;font-weight:700">NUEVO</span>' : 
+                          '<span style="font-size:9px;background:#10B981;color:white;padding:1px 5px;border-radius:3px;font-weight:700">ACTIVO</span>');
+        h += '<tr style="' + opacity + '"><td style="padding:4px 6px;background:white;border-radius:6px 0 0 6px;font-weight:600">' + m.nombre + '</td>';
+        h += '<td style="padding:4px 6px;background:white;font-size:10px;color:var(--text-3)">' + (user ? (user.supervisor||'') : '') + '</td>';
+        h += '<td style="padding:4px 6px;background:white;font-size:10px;color:var(--text-3)">' + (user ? (user.centro||'') : '') + '</td>';
+        h += '<td style="padding:4px 6px;background:white;text-align:center;font-weight:700">' + m.meta + '</td>';
+        h += '<td style="padding:4px 6px;background:white;border-radius:0 6px 6px 0;text-align:center">' + estadoLabel + '</td></tr>';
+      });
+      h += '</table></div>';
+      
+      // Show aggregated metas
+      var opMetas = existing.filter(function(e) { return e.tipo === 'operacion'; });
+      var supMetas = existing.filter(function(e) { return e.tipo === 'supervisor'; });
+      if (opMetas.length > 0) {
+        h += '<div style="margin-top:8px;font-size:11px;color:var(--text-2)"><strong>Operaciones:</strong> ';
+        h += opMetas.map(function(o) { return (o.nombre==='PUE'?'Puebla':'CDMX') + ': ' + o.meta; }).join(' | ');
+        h += '</div>';
+      }
+      if (supMetas.length > 0) {
+        h += '<div style="font-size:11px;color:var(--text-2)"><strong>Supervisores:</strong> ';
+        h += supMetas.sort(function(a,b){return a.nombre.localeCompare(b.nombre)}).map(function(s) { return s.nombre + ': ' + s.meta; }).join(' | ');
+        h += '</div>';
+      }
+    } else {
+      h = '<div style="text-align:center;padding:15px;color:var(--text-3);font-size:12px">No hay metas cargadas para ' + mes + '. Sube un Excel con Nombre y Meta.</div>';
+    }
+    
     document.getElementById('metasConfigTable').innerHTML = h;
-  } catch(e) { console.log('Metas config error:',e); }
+  } catch(e) { console.log('Metas config error:', e); }
 }
 
-async function metasSaveAll() {
+async function metasUploadMetas() {
+  var file = document.getElementById('metasMetaFileInput').files[0];
+  if (!file) { alert('Selecciona un archivo Excel'); return; }
   var mes = document.getElementById('metasMesConfig').value;
-  var inputs = document.querySelectorAll('.metaInput');
-  var upserts = [];
-  inputs.forEach(function(inp) {
-    var val = parseInt(inp.value) || 0;
-    upserts.push({mes:mes, tipo:inp.getAttribute('data-tipo'), nombre:inp.getAttribute('data-nombre'), meta:val, updated_at:new Date().toISOString()});
-  });
-  try {
-    for (var i = 0; i < upserts.length; i++) {
-      var u = upserts[i];
-      await supabase.from('metas').upsert(u, {onConflict:'mes,tipo,nombre'});
+  var status = document.getElementById('metasMetaUploadStatus');
+  var warnings = document.getElementById('metasWarnings');
+  status.textContent = 'Procesando...'; status.style.color = 'var(--att-blue)';
+  warnings.style.display = 'none';
+  
+  var reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, {type:'array'});
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, {header:1});
+      if (rows.length < 2) { status.textContent = 'Excel vacío'; status.style.color = '#DC3545'; return; }
+      
+      // Find Nombre and Meta columns
+      var hdr = rows[0].map(function(h) { return String(h||'').toUpperCase().trim(); });
+      var colNombre = -1, colMeta = -1;
+      for (var ci = 0; ci < hdr.length; ci++) {
+        if (hdr[ci].indexOf('NOMBRE') >= 0 || hdr[ci].indexOf('AGENTE') >= 0 || hdr[ci].indexOf('EJECUTIVO') >= 0) colNombre = ci;
+        if (hdr[ci].indexOf('META') >= 0 || hdr[ci].indexOf('OBJETIVO') >= 0 || hdr[ci] === 'GOAL') colMeta = ci;
+      }
+      if (colNombre === -1 || colMeta === -1) { colNombre = 0; colMeta = 1; }
+      
+      // Parse metas from Excel
+      var excelMetas = [];
+      for (var i = 1; i < rows.length; i++) {
+        var r = rows[i];
+        if (!r || !r[colNombre]) continue;
+        var nombre = String(r[colNombre]).trim();
+        var meta = parseInt(r[colMeta]) || 0;
+        if (nombre) excelMetas.push({nombre: nombre, meta: meta});
+      }
+      
+      if (excelMetas.length === 0) { status.textContent = 'No se encontraron datos válidos'; status.style.color = '#DC3545'; return; }
+      
+      // Get ALL agents from system (active + inactive for matching)
+      var ur = await supabase.from('usuarios').select('attuid,nombre,rol,supervisor,coordinador_id,centro,activo');
+      var allUsers = ur.data || [];
+      var activeAgents = allUsers.filter(function(u) { return u.rol === 'agente' && u.activo; });
+      var allAgents = allUsers.filter(function(u) { return u.rol === 'agente'; });
+      
+      // Normalize names for matching
+      function normName(n) { return (n||'').toUpperCase().trim().replace(/\s+/g,' '); }
+      
+      // Match Excel names to system users
+      var matched = [], unmatched = [];
+      excelMetas.forEach(function(m) {
+        var user = allAgents.find(function(a) { return normName(a.nombre) === normName(m.nombre); });
+        if (user) {
+          matched.push({nombre: user.nombre, attuid: user.attuid, meta: m.meta, supervisor: user.supervisor, centro: user.centro, activo: user.activo});
+        } else {
+          unmatched.push(m);
+        }
+      });
+      
+      // Find active agents NOT in Excel
+      var matchedNames = matched.map(function(m) { return normName(m.nombre); });
+      var missingAgents = activeAgents.filter(function(a) { return matchedNames.indexOf(normName(a.nombre)) === -1; });
+      
+      // Show warnings
+      var warnH = '';
+      if (missingAgents.length > 0) {
+        warnH += '<div style="background:#FFF3CD;border:1px solid #E6A200;border-radius:8px;padding:10px 14px;margin-bottom:6px">';
+        warnH += '<div style="font-weight:700;font-size:12px;color:#856404">⚠️ ' + missingAgents.length + ' agente(s) activo(s) NO aparecen en el Excel</div>';
+        warnH += '<div style="font-size:11px;color:#856404;margin-top:4px">Revisa si son baja o si se omitió su meta:</div>';
+        warnH += '<div style="font-size:11px;color:#856404;margin-top:2px">';
+        missingAgents.forEach(function(a) {
+          warnH += '<div style="padding:2px 0">• <strong>' + a.nombre + '</strong> (' + a.attuid + ') — Sup: ' + (a.supervisor||'N/A') + ' — Centro: ' + (a.centro||'N/A') + '</div>';
+        });
+        warnH += '</div></div>';
+      }
+      if (unmatched.length > 0) {
+        warnH += '<div style="background:#F8D7DA;border:1px solid #DC3545;border-radius:8px;padding:10px 14px;margin-bottom:6px">';
+        warnH += '<div style="font-weight:700;font-size:12px;color:#721C24">❌ ' + unmatched.length + ' nombre(s) del Excel NO coinciden con el sistema</div>';
+        warnH += '<div style="font-size:11px;color:#721C24;margin-top:4px">Revisa la ortografía o da de alta al agente:</div>';
+        warnH += '<div style="font-size:11px;color:#721C24;margin-top:2px">';
+        unmatched.forEach(function(u) { warnH += '<div style="padding:2px 0">• <strong>' + u.nombre + '</strong> (meta: ' + u.meta + ')</div>'; });
+        warnH += '</div></div>';
+      }
+      if (warnH) { warnings.innerHTML = warnH; warnings.style.display = ''; }
+      
+      // Build upserts: agent-level metas (from matched)
+      var upserts = [];
+      matched.forEach(function(m) {
+        upserts.push({
+          mes: mes, tipo: 'agente', nombre: m.nombre,
+          attuid: m.attuid || '', meta: m.meta, activo_al_cargar: m.activo,
+          updated_at: new Date().toISOString()
+        });
+      });
+      
+      // Add missing active agents with meta 0 (new hires)
+      missingAgents.forEach(function(a) {
+        upserts.push({
+          mes: mes, tipo: 'agente', nombre: a.nombre,
+          attuid: a.attuid || '', meta: 0, activo_al_cargar: true,
+          updated_at: new Date().toISOString()
+        });
+      });
+      
+      // Auto-calculate supervisor metas (sum of their agents - including bajas, meta stays fixed)
+      var supTotals = {};
+      upserts.filter(function(u) { return u.tipo === 'agente'; }).forEach(function(u) {
+        var user = allAgents.find(function(a) { return normName(a.nombre) === normName(u.nombre); });
+        if (user && user.supervisor) {
+          if (!supTotals[user.supervisor]) supTotals[user.supervisor] = 0;
+          supTotals[user.supervisor] += u.meta;
+        }
+      });
+      Object.keys(supTotals).forEach(function(s) {
+        upserts.push({mes: mes, tipo: 'supervisor', nombre: s, meta: supTotals[s], updated_at: new Date().toISOString()});
+      });
+      
+      // Auto-calculate centro metas
+      var centroTotals = {};
+      upserts.filter(function(u) { return u.tipo === 'agente'; }).forEach(function(u) {
+        var user = allAgents.find(function(a) { return normName(a.nombre) === normName(u.nombre); });
+        if (user && user.centro) {
+          if (!centroTotals[user.centro]) centroTotals[user.centro] = 0;
+          centroTotals[user.centro] += u.meta;
+        }
+      });
+      Object.keys(centroTotals).forEach(function(ck) {
+        upserts.push({mes: mes, tipo: 'centro', nombre: ck, meta: centroTotals[ck], updated_at: new Date().toISOString()});
+      });
+      
+      // Auto-calculate operation metas
+      var opTotals = {'PUE': 0, 'CDMX': 0};
+      Object.keys(centroTotals).forEach(function(ck) {
+        var opKey = (METAS_CENTROS[ck] && METAS_CENTROS[ck].op) ? METAS_CENTROS[ck].op : 'PUE';
+        opTotals[opKey] += centroTotals[ck];
+      });
+      Object.keys(opTotals).forEach(function(op) {
+        upserts.push({mes: mes, tipo: 'operacion', nombre: op, meta: opTotals[op], updated_at: new Date().toISOString()});
+      });
+      
+      // Save: delete existing and insert fresh
+      status.textContent = 'Guardando ' + upserts.length + ' registros...';
+      await supabase.from('metas').delete().eq('mes', mes);
+      for (var b = 0; b < upserts.length; b += 50) {
+        await supabase.from('metas').insert(upserts.slice(b, b + 50));
+      }
+      
+      var agentCount = upserts.filter(function(u) { return u.tipo === 'agente' && u.meta > 0; }).length;
+      var totalMeta = upserts.filter(function(u) { return u.tipo === 'agente'; }).reduce(function(s,u) { return s + u.meta; }, 0);
+      status.innerHTML = '✅ Metas cargadas: <strong>' + agentCount + ' agentes</strong> con meta, total: <strong>' + totalMeta + ' ventas</strong>';
+      status.style.color = '#10B981';
+      
+      await metasLoadData();
+      metasLoadConfig();
+      metasRender();
+    } catch(err) {
+      status.textContent = '❌ Error: ' + err.message;
+      status.style.color = '#DC3545';
     }
-    alert('✅ Metas guardadas para '+mes);
-    await metasLoadData();
-    metasRender();
-  } catch(e) { alert('❌ Error: '+e.message); }
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 // ============================================================
