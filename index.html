@@ -8353,13 +8353,22 @@ async function metasUploadMetas() {
       if (excelMetas.length === 0) { status.textContent = 'No se encontraron datos válidos'; status.style.color = '#DC3545'; return; }
       
       // Get ALL agents from system (active + inactive for matching)
-      var ur = await supabase.from('usuarios').select('attuid,nombre,rol,supervisor,coordinador_id,centro,activo');
+      var ur = await supabase.from('usuarios').select('*');
       var allUsers = ur.data || [];
-      var activeAgents = allUsers.filter(function(u) { return u.rol === 'agente' && u.activo; });
+      console.log('Metas upload: found ' + allUsers.length + ' users in system. Roles:', allUsers.map(function(u){return u.rol}).filter(function(v,i,a){return a.indexOf(v)===i}));
+      if (allUsers.length > 0) console.log('Sample user:', JSON.stringify(allUsers[0]));
+      var activeAgents = allUsers.filter(function(u) { return u.rol === 'agente' && u.activo !== false; });
       var allAgents = allUsers.filter(function(u) { return u.rol === 'agente'; });
+      console.log('Metas upload: ' + allAgents.length + ' agents, ' + activeAgents.length + ' active');
       
-      // Normalize names for matching
+      // Normalize names for matching (remove accents, uppercase, trim)
       function normName(n) { return (n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim().replace(/\s+/g,' '); }
+      
+      // Debug: log first few comparisons
+      if (excelMetas.length > 0 && allAgents.length > 0) {
+        console.log('Excel first name normalized:', JSON.stringify(normName(excelMetas[0].nombre)));
+        console.log('System first agent normalized:', JSON.stringify(normName(allAgents[0].nombre)));
+      }
       
       // Match Excel names to system users
       var matched = [], unmatched = [];
@@ -8371,6 +8380,7 @@ async function metasUploadMetas() {
           unmatched.push(m);
         }
       });
+      console.log('Metas upload: matched=' + matched.length + ', unmatched=' + unmatched.length);
       
       // Find active agents NOT in Excel
       var matchedNames = matched.map(function(m) { return normName(m.nombre); });
