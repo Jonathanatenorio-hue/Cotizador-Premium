@@ -1572,7 +1572,7 @@ setTimeout(function() { if (!supabase) { initSupabase(); } }, 3000);
 setTimeout(function() { if (!supabase) { initSupabase(); console.log('Final supabase status:', !!supabase); } }, 5000);
 
 // ── VERSION CHECK ──
-var APP_VERSION = '2026.02.25.1';
+var APP_VERSION = '2026.02.25.2';
 var _versionChecked = false;
 async function checkAppVersion() {
   if (_versionChecked || !supabase) return;
@@ -7744,6 +7744,10 @@ async function mnSaveMetaIngreso(val) {
 async function showMotivationalMessage() {
   var msgDiv = document.getElementById('homeMotivMsg');
   if (!msgDiv) return;
+  
+  // Only for agents
+  var rol = currentUser ? currentUser.rol : (state.agente ? state.agente.rol : 'agente');
+  if (rol !== 'agente') { msgDiv.style.display = 'none'; return; }
   
   // Count today's sales
   var today = new Date().toISOString().slice(0, 10);
