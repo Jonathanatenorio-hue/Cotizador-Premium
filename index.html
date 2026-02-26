@@ -7928,6 +7928,8 @@ async function openMetas() {
   if (document.getElementById('metasMesConfig')) document.getElementById('metasMesConfig').innerHTML = mesOpts;
   // Load data
   await metasLoadData();
+  // Ensure adminUsers/adminCentros are loaded for supervisor-centro mapping
+  if (!adminUsers || adminUsers.length === 0) await loadAdminData();
   if (rol === 'admin' || rol === 'coordinador') await metasLoadConfig();
   metasFilterChanged();
 }
@@ -7957,13 +7959,17 @@ function metasFilterChanged() {
     if (opVal !== 'all' && METAS_CENTROS[k].op !== opVal) return;
     centroSel.innerHTML += '<option value="'+k+'">'+METAS_CENTROS[k].name+'</option>';
   });
-  // Populate supervisors
+  // Populate supervisors from ventas AND metas
   var centroVal = centroSel.value;
   var sups = {};
   metasVentas.forEach(function(v) {
     if (opVal !== 'all' && METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op !== opVal) return;
     if (centroVal !== 'all' && v.centro_key !== centroVal) return;
     if (v.supervisor) sups[v.supervisor] = true;
+  });
+  // Also add supervisors from metas table (so they appear even with 0 ventas)
+  metasMetas.filter(function(m) { return m.tipo === 'supervisor'; }).forEach(function(m) {
+    sups[m.nombre] = true;
   });
   supSel.innerHTML = '<option value="all">Todos los supervisores</option>';
   Object.keys(sups).sort().forEach(function(s) { supSel.innerHTML += '<option value="'+s+'">'+s+'</option>'; });
