@@ -3277,14 +3277,8 @@ async function loadAllDeviceImgs() {
     var key = imgEl.getAttribute('data-imgkey');
     if (!key) return;
     
-    // Already loaded
-    if (deviceImgCache[key] === 'loaded') return;
-    
-    // Already checked and not found
-    if (deviceImgCache[key] === 'none') return;
-    
-    // If cached URL exists, apply it
-    if (deviceImgCache[key]) {
+    // Already loaded successfully with URL
+    if (deviceImgCache[key] && deviceImgCache[key] !== 'none') {
       imgEl.src = deviceImgCache[key];
       imgEl.style.display = '';
       if (imgEl.nextElementSibling) imgEl.nextElementSibling.style.display = 'none';
@@ -3294,7 +3288,6 @@ async function loadAllDeviceImgs() {
     // Try each extension
     var tryExt = function(i) {
       if (i >= exts.length) {
-        deviceImgCache[key] = 'none';
         return;
       }
       var {data} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(key + exts[i]);
@@ -9110,13 +9103,17 @@ async function metasRender() {
       opsH += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-3);margin-bottom:12px"><span>'+opVentas+' ventas</span><span>Meta: '+opMeta+'</span></div>';
       
       // Centros
+      var centroColors = {'CC2':{bar:'rgba(59,130,246,0.6)',border:'#3B82F6',bg:'linear-gradient(135deg,#EFF6FF,#DBEAFE)'},'JV':{bar:'rgba(16,185,129,0.6)',border:'#10B981',bg:'linear-gradient(135deg,#ECFDF5,#D1FAE5)'},'CDMX':{bar:'rgba(168,85,247,0.6)',border:'#A855F7',bg:'linear-gradient(135deg,#FAF5FF,#EDE9FE)'}};
+      var defaultCentroColor = {bar:'rgba(107,114,128,0.5)',border:'#6B7280',bg:'linear-gradient(135deg,#F0F4FF,#E8F0FE)'};
+      
       Object.keys(METAS_CENTROS).forEach(function(ck) {
         if (METAS_CENTROS[ck].op !== op) return;
         if (centroVal !== 'all' && centroVal !== ck) return;
         var cv = metasVentas.filter(function(v){return v.centro_key===ck}).length;
         var cm = metasGetMeta('centro', ck);
         var cp = cm>0?Math.round(cv/cm*100):0;
-        var cc = cp>=100?'#10B981':cp>=70?'#F59E0B':'#DC3545';
+        var ckColor = centroColors[ck] || defaultCentroColor;
+        var cc = cp>=100?'#10B981': ckColor.border;
         var coordName = coordPerCentro[ck] || '';
         var cDiaria = cm > 0 && workDaysTotal > 0 ? (cm / workDaysTotal) : 0;
         var cEsperado = Math.round(cDiaria * workDaysPassed * 10) / 10;
@@ -9126,14 +9123,14 @@ async function metasRender() {
         var cDiffSign = cDiff >= 0 ? '+' : '';
         
         // Centro header with coordinador
-        opsH += '<div style="background:linear-gradient(135deg,#F0F4FF,#E8F0FE);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid #D0DCEF">';
+        opsH += '<div style="background:'+ckColor.bg+';border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid '+ckColor.border+'33">';
         opsH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
         opsH += '<div><div style="font-size:12px;font-weight:800;color:#1A365D">'+METAS_CENTROS[ck].name+'</div>';
         if (coordName) opsH += '<div style="font-size:9px;color:#4A6FA5;font-weight:600;margin-top:1px">📋 Coord: '+coordName+'</div>';
         opsH += '</div>';
         opsH += '<div style="text-align:right"><span style="font-size:16px;font-weight:900;color:'+cc+'">'+cp+'%</span><div style="font-size:10px;color:var(--text-3)">'+cv+'/'+cm+'</div></div>';
         opsH += '</div>';
-        opsH += '<div style="height:8px;border-radius:4px;background:rgba(0,0,0,0.08);overflow:hidden;margin-bottom:6px"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+cc+';border-radius:4px"></div></div>';
+        opsH += '<div style="height:8px;border-radius:4px;background:rgba(0,0,0,0.08);overflow:hidden;margin-bottom:6px"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+ckColor.bar+';border-radius:4px"></div></div>';
         if (isCurrentMonth && cm > 0) {
           opsH += '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-3);margin-bottom:10px;padding:4px 6px;background:rgba(0,0,0,0.03);border-radius:4px">';
           opsH += '<span>📅 Diaria: <b>'+cDiaria.toFixed(1)+'</b></span>';
@@ -9172,7 +9169,7 @@ async function metasRender() {
           var sv = centroSups[s];
           var sm = metasGetMeta('supervisor', s);
           var sp = sm>0?Math.round(sv/sm*100):0;
-          var sc = sp>=100?'#10B981':sp>=70?'#F59E0B':'#DC3545';
+          var sc = sp>=100?'#10B981': ckColor.border;
           var sDiaria = sm > 0 && workDaysTotal > 0 ? (sm / workDaysTotal) : 0;
           var sEsperado = Math.round(sDiaria * workDaysPassed * 10) / 10;
           var sDiff = sv - sEsperado;
@@ -9184,7 +9181,7 @@ async function metasRender() {
           opsH += '<span style="font-size:10px;font-weight:600;color:var(--text-2)">👤 '+s+'</span>';
           opsH += '<span style="font-size:10px;font-weight:700;color:'+sc+'">'+sv+'/'+sm+' ('+sp+'%)'+(isCurrentMonth && sm > 0 ? ' <span style="color:'+sDiffColor+'">'+sDiffSign+Math.round(sDiff)+'</span> · <span style="color:#8B5CF6">Proy:'+sProyeccion+'</span>' : '')+'</span>';
           opsH += '</div>';
-          opsH += '<div style="height:7px;border-radius:4px;background:rgba(0,0,0,0.06);overflow:hidden"><div style="height:100%;width:'+Math.min(sp,100)+'%;background:'+sc+';border-radius:4px;transition:width 0.4s"></div></div>';
+          opsH += '<div style="height:7px;border-radius:4px;background:rgba(0,0,0,0.06);overflow:hidden"><div style="height:100%;width:'+Math.min(sp,100)+'%;background:'+ckColor.bar+';border-radius:4px;transition:width 0.4s"></div></div>';
           opsH += '</div>';
         });
         opsH += '</div>';
