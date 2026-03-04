@@ -3240,40 +3240,53 @@ async function sendAsesorMsg() {
 // ── DEVICE IMAGES ──
 var DEVICE_IMG_BUCKET = 'device-images';
 var deviceImgCache = {};
+var deviceImgChecked = {};
 
 function deviceImgKey(equipo) {
   return (equipo || '').toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').substring(0, 80);
 }
 
-async function loadDeviceImg(imgKey) {
-  if (deviceImgCache[imgKey] !== undefined) return deviceImgCache[imgKey];
-  if (!supabase) return null;
-  try {
-    var {data} = await supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(imgKey + '.webp');
-    if (data && data.publicUrl) {
-      // Test if image exists
-      deviceImgCache[imgKey] = data.publicUrl;
-      return data.publicUrl;
-    }
-  } catch(e) {}
-  deviceImgCache[imgKey] = null;
-  return null;
-}
-
 async function loadAllDeviceImgs() {
-  // Load all images for visible cards
+  if (!supabase) return;
   var imgs = document.querySelectorAll('[data-imgkey]');
-  for (var i = 0; i < imgs.length; i++) {
-    var img = imgs[i];
+  if (!imgs.length) return;
+  
+  // Collect unique keys that haven't been checked
+  var keysToCheck = [];
+  imgs.forEach(function(img) {
     var key = img.getAttribute('data-imgkey');
-    if (!key || img.src) continue;
-    var url = await loadDeviceImg(key);
-    if (url) {
-      img.src = url;
+    if (key && !deviceImgChecked[key]) keysToCheck.push(key);
+  });
+  
+  // Batch check which files exist in storage
+  if (keysToCheck.length > 0) {
+    try {
+      var {data: files} = await supabase.storage.from(DEVICE_IMG_BUCKET).list('', {limit: 1000});
+      var existingFiles = {};
+      (files || []).forEach(function(f) { existingFiles[f.name] = true; });
+      
+      keysToCheck.forEach(function(key) {
+        deviceImgChecked[key] = true;
+        if (existingFiles[key + '.webp'] || existingFiles[key + '.png'] || existingFiles[key + '.jpg'] || existingFiles[key + '.jpeg']) {
+          var ext = existingFiles[key + '.webp'] ? '.webp' : existingFiles[key + '.png'] ? '.png' : existingFiles[key + '.jpg'] ? '.jpg' : '.jpeg';
+          var {data} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(key + ext);
+          deviceImgCache[key] = data.publicUrl + '?t=' + Date.now();
+        } else {
+          deviceImgCache[key] = null;
+        }
+      });
+    } catch(e) { console.log('Img list error:', e); }
+  }
+  
+  // Apply cached URLs to all img elements
+  imgs.forEach(function(img) {
+    var key = img.getAttribute('data-imgkey');
+    if (key && deviceImgCache[key]) {
+      img.src = deviceImgCache[key];
       img.style.display = '';
       if (img.nextElementSibling) img.nextElementSibling.style.display = 'none';
     }
-  }
+  });
 }
 
 function uploadDeviceImg(imgKey, devId) {
@@ -3284,31 +3297,40 @@ function uploadDeviceImg(imgKey, devId) {
     var file = inp.files[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { alert('Imagen máximo 2MB'); return; }
+    
+    // Determine extension
+    var ext = '.webp';
+    if (file.type === 'image/png') ext = '.png';
+    else if (file.type === 'image/jpeg') ext = '.jpg';
+    
     try {
-      var {error} = await supabase.storage.from(DEVICE_IMG_BUCKET).upload(imgKey + '.webp', file, {upsert: true, contentType: file.type});
+      // Delete any existing variants first
+      try { await supabase.storage.from(DEVICE_IMG_BUCKET).remove([imgKey+'.webp', imgKey+'.png', imgKey+'.jpg', imgKey+'.jpeg']); } catch(e){}
+      
+      var {error} = await supabase.storage.from(DEVICE_IMG_BUCKET).upload(imgKey + ext, file, {upsert: true, contentType: file.type});
       if (error) { alert('Error: ' + error.message); return; }
-      // Update cache and refresh image
-      var {data} = await supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(imgKey + '.webp');
+      
+      var {data} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(imgKey + ext);
       if (data) {
         deviceImgCache[imgKey] = data.publicUrl + '?t=' + Date.now();
-        var imgEl = document.querySelector('#dimg_' + devId + ' img');
-        if (imgEl) {
-          imgEl.src = deviceImgCache[imgKey];
-          imgEl.style.display = '';
-          if (imgEl.nextElementSibling) imgEl.nextElementSibling.style.display = 'none';
-        }
+        deviceImgChecked[imgKey] = true;
+        // Update ALL images with this key (multiple cards for same device)
+        document.querySelectorAll('[data-imgkey="'+imgKey+'"]').forEach(function(img) {
+          img.src = deviceImgCache[imgKey];
+          img.style.display = '';
+          if (img.nextElementSibling) img.nextElementSibling.style.display = 'none';
+        });
       }
-      alert('✅ Imagen actualizada');
+      alert('✅ Imagen actualizada para todos los usuarios');
     } catch(e) { alert('Error: ' + e.message); }
   };
   inp.click();
 }
 
-// Get image URL for PDF use
 async function getDeviceImgUrl(equipo) {
   var key = deviceImgKey(equipo);
-  var url = await loadDeviceImg(key);
-  return url;
+  if (deviceImgCache[key]) return deviceImgCache[key];
+  return null;
 }
 
 function searchDevices() {
@@ -5091,9 +5113,10 @@ function showDetalle(folio) {
           </div>
           <button class="btn btn-primary" style="width:auto;font-size:12px" onclick="guardarEstatus('${cot.folio}')">💾 Guardar Estatus</button>
         </div>
-        <div style="display:flex;gap:6px;margin-top:8px">
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
           <button class="btn btn-secondary" onclick="editCotizacion('${cot.folio}')">✏️ Editar</button>
           <button class="btn btn-secondary" onclick="buildAndDownloadPDF(state.selectedCotizacion)">📄 Descargar PDF</button>
+          ${currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador') ? '<button class="btn btn-secondary" onclick="reasignarCotDetalle(\''+cot.folio+'\')" style="color:#8B5CF6;border-color:#8B5CF6">🔄 Reasignar</button>' : ''}
         </div>
       </div>
     </div>
@@ -5396,6 +5419,56 @@ async function loadNotas(folio) {
 // ============================================================
 // EDIT COTIZACIÓN
 // ============================================================
+async function reasignarCotDetalle(folio) {
+  if (!supabase || !currentUser) return;
+  if (currentUser.rol !== 'admin' && currentUser.rol !== 'coordinador') { alert('Sin permisos'); return; }
+  
+  // Load active agents
+  var {data: agents} = await supabase.from('usuarios').select('id, nombre, attuid, rol, supervisor_id, coordinador_id').eq('activo', true);
+  var agentList = (agents || []).filter(function(u) { return u.rol === 'agente'; });
+  
+  // Coordinador only sees their structure
+  if (currentUser.rol === 'coordinador') {
+    agentList = agentList.filter(function(u) { return u.coordinador_id === currentUser.id; });
+  }
+  
+  agentList.sort(function(a,b) { return (a.nombre||'').localeCompare(b.nombre||''); });
+  
+  var options = agentList.map(function(a) { return a.nombre + ' (' + a.attuid + ')'; });
+  var selected = prompt('Reasignar cotización ' + folio + ' a:\n\n' + agentList.map(function(a,i) { return (i+1) + '. ' + a.nombre; }).join('\n') + '\n\nEscribe el número:');
+  
+  if (!selected) return;
+  var idx = parseInt(selected) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= agentList.length) { alert('Opción inválida'); return; }
+  
+  var newAgent = agentList[idx];
+  
+  if (!confirm('¿Reasignar ' + folio + ' a ' + newAgent.nombre + '?')) return;
+  
+  try {
+    await supabase.from('cotizaciones').update({
+      agente_id: newAgent.id,
+      sub_estatus: 'reasignada'
+    }).eq('folio', folio);
+    
+    // Add nota about reasignación
+    var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', folio).single();
+    if (cotRow) {
+      await supabase.from('cotizacion_notas').insert({
+        cotizacion_id: cotRow.id,
+        tipo: 'nota',
+        texto: 'Cotización reasignada a ' + newAgent.nombre + ' por ' + currentUser.nombre,
+        autor: currentUser.nombre,
+        rol_autor: currentUser.rol
+      });
+    }
+    
+    alert('✅ Cotización reasignada a ' + newAgent.nombre);
+    await loadCotizacionesFromSupabase();
+    showView('historial');
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
 function editCotizacion(folio) {
   const cot = state.cotizaciones.find(c => c.folio === folio);
   if (!cot) return;
