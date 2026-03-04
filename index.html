@@ -1191,11 +1191,14 @@ body{padding-bottom:60px}
       </div>
       <!-- Filters -->
       <div id="recFilters" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-        <select class="field" id="recFilterEstatus" onchange="renderRecuperacion()" style="width:auto;font-size:11px;padding:5px 8px">
+        <select class="field" id="recFilterEstatus" onchange="recPopulateTipificacion();renderRecuperacion()" style="width:auto;font-size:11px;padding:5px 8px">
           <option value="all">Todos los estatus</option>
           <option value="perdida">Perdidas</option>
           <option value="enviada">Enviadas sin seguimiento</option>
           <option value="seguimiento">En seguimiento estancadas</option>
+        </select>
+        <select class="field" id="recFilterTipificacion" onchange="renderRecuperacion()" style="width:auto;font-size:11px;padding:5px 8px">
+          <option value="all">Todas las tipificaciones</option>
         </select>
         <select class="field" id="recFilterCentro" onchange="recFilterCentroChange();renderRecuperacion()" style="width:auto;font-size:11px;padding:5px 8px">
           <option value="all">Todos los centros</option>
@@ -1709,7 +1712,7 @@ setTimeout(function() { if (!supabase) { initSupabase(); } }, 3000);
 setTimeout(function() { if (!supabase) { initSupabase(); console.log('Final supabase status:', !!supabase); } }, 5000);
 
 // ── VERSION CHECK ──
-var APP_VERSION = '2026.02.25.2';
+var APP_VERSION = '2026.03.04.1';
 var _versionChecked = false;
 async function checkAppVersion() {
   if (_versionChecked || !supabase) return;
@@ -2389,31 +2392,46 @@ async function updateEstatusInSupabase(folio, estatus) {
 async function loadCotizacionesFromSupabase() {
   if (!supabase || !currentUser) { console.log('loadCots: no supabase or user'); return; }
   try {
-    var query = supabase.from('cotizaciones').select('*, cotizacion_items(*), cotizacion_notas(*)');
-
-
-    // Filter by role
+    // Build base query filters based on role
+    var roleFilter = null;
+    var roleIds = null;
+    
     if (currentUser.rol === 'agente') {
-      query = query.eq('agente_id', currentUser.id);
+      roleIds = [currentUser.id];
     } else if (currentUser.rol === 'supervisor') {
       var { data: agentes } = await supabase.from('usuarios').select('id').eq('supervisor_id', currentUser.id);
-      var ids = (agentes || []).map(function(a) { return a.id; });
-      ids.push(currentUser.id);
-      query = query.in('agente_id', ids);
+      roleIds = (agentes || []).map(function(a) { return a.id; });
+      roleIds.push(currentUser.id);
     } else if (currentUser.rol === 'coordinador') {
       var { data: users } = await supabase.from('usuarios').select('id').eq('coordinador_id', currentUser.id);
-      var ids = (users || []).map(function(u) { return u.id; });
-      ids.push(currentUser.id);
-      query = query.in('agente_id', ids);
+      roleIds = (users || []).map(function(u) { return u.id; });
+      roleIds.push(currentUser.id);
     }
-    // admin sees all - no filter
-
-    query = query.order('created_at', { ascending: false }).limit(500);
-    var { data, error } = await query;
-
-    if (error) { console.error('Load cotizaciones error:', error); return; }
-    if (!data) { console.log('loadCots: no data returned'); return; }
-    console.log('loadCots: got ' + data.length + ' from Supabase');
+    // admin: roleIds stays null = no filter
+    
+    // Paginated fetch - 1000 per page
+    var allData = [];
+    var pageSize = 1000;
+    var page = 0;
+    var hasMore = true;
+    
+    while (hasMore) {
+      var query = supabase.from('cotizaciones').select('*, cotizacion_items(*), cotizacion_notas(*)');
+      if (roleIds) query = query.in('agente_id', roleIds);
+      query = query.order('created_at', { ascending: false }).range(page * pageSize, (page + 1) * pageSize - 1);
+      
+      var { data, error } = await query;
+      if (error) { console.error('Load cotizaciones error:', error); break; }
+      if (!data || data.length === 0) { hasMore = false; break; }
+      
+      allData = allData.concat(data);
+      if (data.length < pageSize) { hasMore = false; }
+      page++;
+    }
+    
+    var data = allData;
+    if (!data.length) { console.log('loadCots: no data returned'); state.cotizaciones = []; return; }
+    console.log('loadCots: got ' + data.length + ' from Supabase (' + page + ' pages)');
 
     // Load agent names separately
     var agentIds = [...new Set(data.map(function(c) { return c.agente_id; }))];
@@ -7192,6 +7210,7 @@ async function openRecuperacion() {
     centroSel.innerHTML = '<option value="all">Todos los centros</option>';
     Object.keys(centros).sort().forEach(function(c){ centroSel.innerHTML += '<option value="'+c+'">'+c+'</option>'; });
     recFilterCentroChange();
+    recPopulateTipificacion();
 
     // Reasign dropdown — filtered by role (FIX 11)
     var activeList = (allUsers || []).filter(function(u){ return u.activo === true || u.activo === 'true'; });
@@ -7235,6 +7254,25 @@ function recFilterCentroChange(){
   });
 }
 
+function recPopulateTipificacion() {
+  var tipSel = document.getElementById('recFilterTipificacion');
+  if (!tipSel) return;
+  var estFilter = document.getElementById('recFilterEstatus').value;
+  var tips = {};
+  recupCots.forEach(function(c) {
+    if (!c.isRecuperable && !c.isAdeudo) return;
+    if (estFilter !== 'all' && c.estatus !== estFilter) return;
+    if (c.sub_estatus) tips[c.sub_estatus] = (tips[c.sub_estatus]||0) + 1;
+  });
+  var prev = tipSel.value;
+  tipSel.innerHTML = '<option value="all">Todas las tipificaciones</option>';
+  tipSel.innerHTML += '<option value="sin_tipificar">Sin tipificación</option>';
+  Object.keys(tips).sort(function(a,b){return tips[b]-tips[a]}).forEach(function(t) {
+    tipSel.innerHTML += '<option value="'+t+'">'+(SUB_ESTATUS_LABELS[t]||t)+' ('+tips[t]+')</option>';
+  });
+  if (prev && tipSel.querySelector('option[value="'+prev+'"]')) tipSel.value = prev;
+}
+
 function recTab(tab){
   recupTab = tab;
   ['Recup','Exag'].forEach(function(t){
@@ -7250,6 +7288,7 @@ function recTab(tab){
 function renderRecuperacion() {
   var tab = recupTab;
   var estFilter = document.getElementById('recFilterEstatus').value;
+  var tipFilter = document.getElementById('recFilterTipificacion').value;
   var centroFilter = document.getElementById('recFilterCentro').value;
   var agenteFilter = document.getElementById('recFilterAgente').value;
 
@@ -7257,6 +7296,10 @@ function renderRecuperacion() {
     if(tab==='exagentes') return c.isExAgent;
     if(!c.isRecuperable) return false;
     if(estFilter !== 'all' && c.estatus !== estFilter) return false;
+    if(tipFilter !== 'all') {
+      if(tipFilter === 'sin_tipificar') { if(c.sub_estatus) return false; }
+      else { if(c.sub_estatus !== tipFilter) return false; }
+    }
     if(centroFilter !== 'all' && c.centro !== centroFilter) return false;
     if(agenteFilter !== 'all' && c.agente_id !== agenteFilter) return false;
     return true;
