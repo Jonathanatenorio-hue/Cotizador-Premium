@@ -1449,16 +1449,36 @@ body{padding-bottom:60px}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <div>
           <div style="font-size:16px;font-weight:800">📋 Plan de Trabajo con IA</div>
-          <div style="font-size:10px;color:var(--text-3)">Análisis y recomendaciones basadas en métricas reales</div>
+          <div style="font-size:10px;color:var(--text-3)">Genera, ajusta y guarda el plan del mes</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <select class="field" id="planIATarget" style="width:auto;font-size:11px;padding:6px 8px">
             <option value="equipo">👥 Mi equipo completo</option>
           </select>
-          <button onclick="generatePlanIA()" class="btn btn-primary" style="font-size:11px;padding:7px 14px;background:linear-gradient(135deg,#8B5CF6,#6D28D9)">🤖 Generar Plan</button>
         </div>
       </div>
-      <div id="planIAResult"></div>
+      <!-- Saved plan display -->
+      <div id="planIASaved" style="display:none"></div>
+      <!-- Generation area -->
+      <div id="planIAWorkarea">
+        <div id="planIAResult"></div>
+        <div id="planIAChat" style="display:none;margin-top:8px">
+          <div id="planIAChatMsgs" style="max-height:200px;overflow-y:auto;margin-bottom:6px"></div>
+          <div style="display:flex;gap:6px">
+            <input type="text" class="field" id="planIAChatInput" placeholder="Ajusta el plan: ej. 'agrega más detalle para Carlos' o 'incluye acciones para nuevos'" style="flex:1;font-size:11px" onkeydown="if(event.key==='Enter')sendPlanIAChat()">
+            <button onclick="sendPlanIAChat()" class="btn btn-primary" style="font-size:11px;padding:6px 14px;background:#8B5CF6">Enviar</button>
+          </div>
+        </div>
+        <div id="planIAActions" style="display:none;margin-top:10px;display:flex;gap:8px">
+          <button onclick="generatePlanIA()" class="btn btn-secondary" style="font-size:11px;padding:7px 14px">🔄 Regenerar</button>
+          <button onclick="savePlanIA()" class="btn btn-primary" style="font-size:11px;padding:7px 14px;background:linear-gradient(135deg,#10B981,#059669)">💾 Guardar Plan del Mes</button>
+        </div>
+        <div id="planIAStartBtn" style="text-align:center;padding:30px">
+          <button onclick="generatePlanIA()" class="btn btn-primary" style="font-size:13px;padding:10px 24px;background:linear-gradient(135deg,#8B5CF6,#6D28D9)">🤖 Generar Plan de Trabajo</button>
+        </div>
+      </div>
+      <!-- Annotations on saved plan -->
+      <div id="planIAAnnotations" style="display:none;margin-top:10px"></div>
     </div>
   </div>
 </div>
@@ -9005,14 +9025,25 @@ async function metasRender() {
   kH += '<span style="font-size:11px;padding:4px 12px;border-radius:12px;font-weight:700;background:'+pctColor+'15;color:'+pctColor+'">'+pct+'% cumplimiento</span>';
   kH += '</div>';
   // Main progress bar
-  kH += '<div style="position:relative;height:14px;border-radius:7px;background:var(--border);overflow:hidden;margin-bottom:12px">';
+  kH += '<div style="position:relative;height:14px;border-radius:7px;background:var(--border);overflow:visible;margin-bottom:12px">';
   kH += '<div style="height:100%;width:'+Math.min(pct,100)+'%;background:linear-gradient(90deg,'+pctColor+','+pctColor+'CC);border-radius:7px;transition:width 0.6s cubic-bezier(.4,0,.2,1)"></div>';
-  if (totalMeta > 0) kH += '<div style="position:absolute;top:0;bottom:0;left:'+Math.min(100, Math.round(projected/totalMeta*100))+'%;width:2px;background:#8B5CF6" title="Proyección"></div>';
+  if (isCurrentMonth && totalMeta > 0) {
+    var esperadoPct = Math.min(100, Math.round(esperadoHoy/totalMeta*100));
+    kH += '<div style="position:absolute;top:-3px;bottom:-3px;left:'+esperadoPct+'%;width:2px;background:#1E40AF;z-index:2" title="Esperado hoy: '+esperadoHoy+'"></div>';
+  }
+  if (totalMeta > 0) kH += '<div style="position:absolute;top:-3px;bottom:-3px;left:'+Math.min(100, Math.round(projected/totalMeta*100))+'%;width:2px;background:#8B5CF6;z-index:1" title="Proyección: '+projected+'"></div>';
   kH += '</div>';
   // Stats row
-  kH += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">';
+  var ventasDiariasNecesarias = totalMeta > 0 && workDaysTotal > 0 ? (totalMeta / workDaysTotal) : 0;
+  var esperadoHoy = Math.round(ventasDiariasNecesarias * workDaysPassed);
+  var diffEsperado = totalVentas - esperadoHoy;
+  var diffColor = diffEsperado >= 0 ? '#10B981' : '#DC3545';
+  var diffSign = diffEsperado >= 0 ? '+' : '';
+  kH += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:8px;text-align:center">';
   kH += '<div><div style="font-size:24px;font-weight:900;color:var(--att-blue)">'+totalVentas+'</div><div style="font-size:9px;color:var(--text-3)">VENTAS</div></div>';
   kH += '<div><div style="font-size:24px;font-weight:900;color:var(--text-2)">'+totalMeta+'</div><div style="font-size:9px;color:var(--text-3)">META</div></div>';
+  if (isCurrentMonth && totalMeta > 0) kH += '<div><div style="font-size:24px;font-weight:900;color:#1E40AF">'+esperadoHoy+'</div><div style="font-size:9px;color:var(--text-3)">ESPERADO HOY</div></div>';
+  if (isCurrentMonth && totalMeta > 0) kH += '<div><div style="font-size:24px;font-weight:900;color:'+diffColor+'">'+diffSign+diffEsperado+'</div><div style="font-size:9px;color:var(--text-3)">VS ESPERADO</div></div>';
   kH += '<div><div style="font-size:24px;font-weight:900;color:#8B5CF6">'+projected+'</div><div style="font-size:9px;color:var(--text-3)">PROYECCIÓN</div></div>';
   kH += '<div><div style="font-size:24px;font-weight:900;color:'+(projPct>=100?'#10B981':'#F59E0B')+'">'+projPct+'%</div><div style="font-size:9px;color:var(--text-3)">PROY. VS META</div></div>';
   if (isCurrentMonth) kH += '<div><div style="font-size:24px;font-weight:900;color:var(--text-2)">'+workDaysPassed+'/'+workDaysTotal+'</div><div style="font-size:9px;color:var(--text-3)">DÍAS HÁBILES</div></div>';
@@ -9074,6 +9105,12 @@ async function metasRender() {
         var cp = cm>0?Math.round(cv/cm*100):0;
         var cc = cp>=100?'#10B981':cp>=70?'#F59E0B':'#DC3545';
         var coordName = coordPerCentro[ck] || '';
+        var cDiaria = cm > 0 && workDaysTotal > 0 ? (cm / workDaysTotal) : 0;
+        var cEsperado = Math.round(cDiaria * workDaysPassed * 10) / 10;
+        var cProyeccion = workDaysPassed > 0 ? Math.round(cv / workDaysPassed * workDaysTotal) : cv;
+        var cDiff = cv - cEsperado;
+        var cDiffColor = cDiff >= 0 ? '#10B981' : '#DC3545';
+        var cDiffSign = cDiff >= 0 ? '+' : '';
         
         // Centro header with coordinador
         opsH += '<div style="background:linear-gradient(135deg,#F0F4FF,#E8F0FE);border-radius:10px;padding:12px;margin-bottom:8px;border:1px solid #D0DCEF">';
@@ -9083,7 +9120,15 @@ async function metasRender() {
         opsH += '</div>';
         opsH += '<div style="text-align:right"><span style="font-size:16px;font-weight:900;color:'+cc+'">'+cp+'%</span><div style="font-size:10px;color:var(--text-3)">'+cv+'/'+cm+'</div></div>';
         opsH += '</div>';
-        opsH += '<div style="height:8px;border-radius:4px;background:rgba(0,0,0,0.08);overflow:hidden;margin-bottom:10px"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+cc+';border-radius:4px"></div></div>';
+        opsH += '<div style="height:8px;border-radius:4px;background:rgba(0,0,0,0.08);overflow:hidden;margin-bottom:6px"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+cc+';border-radius:4px"></div></div>';
+        if (isCurrentMonth && cm > 0) {
+          opsH += '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-3);margin-bottom:10px;padding:4px 6px;background:rgba(0,0,0,0.03);border-radius:4px">';
+          opsH += '<span>📅 Diaria: <b>'+cDiaria.toFixed(1)+'</b></span>';
+          opsH += '<span>📍 Esperado hoy: <b>'+cEsperado.toFixed(0)+'</b></span>';
+          opsH += '<span style="color:'+cDiffColor+';font-weight:700">'+cDiffSign+cDiff.toFixed(0)+'</span>';
+          opsH += '<span>🔮 Proy: <b style="color:#8B5CF6">'+cProyeccion+'</b></span>';
+          opsH += '</div>';
+        }
         
         // Supervisors in this centro
         var centroSups = {};
@@ -9115,10 +9160,16 @@ async function metasRender() {
           var sm = metasGetMeta('supervisor', s);
           var sp = sm>0?Math.round(sv/sm*100):0;
           var sc = sp>=100?'#10B981':sp>=70?'#F59E0B':'#DC3545';
+          var sDiaria = sm > 0 && workDaysTotal > 0 ? (sm / workDaysTotal) : 0;
+          var sEsperado = Math.round(sDiaria * workDaysPassed * 10) / 10;
+          var sDiff = sv - sEsperado;
+          var sDiffColor = sDiff >= 0 ? '#10B981' : '#DC3545';
+          var sDiffSign = sDiff >= 0 ? '+' : '';
+          var sProyeccion = workDaysPassed > 0 ? Math.round(sv / workDaysPassed * workDaysTotal) : sv;
           opsH += '<div style="margin-bottom:6px">';
           opsH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">';
           opsH += '<span style="font-size:10px;font-weight:600;color:var(--text-2)">👤 '+s+'</span>';
-          opsH += '<span style="font-size:10px;font-weight:700;color:'+sc+'">'+sv+'/'+sm+' ('+sp+'%)</span>';
+          opsH += '<span style="font-size:10px;font-weight:700;color:'+sc+'">'+sv+'/'+sm+' ('+sp+'%)'+(isCurrentMonth && sm > 0 ? ' <span style="color:'+sDiffColor+'">'+sDiffSign+Math.round(sDiff)+'</span> · <span style="color:#8B5CF6">Proy:'+sProyeccion+'</span>' : '')+'</span>';
           opsH += '</div>';
           opsH += '<div style="height:7px;border-radius:4px;background:rgba(0,0,0,0.06);overflow:hidden"><div style="height:100%;width:'+Math.min(sp,100)+'%;background:'+sc+';border-radius:4px;transition:width 0.4s"></div></div>';
           opsH += '</div>';
@@ -9144,9 +9195,17 @@ async function metasRender() {
         var sv = supData[s].count, sm = metasGetMeta('supervisor',s);
         var sp = sm>0?Math.round(sv/sm*100):0;
         var sc = sp>=100?'#10B981':sp>=70?'#F59E0B':'#DC3545';
+        var sDiaria = sm > 0 && workDaysTotal > 0 ? (sm / workDaysTotal) : 0;
+        var sEsperado = Math.round(sDiaria * workDaysPassed * 10) / 10;
+        var sDiff = sv - sEsperado;
+        var sDiffColor = sDiff >= 0 ? '#10B981' : '#DC3545';
+        var sDiffSign = sDiff >= 0 ? '+' : '';
+        var sProyeccion = workDaysPassed > 0 ? Math.round(sv / workDaysPassed * workDaysTotal) : sv;
         supH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:8px 10px;background:var(--bg-main);border-radius:8px">';
         supH += '<div style="min-width:160px"><div style="font-size:12px;font-weight:700">'+s+'</div><div style="font-size:9px;color:var(--text-3)">'+(METAS_CENTROS[supData[s].centro]?METAS_CENTROS[supData[s].centro].name:'')+'</div></div>';
-        supH += '<div style="flex:1"><div style="height:8px;border-radius:4px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(sp,100)+'%;background:'+sc+';border-radius:4px"></div></div></div>';
+        supH += '<div style="flex:1"><div style="height:8px;border-radius:4px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(sp,100)+'%;background:'+sc+';border-radius:4px"></div></div>';
+        if (isCurrentMonth && sm > 0) supH += '<div style="font-size:8px;color:var(--text-3);margin-top:2px">Diaria:'+sDiaria.toFixed(1)+' · Esperado:'+sEsperado.toFixed(0)+' · <span style="color:'+sDiffColor+'">'+sDiffSign+Math.round(sDiff)+'</span> · <span style="color:#8B5CF6">Proy:'+sProyeccion+'</span></div>';
+        supH += '</div>';
         supH += '<div style="font-size:12px;font-weight:700;color:'+sc+';min-width:75px;text-align:right">'+sv+'/'+sm+' ('+sp+'%)</div></div>';
       });
       supH += '</div>';
@@ -9521,95 +9580,207 @@ function saveDescThresholds() {
 }
 
 // ── PLAN DE TRABAJO CON IA ──
+// ── PLAN DE TRABAJO CON IA ──
+var planIAMsgs = [];
+var planIACurrentPlan = '';
+var planIASystemPrompt = '';
+
 function populatePlanIATargets() {
   var sel = document.getElementById('planIATarget');
   if (!sel) return;
   var rol = currentUser ? currentUser.rol : 'agente';
   var h = '<option value="equipo">👥 Mi equipo completo</option>';
-  
-  // For supervisor: show their agents
-  // For admin/coord: show supervisors and agents
   if (rol === 'admin' || rol === 'coordinador') {
-    // Add supervisors
     var sups = {};
     metasVentas.forEach(function(v) { if (v.supervisor) sups[v.supervisor] = true; });
     Object.keys(sups).sort().forEach(function(s) {
       h += '<option value="sup:'+s+'">📊 Sup: '+s+'</option>';
     });
   }
-  // Add individual agents
   var agents = {};
   metasMetas.filter(function(m){return m.tipo==='agente'}).forEach(function(m) { agents[m.nombre] = true; });
   Object.keys(agents).sort().forEach(function(a) {
     h += '<option value="agent:'+a+'">👤 '+a+'</option>';
   });
   sel.innerHTML = h;
+  sel.onchange = function() { loadSavedPlanIA(); };
+  loadSavedPlanIA();
+}
+
+async function loadSavedPlanIA() {
+  if (!supabase) return;
+  var mes = document.getElementById('metasFilterMes').value;
+  var target = document.getElementById('planIATarget').value;
+  try {
+    var {data} = await supabase.from('planes_trabajo').select('*, plan_trabajo_notas(*)').eq('mes', mes).eq('target', target).order('created_at', {ascending: false}).limit(1);
+    if (data && data.length > 0) {
+      renderSavedPlan(data[0]);
+    } else {
+      document.getElementById('planIASaved').style.display = 'none';
+      document.getElementById('planIAWorkarea').style.display = '';
+      document.getElementById('planIAAnnotations').style.display = 'none';
+      document.getElementById('planIAStartBtn').style.display = '';
+      document.getElementById('planIAActions').style.display = 'none';
+      document.getElementById('planIAChat').style.display = 'none';
+      document.getElementById('planIAResult').innerHTML = '';
+    }
+  } catch(e) {
+    document.getElementById('planIASaved').style.display = 'none';
+    document.getElementById('planIAWorkarea').style.display = '';
+    document.getElementById('planIAStartBtn').style.display = '';
+  }
+}
+
+function renderSavedPlan(plan) {
+  document.getElementById('planIAWorkarea').style.display = 'none';
+  document.getElementById('planIASaved').style.display = '';
+  document.getElementById('planIAAnnotations').style.display = '';
+  var d = new Date(plan.created_at);
+  var dateStr = d.toLocaleDateString('es-MX', {day:'2-digit', month:'long', year:'numeric'});
+  var h = '<div class="section" style="padding:16px;border:2px solid #8B5CF6;border-radius:12px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:6px">';
+  h += '<div><div style="font-size:14px;font-weight:800;color:#8B5CF6">📋 Plan de Trabajo — ' + plan.mes + '</div>';
+  h += '<div style="font-size:10px;color:var(--text-3)">Creado: ' + dateStr + ' por ' + (plan.creado_por||'') + '</div></div>';
+  h += '<div style="display:flex;gap:6px">';
+  if (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador')) {
+    h += '<button onclick="deletePlanIA(\''+plan.id+'\')" style="font-size:9px;padding:4px 10px;background:#FEF2F2;color:#DC3545;border:1px solid #DC3545;border-radius:6px;cursor:pointer">🗑️ Eliminar</button>';
+  }
+  h += '<button onclick="regeneratePlanIA()" style="font-size:9px;padding:4px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer">🔄 Nuevo plan</button>';
+  h += '</div></div>';
+  h += '<div style="font-size:12px;color:var(--text-2);line-height:1.7;white-space:pre-wrap">' + formatPlanIAContent(plan.contenido) + '</div></div>';
+  document.getElementById('planIASaved').innerHTML = h;
+  // Annotations
+  var notas = (plan.plan_trabajo_notas || []).sort(function(a,b){return new Date(a.created_at) - new Date(b.created_at)});
+  var rolColors = {admin:'#8B5CF6', coordinador:'#3B82F6', supervisor:'#10B981', agente:'#F59E0B'};
+  var aH = '<div class="section" style="padding:14px">';
+  aH += '<div style="font-size:13px;font-weight:800;margin-bottom:10px">📝 Anotaciones sobre el Plan</div>';
+  aH += '<div style="max-height:250px;overflow-y:auto;margin-bottom:10px">';
+  if (notas.length === 0) {
+    aH += '<div style="font-size:10px;color:var(--text-3);padding:8px 0;text-align:center">Sin anotaciones. Agrega seguimiento sobre las acciones del plan.</div>';
+  } else {
+    notas.forEach(function(n) {
+      var nd = new Date(n.created_at);
+      var nDateStr = nd.toLocaleDateString('es-MX',{day:'2-digit',month:'short'})+' '+nd.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+      var rc = rolColors[n.rol_autor]||'#888';
+      aH += '<div style="background:var(--surface-2);border-radius:6px;padding:8px 10px;border-left:3px solid '+rc+';margin-bottom:4px">';
+      aH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">';
+      aH += '<span style="font-size:10px;font-weight:700;color:'+rc+'">'+n.autor+' <span style="font-weight:400;color:var(--text-3)">('+n.rol_autor+')</span></span>';
+      aH += '<span style="font-size:8px;color:var(--text-3)">'+nDateStr+'</span></div>';
+      aH += '<div style="font-size:11px;color:var(--text-2)">'+n.texto+'</div></div>';
+    });
+  }
+  aH += '</div>';
+  aH += '<div style="display:flex;gap:6px">';
+  aH += '<input type="text" class="field" id="planIANotaInput" placeholder="Agrega una anotación..." style="flex:1;font-size:11px" onkeydown="if(event.key===\'Enter\')addPlanIANote(\''+plan.id+'\')">';
+  aH += '<button onclick="addPlanIANote(\''+plan.id+'\')" class="btn btn-primary" style="font-size:11px;padding:6px 14px">Agregar</button>';
+  aH += '</div></div>';
+  document.getElementById('planIAAnnotations').innerHTML = aH;
 }
 
 async function generatePlanIA() {
   var resultEl = document.getElementById('planIAResult');
   if (!resultEl) return;
-  
   if (!TR_API_KEY) await trLoadConfig();
   var ak = TR_API_KEY || localStorage.getItem('ec_api_key') || '';
-  if (!ak) { resultEl.innerHTML = '<div class="section" style="padding:16px;text-align:center;color:#DC3545">❌ No hay API key configurada</div>'; return; }
-  
-  resultEl.innerHTML = '<div class="section" style="padding:20px;text-align:center"><div style="font-size:24px;margin-bottom:8px">🤖</div><div style="font-size:12px;color:var(--text-3)">Analizando métricas y generando plan de trabajo...</div></div>';
-  
+  if (!ak) { resultEl.innerHTML = '<div class="section" style="padding:16px;text-align:center;color:#DC3545">❌ No hay API key</div>'; return; }
+  document.getElementById('planIAStartBtn').style.display = 'none';
+  resultEl.innerHTML = '<div class="section" style="padding:20px;text-align:center"><div style="font-size:24px;margin-bottom:8px">🤖</div><div style="font-size:12px;color:var(--text-3)">Analizando métricas...</div></div>';
   var target = document.getElementById('planIATarget').value;
   var mes = document.getElementById('metasFilterMes').value;
   var rol = currentUser ? currentUser.rol : 'agente';
-  
-  // Gather data
   var dataContext = buildPlanIAContext(target, mes, rol);
-  
-  var systemPrompt = 'Eres un coach de ventas experto para ExpertCell, distribuidor autorizado AT&T en México. Generas planes de trabajo accionables basados en datos reales.\n\n';
-  systemPrompt += 'REGLAS:\n';
-  systemPrompt += '1. Sé específico y accionable. Nada genérico como "mejorar ventas".\n';
-  systemPrompt += '2. Basa todo en los datos proporcionados. Si un agente va bien, reconócelo.\n';
-  systemPrompt += '3. Identifica patrones: días débiles, tendencias, agentes que necesitan coaching.\n';
-  systemPrompt += '4. Para supervisores: da acciones concretas de coaching por agente.\n';
-  systemPrompt += '5. Para agentes: da un plan diario/semanal con metas claras.\n';
-  systemPrompt += '6. Usa formato con **negritas** para destacar lo importante.\n';
-  systemPrompt += '7. Incluye: diagnóstico breve, prioridades, acciones específicas, meta a corto plazo.\n';
-  systemPrompt += '8. Si hay agentes muy por debajo de meta, sugiere intervención inmediata.\n';
-  systemPrompt += '9. Si hay agentes arriba de meta, sugiere cómo mantener o acelerar.\n';
-  systemPrompt += '10. Máximo 500 palabras. Sé directo.\n\n';
-  systemPrompt += dataContext;
-  
+  planIASystemPrompt = 'Eres un coach de ventas experto para ExpertCell, distribuidor autorizado AT&T México. Generas planes de trabajo accionables.\n\nREGLAS:\n1. Sé específico y accionable.\n2. Basa todo en los datos.\n3. Identifica patrones y agentes que necesitan coaching.\n4. Incluye: diagnóstico, prioridades, acciones, metas.\n5. Usa **negritas** para destacar.\n6. Máximo 500 palabras. Directo.\n7. Español siempre.\n\n' + dataContext;
+  planIAMsgs = [{role:'user', content:'Genera el plan de trabajo.'}];
   try {
     var response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'x-api-key': ak, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true'},
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1500,
-        system: systemPrompt,
-        messages: [{role:'user', content: 'Genera el plan de trabajo basado en estos datos.'}]
-      })
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,system:planIASystemPrompt,messages:planIAMsgs})
     });
-    if (!response.ok) {
-      var errText = await response.text();
-      console.error('Plan IA API error:', response.status, errText);
-      resultEl.innerHTML = '<div class="section" style="padding:16px;text-align:center;color:#DC3545">❌ Error API ('+response.status+'): ' + (errText.substring(0,100)) + '</div>';
-      return;
-    }
+    if (!response.ok) { resultEl.innerHTML = '<div class="section" style="padding:16px;text-align:center;color:#DC3545">❌ Error API ('+response.status+')</div>'; document.getElementById('planIAStartBtn').style.display = ''; return; }
     var data = await response.json();
-    console.log('Plan IA response:', data);
-    var reply = data.content && data.content[0] ? data.content[0].text : 'No se pudo generar el plan. Respuesta: ' + JSON.stringify(data).substring(0,200);
-    
-    // Render result
-    var h = '<div class="section" style="padding:16px">';
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
-    h += '<div style="font-size:13px;font-weight:700">📋 Plan de Trabajo — ' + new Date().toLocaleDateString('es-MX') + '</div>';
-    h += '<button onclick="generatePlanIA()" style="font-size:10px;padding:4px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer">🔄 Regenerar</button>';
-    h += '</div>';
-    h += '<div style="font-size:12px;color:var(--text-2);line-height:1.7;white-space:pre-wrap">' + formatPlanIAContent(reply) + '</div>';
-    h += '</div>';
-    resultEl.innerHTML = h;
-  } catch(e) {
-    resultEl.innerHTML = '<div class="section" style="padding:16px;text-align:center;color:#DC3545">❌ Error de conexión</div>';
-  }
+    var reply = data.content && data.content[0] ? data.content[0].text : 'Error';
+    planIACurrentPlan = reply;
+    planIAMsgs.push({role:'assistant', content: reply});
+    resultEl.innerHTML = '<div class="section" style="padding:16px"><div style="font-size:13px;font-weight:700;margin-bottom:10px">📋 Borrador del Plan</div><div id="planIADraft" style="font-size:12px;color:var(--text-2);line-height:1.7;white-space:pre-wrap">' + formatPlanIAContent(reply) + '</div></div>';
+    document.getElementById('planIAChat').style.display = '';
+    document.getElementById('planIAActions').style.display = 'flex';
+    document.getElementById('planIAChatMsgs').innerHTML = '';
+  } catch(e) { resultEl.innerHTML = '<div class="section" style="padding:16px;text-align:center;color:#DC3545">❌ Error</div>'; document.getElementById('planIAStartBtn').style.display = ''; }
+}
+
+async function sendPlanIAChat() {
+  var input = document.getElementById('planIAChatInput');
+  var msg = (input.value||'').trim();
+  if (!msg) return;
+  input.value = '';
+  var ak = TR_API_KEY || localStorage.getItem('ec_api_key') || '';
+  var msgsEl = document.getElementById('planIAChatMsgs');
+  msgsEl.innerHTML += '<div style="text-align:right;margin-bottom:4px"><span style="display:inline-block;background:#8B5CF6;color:white;font-size:11px;padding:4px 10px;border-radius:10px;max-width:80%">'+msg+'</span></div>';
+  msgsEl.innerHTML += '<div id="planIATyping" style="margin-bottom:4px"><span style="display:inline-block;background:var(--surface-2);font-size:11px;padding:4px 10px;border-radius:10px;color:var(--text-3)">⏳ Ajustando...</span></div>';
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  planIAMsgs.push({role:'user', content: msg});
+  try {
+    var response = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,system:planIASystemPrompt,messages:planIAMsgs})
+    });
+    var data = await response.json();
+    var reply = data.content && data.content[0] ? data.content[0].text : 'Error';
+    planIACurrentPlan = reply;
+    planIAMsgs.push({role:'assistant', content: reply});
+    var typing = document.getElementById('planIATyping');
+    if (typing) typing.remove();
+    msgsEl.innerHTML += '<div style="margin-bottom:4px"><span style="display:inline-block;background:#E8F5E9;font-size:10px;padding:3px 8px;border-radius:8px;color:#2E7D32">✅ Plan actualizado</span></div>';
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+    document.getElementById('planIADraft').innerHTML = formatPlanIAContent(reply);
+  } catch(e) { var typing = document.getElementById('planIATyping'); if(typing) typing.remove(); }
+}
+
+async function savePlanIA() {
+  if (!planIACurrentPlan || !supabase) return;
+  var mes = document.getElementById('metasFilterMes').value;
+  var target = document.getElementById('planIATarget').value;
+  if (!confirm('¿Guardar este plan para ' + mes + '?')) return;
+  try {
+    await supabase.from('planes_trabajo').delete().eq('mes', mes).eq('target', target);
+    var {error} = await supabase.from('planes_trabajo').insert({mes:mes, target:target, contenido:planIACurrentPlan, creado_por: currentUser?currentUser.nombre:'', rol_creador: currentUser?currentUser.rol:''});
+    if (error) { alert('Error: ' + error.message); return; }
+    alert('✅ Plan guardado');
+    planIAMsgs = []; planIACurrentPlan = '';
+    loadSavedPlanIA();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function addPlanIANote(planId) {
+  var input = document.getElementById('planIANotaInput');
+  var texto = (input.value||'').trim();
+  if (!texto || !supabase) return;
+  try {
+    await supabase.from('plan_trabajo_notas').insert({plan_id: planId, texto: texto, autor: currentUser?currentUser.nombre:'', rol_autor: currentUser?currentUser.rol:''});
+    input.value = '';
+    loadSavedPlanIA();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function deletePlanIA(planId) {
+  if (!confirm('¿Eliminar este plan y sus anotaciones?')) return;
+  try {
+    await supabase.from('plan_trabajo_notas').delete().eq('plan_id', planId);
+    await supabase.from('planes_trabajo').delete().eq('id', planId);
+    loadSavedPlanIA();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+function regeneratePlanIA() {
+  document.getElementById('planIASaved').style.display = 'none';
+  document.getElementById('planIAWorkarea').style.display = '';
+  document.getElementById('planIAAnnotations').style.display = 'none';
+  document.getElementById('planIAStartBtn').style.display = '';
+  document.getElementById('planIAActions').style.display = 'none';
+  document.getElementById('planIAChat').style.display = 'none';
+  document.getElementById('planIAResult').innerHTML = '';
+  planIAMsgs = []; planIACurrentPlan = '';
 }
 
 function formatPlanIAContent(text) {
@@ -9631,110 +9802,43 @@ function buildPlanIAContext(target, mes, rol) {
   var workDaysTotal = countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, daysInMonth);
   var dayOfMonth = isCurrentMonth ? now.getDate() : daysInMonth;
   var workDaysPassed = isCurrentMonth ? countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, dayOfMonth) : workDaysTotal;
-  
   ctx += 'Día hábil ' + workDaysPassed + ' de ' + workDaysTotal + ' (' + Math.round(workDaysPassed/workDaysTotal*100) + '% del mes)\n\n';
-  
-  // Filter agents based on target
-  var targetAgents = [];
-  var targetSup = '';
-  
+  var targetAgents = [], targetSup = '';
   if (target === 'equipo') {
-    if (rol === 'agente') {
-      targetAgents = [currentUser ? currentUser.nombre : ''];
-    } else if (rol === 'supervisor') {
+    if (rol === 'agente') { targetAgents = [currentUser ? currentUser.nombre : '']; }
+    else if (rol === 'supervisor') {
       var myName = currentUser ? currentUser.nombre : '';
-      targetAgents = metasMetas.filter(function(m){return m.tipo==='agente'}).map(function(m){return m.nombre});
-      // Filter to my team
       var myAgents = {};
-      metasVentas.forEach(function(v) {
-        if (v.supervisor && v.supervisor.toUpperCase() === myName.toUpperCase()) {
-          myAgents[v.ejecutivo.toUpperCase()] = true;
-        }
-      });
-      targetAgents = targetAgents.filter(function(a){return myAgents[a.toUpperCase()]});
-    } else {
-      targetAgents = metasMetas.filter(function(m){return m.tipo==='agente'}).map(function(m){return m.nombre});
-    }
+      metasVentas.forEach(function(v) { if (v.supervisor && v.supervisor.toUpperCase() === myName.toUpperCase()) myAgents[v.ejecutivo.toUpperCase()] = true; });
+      targetAgents = metasMetas.filter(function(m){return m.tipo==='agente'}).map(function(m){return m.nombre}).filter(function(a){return myAgents[a.toUpperCase()]});
+    } else { targetAgents = metasMetas.filter(function(m){return m.tipo==='agente'}).map(function(m){return m.nombre}); }
   } else if (target.indexOf('sup:') === 0) {
     targetSup = target.substring(4);
-    var supAgents = {};
-    metasVentas.forEach(function(v) {
-      if (v.supervisor === targetSup && v.ejecutivo) supAgents[v.ejecutivo.toUpperCase()] = true;
-    });
-    targetAgents = metasMetas.filter(function(m){return m.tipo==='agente' && supAgents[m.nombre.toUpperCase()]}).map(function(m){return m.nombre});
+    var supAg = {};
+    metasVentas.forEach(function(v) { if (v.supervisor === targetSup && v.ejecutivo) supAg[v.ejecutivo.toUpperCase()] = true; });
+    targetAgents = metasMetas.filter(function(m){return m.tipo==='agente' && supAg[m.nombre.toUpperCase()]}).map(function(m){return m.nombre});
     ctx += 'SUPERVISOR: ' + targetSup + '\n\n';
-  } else if (target.indexOf('agent:') === 0) {
-    targetAgents = [target.substring(6)];
-  }
-  
-  // Limit agents to avoid too-large context
+  } else if (target.indexOf('agent:') === 0) { targetAgents = [target.substring(6)]; }
   if (targetAgents.length > 20) targetAgents = targetAgents.slice(0, 20);
-  
-  // Build per-agent metrics
   ctx += 'AGENTES:\n';
   targetAgents.forEach(function(agName) {
     var meta = 0;
     metasMetas.forEach(function(m) { if (m.tipo === 'agente' && m.nombre === agName) meta = m.meta || 0; });
-    
-    // Ventas count
     var ventas = metasVentas.filter(function(v){return v.ejecutivo && v.ejecutivo.toUpperCase() === agName.toUpperCase()});
     var totalVentas = ventas.length;
     var pctMeta = meta > 0 ? Math.round(totalVentas/meta*100) : 0;
-    
-    // Weekly trend
     var byWeek = {};
-    ventas.forEach(function(v) {
-      if (!v.fecha) return;
-      var fd = new Date(typeof v.fecha === 'string' ? v.fecha.substring(0,10) + 'T12:00:00' : v.fecha);
-      var weekNum = Math.ceil(fd.getDate() / 7);
-      byWeek[weekNum] = (byWeek[weekNum] || 0) + 1;
-    });
-    var weekTrend = [];
-    for (var w = 1; w <= 5; w++) {
-      if (byWeek[w] !== undefined) weekTrend.push('S'+w+':'+byWeek[w]);
-    }
-    
-    // Daily pattern (best/worst days)
-    var byDay = [0,0,0,0,0,0,0]; // Sun-Sat
-    ventas.forEach(function(v) {
-      if (!v.fecha) return;
-      var fd = new Date(typeof v.fecha === 'string' ? v.fecha.substring(0,10) + 'T12:00:00' : v.fecha);
-      byDay[fd.getDay()]++;
-    });
+    ventas.forEach(function(v) { if (!v.fecha) return; var fd = new Date(typeof v.fecha==='string'?v.fecha.substring(0,10)+'T12:00:00':v.fecha); byWeek[Math.ceil(fd.getDate()/7)] = (byWeek[Math.ceil(fd.getDate()/7)]||0) + 1; });
+    var weekTrend = []; for (var w=1;w<=5;w++) { if (byWeek[w]!==undefined) weekTrend.push('S'+w+':'+byWeek[w]); }
+    var byDay = [0,0,0,0,0,0,0];
+    ventas.forEach(function(v) { if (!v.fecha) return; var fd = new Date(typeof v.fecha==='string'?v.fecha.substring(0,10)+'T12:00:00':v.fecha); byDay[fd.getDay()]++; });
     var dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-    var bestDay = '', worstDay = '', bestV = 0, worstV = Infinity;
-    for (var di = 1; di <= 6; di++) {
-      if (byDay[di] > bestV) { bestV = byDay[di]; bestDay = dayNames[di]; }
-      if (byDay[di] < worstV && di < 6) { worstV = byDay[di]; worstDay = dayNames[di]; }
-    }
-    
-    // Projection
-    var proyeccion = workDaysPassed > 0 ? Math.round(totalVentas / workDaysPassed * workDaysTotal) : 0;
-    
-    ctx += '\n' + agName + ':\n';
-    ctx += '  Meta: ' + meta + ' | Ventas: ' + totalVentas + ' (' + pctMeta + '%) | Proyección: ' + proyeccion + '\n';
-    ctx += '  Tendencia semanal: ' + (weekTrend.length ? weekTrend.join(', ') : 'Sin datos') + '\n';
-    ctx += '  Mejor día: ' + bestDay + '(' + bestV + ') | Peor día: ' + worstDay + '(' + worstV + ')\n';
-    ctx += '  Promedio diario: ' + (workDaysPassed > 0 ? (totalVentas/workDaysPassed).toFixed(1) : '0') + ' ventas/día\n';
+    var bestDay='',worstDay='',bestV=0,worstV=Infinity;
+    for (var di=1;di<=6;di++) { if(byDay[di]>bestV){bestV=byDay[di];bestDay=dayNames[di]} if(byDay[di]<worstV&&di<6){worstV=byDay[di];worstDay=dayNames[di]} }
+    var proyeccion = workDaysPassed > 0 ? Math.round(totalVentas/workDaysPassed*workDaysTotal) : 0;
+    ctx += '\n'+agName+':\n  Meta:'+meta+' | Ventas:'+totalVentas+' ('+pctMeta+'%) | Proy:'+proyeccion+'\n  Semanal: '+(weekTrend.length?weekTrend.join(','):'Sin datos')+'\n  Mejor:'+bestDay+'('+bestV+') Peor:'+worstDay+'('+worstV+') Prom:'+(workDaysPassed>0?(totalVentas/workDaysPassed).toFixed(1):'0')+'/día\n';
   });
-  
-  // Cotizaciones data if available
-  try {
-    if (state && state.cotizaciones && state.cotizaciones.length) {
-      var cotByStatus = {};
-      state.cotizaciones.forEach(function(c) {
-        var st = c.estatus || 'pendiente';
-        cotByStatus[st] = (cotByStatus[st] || 0) + 1;
-      });
-      ctx += '\nCOTIZACIONES GLOBAL: ' + Object.keys(cotByStatus).map(function(st){return st+':'+cotByStatus[st]}).join(', ') + '\n';
-    }
-  } catch(e) { /* skip if not available */ }
-  
-  // Training metrics
-  try {
-    ctx += '\nNOTA: Para datos detallados de Sales Academy, consulta la pestaña de Métricas en Academy.\n';
-  } catch(e) {}
-  
+  try { if(state&&state.cotizaciones&&state.cotizaciones.length){var cs={};state.cotizaciones.forEach(function(c){var s=c.estatus||'p';cs[s]=(cs[s]||0)+1});ctx+='\nCOTIZACIONES: '+Object.keys(cs).map(function(s){return s+':'+cs[s]}).join(', ')+'\n';} } catch(e){}
   return ctx;
 }
 
