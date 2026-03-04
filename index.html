@@ -2308,6 +2308,7 @@ async function syncCotizacionToSupabase(cotizacion, isEdit) {
         valido_hasta: cotizacion.validoHasta,
         estatus: cotizacion.estatus,
         plantilla: selectedTemplate,
+        plan_actual_id: cotizacion.planActual ? cotizacion.planActual.id : null,
         edited_at: new Date().toISOString(),
       }).eq('folio', cotizacion.folio);
 
@@ -2337,6 +2338,7 @@ async function syncCotizacionToSupabase(cotizacion, isEdit) {
         valido_hasta: cotizacion.validoHasta,
         estatus: cotizacion.estatus || 'enviada',
         plantilla: selectedTemplate,
+        plan_actual_id: cotizacion.planActual ? cotizacion.planActual.id : null,
       }).select('id').single();
 
       if (cotErr) { console.error('Error saving cotizacion:', cotErr); return; }
@@ -2468,6 +2470,7 @@ async function loadCotizacionesFromSupabase() {
         barrera_cierre: c.barrera_cierre,
         adeudo_monto: c.adeudo_monto,
         adeudo_fecha_compromiso: c.adeudo_fecha_compromiso,
+        planActual: c.plan_actual_id ? {id: c.plan_actual_id} : null,
         notas: (c.cotizacion_notas || []).sort(function(a,b){return new Date(b.created_at) - new Date(a.created_at)}),
         ultimaNota: null,
         createdAt: c.created_at,
@@ -5018,7 +5021,7 @@ function renderHistorial() {
       </div>
       <div class="historial-body">
         <span class="historial-client">${cot.cliente.nombre}</span>
-        <span class="historial-meta">${cot.cliente.telefono || ''} · ${cot.items.length} equipo(s) · ${cot.fecha}</span>
+        <span class="historial-meta">${cot.cliente.telefono || ''} · ${cot.items.length} equipo(s) · ${cot.fecha}${cot.createdAt ? ' ' + new Date(cot.createdAt).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
         <span class="historial-meta">Ejecutivo: ${cot.ejecutivo ? cot.ejecutivo.nombre : 'N/A'}${cot.supervisorNombre ? ' · Sup: ' + cot.supervisorNombre : ''}${cot.sub_estatus ? ' · ' + subEstatusLabel(cot.sub_estatus) : ''}${cot.folio_att ? ' · Folio ATT: ' + cot.folio_att : ''}${cot.sub_estatus==='aceleracion' && cot.fecha_fin_plazo ? ' · Plazo: ' + cot.fecha_fin_plazo + (new Date(cot.fecha_fin_plazo+'T00:00:00') <= new Date() ? ' 🚨 VENCIDO' : '') : ''}</span>
         ${cot.notas && cot.notas.length > 0 ? (function(){
           var n = cot.notas[0];
@@ -5052,7 +5055,7 @@ function showDetalle(folio) {
         <h3>${cot.cliente.nombre}</h3>
         <p class="detalle-meta">${[cot.cliente.telefono, cot.cliente.email].filter(Boolean).join(' · ')}</p>
         <p class="detalle-meta">${cot.cliente.direccion || ''}</p>
-        <p class="detalle-meta">Fecha: ${cot.fecha} · Válido hasta: ${cot.validoHasta}</p>
+        <p class="detalle-meta">Fecha: ${cot.fecha}${cot.createdAt ? ' ' + new Date(cot.createdAt).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : ''} · Válido hasta: ${cot.validoHasta}</p>
         <p class="detalle-meta">Ejecutivo: ${cot.ejecutivo.nombre} (${cot.ejecutivo.attuid})</p>
       </div>
       <div class="detalle-actions">
@@ -5586,7 +5589,14 @@ function editCotizacion(folio) {
   // Restore plan actual
   if (cot.planActual && cot.planActual.id) {
     var paSel = document.getElementById('cliPlanActual');
-    if (paSel) paSel.value = cot.planActual.id;
+    if (paSel) {
+      paSel.value = cot.planActual.id;
+      // Retry after DOM settles in case options weren't ready
+      setTimeout(function() {
+        var paSel2 = document.getElementById('cliPlanActual');
+        if (paSel2 && cot.planActual) paSel2.value = cot.planActual.id;
+      }, 200);
+    }
   }
 
   // Load items
