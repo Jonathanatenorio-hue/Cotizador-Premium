@@ -1998,6 +1998,7 @@ async function doLogin() {
     document.getElementById('appContainer').style.display = 'block';
     document.getElementById('bottomNav').style.display = 'flex';
     await loadCotizacionesFromSupabase();
+    loadDeviceImgIndex();
     updateHome();
     // Set greeting in header
     var firstName = (state.agente.nombre||'').split(' ')[0];
@@ -3260,55 +3261,53 @@ async function sendAsesorMsg() {
 // ── DEVICE IMAGES ──
 var DEVICE_IMG_BUCKET = 'device-images';
 var deviceImgCache = {};
+var deviceImgLoaded = false;
 
 function deviceImgKey(equipo) {
   return (equipo || '').toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').substring(0, 80);
 }
 
-async function loadAllDeviceImgs() {
-  if (!supabase) return;
-  var imgs = document.querySelectorAll('[data-imgkey]');
-  if (!imgs.length) return;
-  
-  // Collect unique keys
-  var keysNeeded = {};
-  imgs.forEach(function(imgEl) {
-    var key = imgEl.getAttribute('data-imgkey');
-    if (key) keysNeeded[key] = true;
-  });
-  
-  var exts = ['.png', '.jpg', '.jpeg', '.webp'];
-  
-  // Resolve URLs for keys not yet cached
-  for (var key in keysNeeded) {
-    if (deviceImgCache[key]) continue; // already have URL
-    
-    for (var i = 0; i < exts.length; i++) {
-      var {data} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(key + exts[i]);
-      if (!data || !data.publicUrl) continue;
-      try {
-        var resp = await fetch(data.publicUrl, {method: 'HEAD'});
-        if (resp.ok) {
-          deviceImgCache[key] = data.publicUrl;
-          break;
-        }
-      } catch(e) {}
+// Load ALL image mappings once from Supabase table
+async function loadDeviceImgIndex() {
+  if (deviceImgLoaded || !supabase) return;
+  try {
+    var {data} = await supabase.from('device_images').select('img_key, url');
+    if (data) {
+      data.forEach(function(r) { deviceImgCache[r.img_key] = r.url; });
+      deviceImgLoaded = true;
+      applyDeviceImgs();
     }
+  } catch(e) { 
+    // Table might not exist - try storage list as fallback
+    try {
+      var {data: files} = await supabase.storage.from(DEVICE_IMG_BUCKET).list('', {limit: 1000});
+      if (files) {
+        files.forEach(function(f) {
+          var key = f.name.replace(/\.[^.]+$/, '');
+          var {data: urlData} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(f.name);
+          if (urlData) deviceImgCache[key] = urlData.publicUrl;
+        });
+        deviceImgLoaded = true;
+        applyDeviceImgs();
+      }
+    } catch(e2) { console.log('No device images available'); }
   }
-  
-  // Apply all cached URLs to DOM
-  applyDeviceImgs();
 }
 
 function applyDeviceImgs() {
   document.querySelectorAll('[data-imgkey]').forEach(function(imgEl) {
     var key = imgEl.getAttribute('data-imgkey');
-    if (key && deviceImgCache[key]) {
+    if (key && deviceImgCache[key] && imgEl.src !== deviceImgCache[key]) {
       imgEl.src = deviceImgCache[key];
       imgEl.style.display = '';
       if (imgEl.nextElementSibling) imgEl.nextElementSibling.style.display = 'none';
     }
   });
+}
+
+async function loadAllDeviceImgs() {
+  if (!deviceImgLoaded) await loadDeviceImgIndex();
+  applyDeviceImgs();
 }
 
 function uploadDeviceImg(imgKey, devId) {
@@ -3320,31 +3319,33 @@ function uploadDeviceImg(imgKey, devId) {
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { alert('Imagen máximo 2MB'); return; }
     
-    // Determine extension
-    var ext = '.webp';
-    if (file.type === 'image/png') ext = '.png';
-    else if (file.type === 'image/jpeg') ext = '.jpg';
+    var ext = '.png';
+    if (file.type === 'image/jpeg') ext = '.jpg';
+    else if (file.type === 'image/webp') ext = '.webp';
+    var fileName = imgKey + ext;
     
     try {
-      // Delete any existing variants first
+      // Delete old files
       try { await supabase.storage.from(DEVICE_IMG_BUCKET).remove([imgKey+'.webp', imgKey+'.png', imgKey+'.jpg', imgKey+'.jpeg']); } catch(e){}
       
-      var {error} = await supabase.storage.from(DEVICE_IMG_BUCKET).upload(imgKey + ext, file, {upsert: true, contentType: file.type});
-      if (error) { alert('Error: ' + error.message); return; }
+      // Upload new
+      var {error} = await supabase.storage.from(DEVICE_IMG_BUCKET).upload(fileName, file, {upsert: true, contentType: file.type});
+      if (error) { alert('Error subiendo: ' + error.message); return; }
       
-      var {data} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(imgKey + ext);
-      if (data) {
-        deviceImgCache[imgKey] = data.publicUrl + '?t=' + Date.now();
-        // Update ALL images with this key (multiple cards for same device)
-        document.querySelectorAll('[data-imgkey="'+imgKey+'"]').forEach(function(img) {
-          img.src = deviceImgCache[imgKey];
-          img.style.display = '';
-          if (img.nextElementSibling) img.nextElementSibling.style.display = 'none';
-        });
-      }
-      alert('✅ Imagen actualizada para todos los usuarios');
-      // Re-apply to any view that might have rendered since
-      setTimeout(applyDeviceImgs, 200);
+      // Get public URL
+      var {data} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(fileName);
+      var publicUrl = data.publicUrl + '?v=' + Date.now();
+      
+      // Save to index table
+      try {
+        await supabase.from('device_images').upsert({img_key: imgKey, url: publicUrl}, {onConflict: 'img_key'});
+      } catch(e) { console.log('Table save failed, using storage only'); }
+      
+      // Update cache and ALL visible images
+      deviceImgCache[imgKey] = publicUrl;
+      applyDeviceImgs();
+      
+      alert('✅ Imagen guardada para todos los usuarios');
     } catch(e) { alert('Error: ' + e.message); }
   };
   inp.click();
