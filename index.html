@@ -1177,6 +1177,20 @@ body{padding-bottom:60px}
         </div>
         <button class="btn btn-primary" style="margin-top:10px;font-size:12px" onclick="ejecutarCruce()">🔍 Ejecutar Cruce</button>
       </div>
+      <div id="cruceFilters" style="display:none;margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <select class="field" id="cruceFilterStatus" onchange="renderCruceResults()" style="width:auto;font-size:11px;padding:5px 8px">
+          <option value="all">Todos</option>
+          <option value="confirmada">✅ Confirmadas</option>
+          <option value="no_confirmada">⚠️ No confirmadas</option>
+        </select>
+        <select class="field" id="cruceFilterSup" onchange="renderCruceResults()" style="width:auto;font-size:11px;padding:5px 8px">
+          <option value="all">Todos los supervisores</option>
+        </select>
+        <select class="field" id="cruceFilterAgente" onchange="renderCruceResults()" style="width:auto;font-size:11px;padding:5px 8px">
+          <option value="all">Todos los agentes</option>
+        </select>
+        <button onclick="exportCruceExcel()" class="btn btn-secondary" style="font-size:10px;padding:5px 12px">📥 Exportar Excel</button>
+      </div>
       <div id="cruceResults" style="margin-top:12px"></div>
     </div>
   </div>
@@ -6412,6 +6426,8 @@ function exportDashPDF() {
 // ============================================================
 var cruceData = []; // parsed rows from uploaded file
 var cruceHeaders = []; // column headers
+var cruceConfirmadas = []; // confirmed after cruce
+var cruceNoConfirmadas = []; // not confirmed after cruce
 
 function procesarCruceVentas(input) {
   var file = input.files[0];
@@ -6506,20 +6522,58 @@ async function ejecutarCruce() {
   }
   saveState();
 
-  // Render results
+  // Store globally
+  cruceConfirmadas = confirmadas;
+  cruceNoConfirmadas = noConfirmadas;
+
+  // Populate filters
+  document.getElementById('cruceFilters').style.display = 'flex';
+  var sups = {}, agentes = {};
+  ventaCots.forEach(function(c) {
+    if (c.supervisorNombre) sups[c.supervisorNombre] = true;
+    if (c.ejecutivo && c.ejecutivo.nombre) agentes[c.ejecutivo.nombre] = true;
+  });
+  var supSel = document.getElementById('cruceFilterSup');
+  supSel.innerHTML = '<option value="all">Todos los supervisores</option>';
+  Object.keys(sups).sort().forEach(function(s) { supSel.innerHTML += '<option value="'+s+'">'+s+'</option>'; });
+  var agSel = document.getElementById('cruceFilterAgente');
+  agSel.innerHTML = '<option value="all">Todos los agentes</option>';
+  Object.keys(agentes).sort().forEach(function(a) { agSel.innerHTML += '<option value="'+a+'">'+a+'</option>'; });
+
+  renderCruceResults();
+}
+
+function renderCruceResults() {
+  var statusFilter = document.getElementById('cruceFilterStatus').value;
+  var supFilter = document.getElementById('cruceFilterSup').value;
+  var agFilter = document.getElementById('cruceFilterAgente').value;
+
+  var filtConf = cruceConfirmadas.filter(function(item) {
+    var c = item.cot;
+    if (supFilter !== 'all' && c.supervisorNombre !== supFilter) return false;
+    if (agFilter !== 'all' && (!c.ejecutivo || c.ejecutivo.nombre !== agFilter)) return false;
+    return true;
+  });
+  var filtNoConf = cruceNoConfirmadas.filter(function(c) {
+    if (supFilter !== 'all' && c.supervisorNombre !== supFilter) return false;
+    if (agFilter !== 'all' && (!c.ejecutivo || c.ejecutivo.nombre !== agFilter)) return false;
+    return true;
+  });
+
+  var totalShown = filtConf.length + filtNoConf.length;
   var html = '';
 
   // Summary
   html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">';
-  html += '<div class="kpi-card"><div class="kpi-value">' + ventaCots.length + '</div><div class="kpi-label">Ventas reportadas</div></div>';
-  html += '<div class="kpi-card"><div class="kpi-value" style="color:#0FA958">' + confirmadas.length + '</div><div class="kpi-label">Confirmadas ✅</div></div>';
-  html += '<div class="kpi-card"><div class="kpi-value" style="color:#DC3545">' + noConfirmadas.length + '</div><div class="kpi-label">No confirmadas ⚠️</div></div>';
+  html += '<div class="kpi-card"><div class="kpi-value">' + totalShown + '</div><div class="kpi-label">Total filtradas</div></div>';
+  html += '<div class="kpi-card"><div class="kpi-value" style="color:#0FA958">' + filtConf.length + '</div><div class="kpi-label">Confirmadas ✅</div></div>';
+  html += '<div class="kpi-card"><div class="kpi-value" style="color:#DC3545">' + filtNoConf.length + '</div><div class="kpi-label">No confirmadas ⚠️</div></div>';
   html += '</div>';
 
-  // No confirmadas first (these need attention)
-  if (noConfirmadas.length > 0) {
-    html += '<div style="font-weight:700;font-size:13px;color:#DC3545;margin-bottom:6px">⚠️ No confirmadas (' + noConfirmadas.length + ') — Requieren revisión</div>';
-    noConfirmadas.forEach(function(c) {
+  // No confirmadas
+  if ((statusFilter === 'all' || statusFilter === 'no_confirmada') && filtNoConf.length > 0) {
+    html += '<div style="font-weight:700;font-size:13px;color:#DC3545;margin-bottom:6px">⚠️ No confirmadas (' + filtNoConf.length + ') — Requieren revisión</div>';
+    filtNoConf.forEach(function(c) {
       html += '<div class="cruce-card no-confirmada">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center">';
       html += '<div><span style="font-weight:700">' + c.folio + '</span> <span class="cruce-badge warn">NO CONFIRMADA</span></div>';
@@ -6527,14 +6581,15 @@ async function ejecutarCruce() {
       html += '<div style="font-size:11px;color:var(--text-2);margin-top:4px">';
       html += c.cliente.nombre + ' · ' + (c.cliente.telefono || 'Sin tel') + ' · Folio ATT: ' + (c.folio_att || 'N/A');
       html += ' · Ejecutivo: ' + (c.ejecutivo ? c.ejecutivo.nombre : 'N/A');
+      html += ' · Sup: ' + (c.supervisorNombre || 'N/A');
       html += '</div></div>';
     });
   }
 
   // Confirmadas
-  if (confirmadas.length > 0) {
-    html += '<div style="font-weight:700;font-size:13px;color:#0FA958;margin:12px 0 6px">✅ Confirmadas (' + confirmadas.length + ')</div>';
-    confirmadas.forEach(function(item) {
+  if ((statusFilter === 'all' || statusFilter === 'confirmada') && filtConf.length > 0) {
+    html += '<div style="font-weight:700;font-size:13px;color:#0FA958;margin:12px 0 6px">✅ Confirmadas (' + filtConf.length + ')</div>';
+    filtConf.forEach(function(item) {
       var c = item.cot;
       html += '<div class="cruce-card confirmada">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center">';
@@ -6544,15 +6599,67 @@ async function ejecutarCruce() {
       html += '<div style="font-size:11px;color:var(--text-2);margin-top:4px">';
       html += c.cliente.nombre + ' · ' + (c.cliente.telefono || 'Sin tel') + ' · Folio ATT: ' + (c.folio_att || 'N/A');
       html += ' · Ejecutivo: ' + (c.ejecutivo ? c.ejecutivo.nombre : 'N/A');
+      html += ' · Sup: ' + (c.supervisorNombre || 'N/A');
       html += '</div></div>';
     });
   }
 
-  if (ventaCots.length === 0) {
-    html += '<div style="font-size:12px;color:var(--text-3)">No hay cotizaciones marcadas como "Venta Exitosa" para cruzar.</div>';
+  if (totalShown === 0) {
+    html += '<div style="font-size:12px;color:var(--text-3);text-align:center;padding:15px">No hay resultados con estos filtros.</div>';
   }
 
   document.getElementById('cruceResults').innerHTML = html;
+}
+
+function exportCruceExcel() {
+  var statusFilter = document.getElementById('cruceFilterStatus').value;
+  var supFilter = document.getElementById('cruceFilterSup').value;
+  var agFilter = document.getElementById('cruceFilterAgente').value;
+
+  var rows = [];
+
+  var addRows = function(items, status) {
+    items.forEach(function(item) {
+      var c = item.cot || item;
+      var matchType = item.matchType || '';
+      if (supFilter !== 'all' && c.supervisorNombre !== supFilter) return;
+      if (agFilter !== 'all' && (!c.ejecutivo || c.ejecutivo.nombre !== agFilter)) return;
+      rows.push({
+        'Folio': c.folio,
+        'Cliente': c.cliente.nombre,
+        'Teléfono': c.cliente.telefono || '',
+        'Folio ATT': c.folio_att || '',
+        'Ejecutivo': c.ejecutivo ? c.ejecutivo.nombre : '',
+        'Supervisor': c.supervisorNombre || '',
+        'Resultado': status,
+        'Match por': matchType,
+        'Fecha': c.fecha || '',
+      });
+    });
+  };
+
+  if (statusFilter === 'all' || statusFilter === 'no_confirmada') {
+    cruceNoConfirmadas.forEach(function(c) {
+      addRows([{cot: c, matchType: ''}], 'No confirmada');
+    });
+  }
+  if (statusFilter === 'all' || statusFilter === 'confirmada') {
+    addRows(cruceConfirmadas, 'Confirmada');
+  }
+
+  if (rows.length === 0) { alert('No hay datos para exportar'); return; }
+
+  var ws = XLSX.utils.json_to_sheet(rows);
+  var colWidths = {};
+  Object.keys(rows[0]).forEach(function(k) {
+    var maxLen = k.length;
+    rows.forEach(function(r) { if (r[k] && r[k].toString().length > maxLen) maxLen = Math.min(r[k].toString().length, 40); });
+    colWidths[k] = {wch: maxLen + 2};
+  });
+  ws['!cols'] = Object.values(colWidths);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Cruce Ventas');
+  XLSX.writeFile(wb, 'Cruce_Ventas_ExpertCell.xlsx');
 }
 
 // ============================================================
