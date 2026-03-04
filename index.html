@@ -3240,7 +3240,6 @@ async function sendAsesorMsg() {
 // ── DEVICE IMAGES ──
 var DEVICE_IMG_BUCKET = 'device-images';
 var deviceImgCache = {};
-var deviceImgChecked = {};
 
 function deviceImgKey(equipo) {
   return (equipo || '').toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').substring(0, 80);
@@ -3251,41 +3250,50 @@ async function loadAllDeviceImgs() {
   var imgs = document.querySelectorAll('[data-imgkey]');
   if (!imgs.length) return;
   
-  // Collect unique keys that haven't been checked
-  var keysToCheck = [];
-  imgs.forEach(function(img) {
-    var key = img.getAttribute('data-imgkey');
-    if (key && !deviceImgChecked[key]) keysToCheck.push(key);
-  });
+  // For each image, try common extensions via getPublicUrl
+  var exts = ['.png', '.jpg', '.jpeg', '.webp'];
   
-  // Batch check which files exist in storage
-  if (keysToCheck.length > 0) {
-    try {
-      var {data: files} = await supabase.storage.from(DEVICE_IMG_BUCKET).list('', {limit: 1000});
-      var existingFiles = {};
-      (files || []).forEach(function(f) { existingFiles[f.name] = true; });
-      
-      keysToCheck.forEach(function(key) {
-        deviceImgChecked[key] = true;
-        if (existingFiles[key + '.webp'] || existingFiles[key + '.png'] || existingFiles[key + '.jpg'] || existingFiles[key + '.jpeg']) {
-          var ext = existingFiles[key + '.webp'] ? '.webp' : existingFiles[key + '.png'] ? '.png' : existingFiles[key + '.jpg'] ? '.jpg' : '.jpeg';
-          var {data} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(key + ext);
-          deviceImgCache[key] = data.publicUrl + '?t=' + Date.now();
-        } else {
-          deviceImgCache[key] = null;
-        }
-      });
-    } catch(e) { console.log('Img list error:', e); }
-  }
-  
-  // Apply cached URLs to all img elements
-  imgs.forEach(function(img) {
-    var key = img.getAttribute('data-imgkey');
-    if (key && deviceImgCache[key]) {
-      img.src = deviceImgCache[key];
-      img.style.display = '';
-      if (img.nextElementSibling) img.nextElementSibling.style.display = 'none';
+  imgs.forEach(function(imgEl) {
+    var key = imgEl.getAttribute('data-imgkey');
+    if (!key) return;
+    
+    // Already loaded
+    if (deviceImgCache[key] === 'loaded') return;
+    
+    // Already checked and not found
+    if (deviceImgCache[key] === 'none') return;
+    
+    // If cached URL exists, apply it
+    if (deviceImgCache[key]) {
+      imgEl.src = deviceImgCache[key];
+      imgEl.style.display = '';
+      if (imgEl.nextElementSibling) imgEl.nextElementSibling.style.display = 'none';
+      return;
     }
+    
+    // Try each extension
+    var tryExt = function(i) {
+      if (i >= exts.length) {
+        deviceImgCache[key] = 'none';
+        return;
+      }
+      var {data} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(key + exts[i]);
+      if (!data || !data.publicUrl) { tryExt(i+1); return; }
+      
+      var testImg = new Image();
+      testImg.onload = function() {
+        deviceImgCache[key] = data.publicUrl;
+        // Apply to ALL elements with this key
+        document.querySelectorAll('[data-imgkey="'+key+'"]').forEach(function(el) {
+          el.src = data.publicUrl;
+          el.style.display = '';
+          if (el.nextElementSibling) el.nextElementSibling.style.display = 'none';
+        });
+      };
+      testImg.onerror = function() { tryExt(i+1); };
+      testImg.src = data.publicUrl;
+    };
+    tryExt(0);
   });
 }
 
@@ -3313,7 +3321,6 @@ function uploadDeviceImg(imgKey, devId) {
       var {data} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(imgKey + ext);
       if (data) {
         deviceImgCache[imgKey] = data.publicUrl + '?t=' + Date.now();
-        deviceImgChecked[imgKey] = true;
         // Update ALL images with this key (multiple cards for same device)
         document.querySelectorAll('[data-imgkey="'+imgKey+'"]').forEach(function(img) {
           img.src = deviceImgCache[imgKey];
@@ -4988,7 +4995,13 @@ function renderHistorial() {
         <span class="historial-client">${cot.cliente.nombre}</span>
         <span class="historial-meta">${cot.cliente.telefono || ''} · ${cot.items.length} equipo(s) · ${cot.fecha}</span>
         <span class="historial-meta">Ejecutivo: ${cot.ejecutivo ? cot.ejecutivo.nombre : 'N/A'}${cot.supervisorNombre ? ' · Sup: ' + cot.supervisorNombre : ''}${cot.sub_estatus ? ' · ' + subEstatusLabel(cot.sub_estatus) : ''}${cot.folio_att ? ' · Folio ATT: ' + cot.folio_att : ''}${cot.sub_estatus==='aceleracion' && cot.fecha_fin_plazo ? ' · Plazo: ' + cot.fecha_fin_plazo + (new Date(cot.fecha_fin_plazo+'T00:00:00') <= new Date() ? ' 🚨 VENCIDO' : '') : ''}</span>
-        ${cot.ultimaNota ? '<div style="font-size:10px;color:#3B82F6;margin-top:3px;padding:3px 6px;background:#EFF6FF;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+cot.ultimaNota+(cot.notas&&cot.notas.length>1?' <span style="color:var(--text-3)">('+cot.notas.length+' notas)</span>':'')+'</div>' : ''}
+        ${cot.notas && cot.notas.length > 0 ? (function(){
+          var n = cot.notas[0];
+          var d = new Date(n.created_at);
+          var dateStr = d.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) + ' ' + d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+          var tipoIcons = {llamada:'📞',mensaje:'💬',nota:'📝'};
+          return '<div style="font-size:10px;margin-top:3px;padding:4px 8px;background:#EFF6FF;border-radius:5px;border-left:3px solid #3B82F6;display:flex;gap:4px;align-items:center"><span style="color:#3B82F6;font-weight:600;white-space:nowrap">'+(tipoIcons[n.tipo]||'📝')+' '+dateStr+'</span><span style="color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+n.autor+': '+n.texto.substring(0,55)+(n.texto.length>55?'...':'')+'</span>'+(cot.notas.length>1?'<span style="color:var(--text-3);font-size:9px;white-space:nowrap">('+cot.notas.length+')</span>':'')+'</div>';
+        })() : '<div style="font-size:9px;margin-top:3px;padding:3px 8px;background:#FEF2F2;border-radius:5px;border-left:3px solid #DC3545;color:#DC3545;font-weight:600">⚠️ Sin seguimiento registrado</div>'}
       </div>
     </div>
   `).join('') + '</div>';
@@ -5419,51 +5432,102 @@ async function loadNotas(folio) {
 // ============================================================
 // EDIT COTIZACIÓN
 // ============================================================
+var reasignarAgentsList = [];
+
 async function reasignarCotDetalle(folio) {
   if (!supabase || !currentUser) return;
   if (currentUser.rol !== 'admin' && currentUser.rol !== 'coordinador') { alert('Sin permisos'); return; }
   
-  // Load active agents
-  var {data: agents} = await supabase.from('usuarios').select('id, nombre, attuid, rol, supervisor_id, coordinador_id').eq('activo', true);
-  var agentList = (agents || []).filter(function(u) { return u.rol === 'agente'; });
+  // Load active agents with supervisors
+  var {data: allUsers} = await supabase.from('usuarios').select('id, nombre, attuid, rol, supervisor_id, coordinador_id, activo');
+  var activeUsers = (allUsers || []).filter(function(u) { return u.activo === true || u.activo === 'true'; });
   
-  // Coordinador only sees their structure
+  // Build supervisor map
+  var supMap = {};
+  activeUsers.filter(function(u) { return u.rol === 'supervisor'; }).forEach(function(u) { supMap[u.id] = u.nombre; });
+  
+  // Get agents
+  var agents = activeUsers.filter(function(u) { return u.rol === 'agente'; });
   if (currentUser.rol === 'coordinador') {
-    agentList = agentList.filter(function(u) { return u.coordinador_id === currentUser.id; });
+    agents = agents.filter(function(u) { return u.coordinador_id === currentUser.id; });
   }
   
-  agentList.sort(function(a,b) { return (a.nombre||'').localeCompare(b.nombre||''); });
+  // Group by supervisor
+  var bySup = {};
+  agents.forEach(function(a) {
+    var supName = supMap[a.supervisor_id] || 'Sin supervisor';
+    if (!bySup[supName]) bySup[supName] = [];
+    bySup[supName].push(a);
+  });
   
-  var options = agentList.map(function(a) { return a.nombre + ' (' + a.attuid + ')'; });
-  var selected = prompt('Reasignar cotización ' + folio + ' a:\n\n' + agentList.map(function(a,i) { return (i+1) + '. ' + a.nombre; }).join('\n') + '\n\nEscribe el número:');
+  reasignarAgentsList = agents;
   
-  if (!selected) return;
-  var idx = parseInt(selected) - 1;
-  if (isNaN(idx) || idx < 0 || idx >= agentList.length) { alert('Opción inválida'); return; }
+  // Build supervisor options
+  var supOptions = '<option value="">Selecciona supervisor...</option>';
+  Object.keys(bySup).sort().forEach(function(s) {
+    supOptions += '<option value="' + s + '">' + s + ' (' + bySup[s].length + ' agentes)</option>';
+  });
   
-  var newAgent = agentList[idx];
+  // Create modal
+  var overlay = document.createElement('div');
+  overlay.id = 'reasignarOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = '<div style="background:white;border-radius:16px;padding:24px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">' +
+    '<div style="font-size:16px;font-weight:800;margin-bottom:4px">🔄 Reasignar Cotización</div>' +
+    '<div style="font-size:11px;color:var(--text-3);margin-bottom:16px">Folio: ' + folio + '</div>' +
+    '<label style="font-size:11px;font-weight:600;color:var(--text-2);margin-bottom:4px;display:block">Supervisor:</label>' +
+    '<select id="reasignarSup" onchange="reasignarFilterAgents()" class="field" style="width:100%;margin-bottom:10px">' + supOptions + '</select>' +
+    '<label style="font-size:11px;font-weight:600;color:var(--text-2);margin-bottom:4px;display:block">Agente:</label>' +
+    '<select id="reasignarAgent" class="field" style="width:100%;margin-bottom:16px"><option value="">Primero selecciona supervisor</option></select>' +
+    '<div style="display:flex;gap:8px">' +
+    '<button onclick="document.getElementById(\'reasignarOverlay\').remove()" class="btn btn-secondary" style="flex:1">Cancelar</button>' +
+    '<button onclick="confirmarReasignar(\'' + folio + '\')" class="btn btn-primary" style="flex:1;background:#8B5CF6">✅ Reasignar</button>' +
+    '</div></div>';
   
-  if (!confirm('¿Reasignar ' + folio + ' a ' + newAgent.nombre + '?')) return;
+  document.body.appendChild(overlay);
+  
+  // Store bySup for the filter function
+  window._reasignarBySup = bySup;
+}
+
+function reasignarFilterAgents() {
+  var supName = document.getElementById('reasignarSup').value;
+  var agSel = document.getElementById('reasignarAgent');
+  agSel.innerHTML = '<option value="">Selecciona agente...</option>';
+  if (!supName || !window._reasignarBySup[supName]) return;
+  window._reasignarBySup[supName].sort(function(a,b) { return a.nombre.localeCompare(b.nombre); }).forEach(function(a) {
+    agSel.innerHTML += '<option value="' + a.id + '">' + a.nombre + '</option>';
+  });
+}
+
+async function confirmarReasignar(folio) {
+  var agentId = document.getElementById('reasignarAgent').value;
+  if (!agentId) { alert('Selecciona un agente'); return; }
+  
+  var agent = reasignarAgentsList.find(function(a) { return a.id === agentId; });
+  if (!agent) return;
+  
+  if (!confirm('¿Reasignar ' + folio + ' a ' + agent.nombre + '?')) return;
   
   try {
     await supabase.from('cotizaciones').update({
-      agente_id: newAgent.id,
+      agente_id: agent.id,
       sub_estatus: 'reasignada'
     }).eq('folio', folio);
     
-    // Add nota about reasignación
     var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', folio).single();
     if (cotRow) {
       await supabase.from('cotizacion_notas').insert({
         cotizacion_id: cotRow.id,
         tipo: 'nota',
-        texto: 'Cotización reasignada a ' + newAgent.nombre + ' por ' + currentUser.nombre,
+        texto: 'Cotización reasignada a ' + agent.nombre + ' por ' + currentUser.nombre,
         autor: currentUser.nombre,
         rol_autor: currentUser.rol
       });
     }
     
-    alert('✅ Cotización reasignada a ' + newAgent.nombre);
+    document.getElementById('reasignarOverlay').remove();
+    alert('✅ Cotización reasignada a ' + agent.nombre);
     await loadCotizacionesFromSupabase();
     showView('historial');
   } catch(e) { alert('Error: ' + e.message); }
@@ -9017,7 +9081,7 @@ async function metasRender() {
         opsH += '<div><div style="font-size:12px;font-weight:800;color:#1A365D">'+METAS_CENTROS[ck].name+'</div>';
         if (coordName) opsH += '<div style="font-size:9px;color:#4A6FA5;font-weight:600;margin-top:1px">📋 Coord: '+coordName+'</div>';
         opsH += '</div>';
-        opsH += '<span style="font-size:13px;font-weight:800;color:'+cc+'">'+cv+'/'+cm+'</span>';
+        opsH += '<div style="text-align:right"><span style="font-size:16px;font-weight:900;color:'+cc+'">'+cp+'%</span><div style="font-size:10px;color:var(--text-3)">'+cv+'/'+cm+'</div></div>';
         opsH += '</div>';
         opsH += '<div style="height:8px;border-radius:4px;background:rgba(0,0,0,0.08);overflow:hidden;margin-bottom:10px"><div style="height:100%;width:'+Math.min(cp,100)+'%;background:'+cc+';border-radius:4px"></div></div>';
         
