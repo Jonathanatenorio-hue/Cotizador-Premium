@@ -2366,7 +2366,8 @@ async function updateEstatusInSupabase(folio, estatus) {
 async function loadCotizacionesFromSupabase() {
   if (!supabase || !currentUser) { console.log('loadCots: no supabase or user'); return; }
   try {
-    var query = supabase.from('cotizaciones').select('*, cotizacion_items(*)');
+    var query = supabase.from('cotizaciones').select('*, cotizacion_items(*), cotizacion_notas(*)');
+
 
     // Filter by role
     if (currentUser.rol === 'agente') {
@@ -2442,10 +2443,23 @@ async function loadCotizacionesFromSupabase() {
         folio_att: c.folio_att,
         fecha_fin_plazo: c.fecha_fin_plazo,
         tiene_ine: c.tiene_ine,
+        interes_cliente: c.interes_cliente,
+        barrera_cierre: c.barrera_cierre,
+        adeudo_monto: c.adeudo_monto,
+        adeudo_fecha_compromiso: c.adeudo_fecha_compromiso,
+        notas: (c.cotizacion_notas || []).sort(function(a,b){return new Date(b.created_at) - new Date(a.created_at)}),
+        ultimaNota: null,
         createdAt: c.created_at,
         editedAt: c.edited_at,
         agente_id: c.agente_id,
       };
+      // Set ultima nota
+      if (mapped.notas.length > 0) {
+        var n = mapped.notas[0];
+        var tipoIcons = {llamada:'📞', mensaje:'💬', nota:'📝'};
+        mapped.ultimaNota = (tipoIcons[n.tipo]||'📝') + ' ' + n.autor + ': ' + n.texto.substring(0,60) + (n.texto.length>60?'...':'');
+      }
+      return mapped;
     });
 
     state.cotizaciones = cotizaciones;
@@ -2563,10 +2577,14 @@ function updateHome() {
   const pending = state.cotizaciones.filter(c => c.estatus === 'seguimiento').length;
   const lost = state.cotizaciones.filter(c => c.estatus === 'perdida').length;
   document.getElementById('historialCount').textContent = total + ' cotizaciones';
+  var sinNotas = state.cotizaciones.filter(function(c) {
+    return (c.estatus === 'seguimiento' || c.estatus === 'enviada') && (!c.notas || c.notas.length === 0);
+  }).length;
   document.getElementById('historialMiniStats').innerHTML =
     `<span class="mini-stat open">${open} enviadas</span>` +
     `<span class="mini-stat closed">${closed} ventas</span>` +
-    `<span class="mini-stat pending">${pending} seguimiento</span>`;
+    `<span class="mini-stat pending">${pending} seguimiento</span>` +
+    (sinNotas > 0 ? `<span class="mini-stat" style="background:#FEF2F2;color:#DC3545;font-weight:700">⚠️ ${sinNotas} sin notas</span>` : '');
 
   // Show admin card for admin/coordinator/supervisor
   var adminCard = document.getElementById('cardAdmin');
@@ -3219,6 +3237,80 @@ async function sendAsesorMsg() {
   renderAsesorPanel();
 }
 
+// ── DEVICE IMAGES ──
+var DEVICE_IMG_BUCKET = 'device-images';
+var deviceImgCache = {};
+
+function deviceImgKey(equipo) {
+  return (equipo || '').toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').substring(0, 80);
+}
+
+async function loadDeviceImg(imgKey) {
+  if (deviceImgCache[imgKey] !== undefined) return deviceImgCache[imgKey];
+  if (!supabase) return null;
+  try {
+    var {data} = await supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(imgKey + '.webp');
+    if (data && data.publicUrl) {
+      // Test if image exists
+      deviceImgCache[imgKey] = data.publicUrl;
+      return data.publicUrl;
+    }
+  } catch(e) {}
+  deviceImgCache[imgKey] = null;
+  return null;
+}
+
+async function loadAllDeviceImgs() {
+  // Load all images for visible cards
+  var imgs = document.querySelectorAll('[data-imgkey]');
+  for (var i = 0; i < imgs.length; i++) {
+    var img = imgs[i];
+    var key = img.getAttribute('data-imgkey');
+    if (!key || img.src) continue;
+    var url = await loadDeviceImg(key);
+    if (url) {
+      img.src = url;
+      img.style.display = '';
+      if (img.nextElementSibling) img.nextElementSibling.style.display = 'none';
+    }
+  }
+}
+
+function uploadDeviceImg(imgKey, devId) {
+  var inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  inp.onchange = async function() {
+    var file = inp.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { alert('Imagen máximo 2MB'); return; }
+    try {
+      var {error} = await supabase.storage.from(DEVICE_IMG_BUCKET).upload(imgKey + '.webp', file, {upsert: true, contentType: file.type});
+      if (error) { alert('Error: ' + error.message); return; }
+      // Update cache and refresh image
+      var {data} = await supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(imgKey + '.webp');
+      if (data) {
+        deviceImgCache[imgKey] = data.publicUrl + '?t=' + Date.now();
+        var imgEl = document.querySelector('#dimg_' + devId + ' img');
+        if (imgEl) {
+          imgEl.src = deviceImgCache[imgKey];
+          imgEl.style.display = '';
+          if (imgEl.nextElementSibling) imgEl.nextElementSibling.style.display = 'none';
+        }
+      }
+      alert('✅ Imagen actualizada');
+    } catch(e) { alert('Error: ' + e.message); }
+  };
+  inp.click();
+}
+
+// Get image URL for PDF use
+async function getDeviceImgUrl(equipo) {
+  var key = deviceImgKey(equipo);
+  var url = await loadDeviceImg(key);
+  return url;
+}
+
 function searchDevices() {
   const term = document.getElementById('searchInput').value.toLowerCase().trim();
   const filter = document.getElementById('searchFilter').value;
@@ -3250,6 +3342,7 @@ function searchDevices() {
   }
   html += '</div>';
   container.innerHTML = html;
+  setTimeout(loadAllDeviceImgs, 100);
 }
 
 function renderDeviceCard(dev) {
@@ -3259,14 +3352,23 @@ function renderDeviceCard(dev) {
   const plazoOptions = dev.plazos.map(p =>
     `<option value="${p}">${p} meses</option>`
   ).join('');
+  
+  var imgKey = deviceImgKey(dev.equipo);
+  var isAdmin = currentUser && currentUser.rol === 'admin';
 
   return `
     <div class="device-card" id="dev_${dev.id}">
       <div class="device-header" onclick="toggleDevice('${dev.id}')">
-        <div>
-          <div class="device-brand">${dev.marca}</div>
-          <div class="device-name">${dev.equipo}</div>
-          <div class="device-offer">${dev.oferta}</div>
+        <div style="display:flex;gap:10px;align-items:center;flex:1;min-width:0">
+          <div id="dimg_${dev.id}" style="width:48px;height:48px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+            <img src="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" style="width:100%;height:100%;object-fit:contain" data-imgkey="${imgKey}">
+            <span style="font-size:20px;display:none;align-items:center;justify-content:center;width:100%;height:100%">📱</span>
+          </div>
+          <div style="min-width:0">
+            <div class="device-brand">${dev.marca}</div>
+            <div class="device-name">${dev.equipo}</div>
+            <div class="device-offer">${dev.oferta}</div>
+          </div>
         </div>
         <div class="device-price">
           <div class="device-price-label">Precio lista</div>
@@ -3275,6 +3377,7 @@ function renderDeviceCard(dev) {
         <span class="expand-icon" id="icon_${dev.id}">▼</span>
       </div>
       <div class="device-body" id="body_${dev.id}">
+        ${isAdmin ? '<div style="margin-bottom:8px"><button onclick="event.stopPropagation();uploadDeviceImg(\''+imgKey+'\',\''+dev.id+'\')" style="font-size:9px;padding:3px 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;cursor:pointer">📷 Cambiar imagen</button></div>' : ''}
         <div class="device-selectors">
           <div class="form-group">
             <label class="field-label">Plan</label>
@@ -4850,6 +4953,7 @@ function renderHistorial() {
         <span class="historial-client">${cot.cliente.nombre}</span>
         <span class="historial-meta">${cot.cliente.telefono || ''} · ${cot.items.length} equipo(s) · ${cot.fecha}</span>
         <span class="historial-meta">Ejecutivo: ${cot.ejecutivo ? cot.ejecutivo.nombre : 'N/A'}${cot.supervisorNombre ? ' · Sup: ' + cot.supervisorNombre : ''}${cot.sub_estatus ? ' · ' + subEstatusLabel(cot.sub_estatus) : ''}${cot.folio_att ? ' · Folio ATT: ' + cot.folio_att : ''}${cot.sub_estatus==='aceleracion' && cot.fecha_fin_plazo ? ' · Plazo: ' + cot.fecha_fin_plazo + (new Date(cot.fecha_fin_plazo+'T00:00:00') <= new Date() ? ' 🚨 VENCIDO' : '') : ''}</span>
+        ${cot.ultimaNota ? '<div style="font-size:10px;color:#3B82F6;margin-top:3px;padding:3px 6px;background:#EFF6FF;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+cot.ultimaNota+(cot.notas&&cot.notas.length>1?' <span style="color:var(--text-3)">('+cot.notas.length+' notas)</span>':'')+'</div>' : ''}
       </div>
     </div>
   `).join('') + '</div>';
@@ -4951,14 +5055,21 @@ function showDetalle(folio) {
             </div>
             <div id="subPerdida_${cot.folio}" style="display:none">
               <label class="field-label">Motivo de pérdida:</label>
-              <select class="field" id="subPer_${cot.folio}" style="width:100%">
+              <select class="field" id="subPer_${cot.folio}" onchange="onSubPerChange('${cot.folio}')" style="width:100%">
                 <option value="">Selecciona...</option>
                 <option value="renovo_otro" ${cot.sub_estatus==='renovo_otro'?'selected':''}>Cliente renovó en otro lado</option>
                 <option value="no_responde" ${cot.sub_estatus==='no_responde'?'selected':''}>Ya no responde</option>
                 <option value="prefiere_tienda" ${cot.sub_estatus==='prefiere_tienda'?'selected':''}>Prefiere ir a una tienda</option>
                 <option value="pago_rechazado" ${cot.sub_estatus==='pago_rechazado'?'selected':''}>Pago inicial rechazado por el cliente</option>
                 <option value="desconfianza" ${cot.sub_estatus==='desconfianza'?'selected':''}>Desconfianza de trámite en línea</option>
+                <option value="adeudo_pendiente" ${cot.sub_estatus==='adeudo_pendiente'?'selected':''}>💰 Adeudo por pagar</option>
               </select>
+              <div id="adeudoPerdida_${cot.folio}" style="display:${cot.sub_estatus==='adeudo_pendiente'&&cot.estatus==='perdida'?'':'none'};margin-top:6px">
+                <label class="field-label">Monto del adeudo *:</label>
+                <input type="number" class="field" id="adeudoMontoPer_${cot.folio}" placeholder="Ej: 1500" value="${cot.adeudo_monto||''}" style="width:100%">
+                <label class="field-label" style="margin-top:4px">Fecha compromiso pago:</label>
+                <input type="date" class="field" id="adeudoFechaPer_${cot.folio}" value="${cot.adeudo_fecha_compromiso||''}" style="width:100%">
+              </div>
             </div>
             <div id="subVenta_${cot.folio}" style="display:none">
               <label class="field-label">Folio AT&T (obligatorio):</label>
@@ -4971,6 +5082,53 @@ function showDetalle(folio) {
           <button class="btn btn-secondary" onclick="editCotizacion('${cot.folio}')">✏️ Editar</button>
           <button class="btn btn-secondary" onclick="buildAndDownloadPDF(state.selectedCotizacion)">📄 Descargar PDF</button>
         </div>
+      </div>
+    </div>
+    <div class="section" style="padding:14px">
+      <div class="section-title" style="margin-bottom:8px">🎯 Contexto del Prospecto</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="flex:1;min-width:140px">
+          <label class="field-label">Interés del cliente</label>
+          <select class="field" id="cotInteres_${cot.folio}" style="font-size:11px">
+            <option value="">Sin especificar</option>
+            <option value="equipo_especifico" ${cot.interes_cliente==='equipo_especifico'?'selected':''}>Equipo específico</option>
+            <option value="precio_atractivo" ${cot.interes_cliente==='precio_atractivo'?'selected':''}>Precio atractivo</option>
+            <option value="mas_datos" ${cot.interes_cliente==='mas_datos'?'selected':''}>Más datos/GB</option>
+            <option value="cambio_compania" ${cot.interes_cliente==='cambio_compania'?'selected':''}>Cambio de compañía</option>
+            <option value="renovar_equipo" ${cot.interes_cliente==='renovar_equipo'?'selected':''}>Renovar equipo</option>
+            <option value="promocion" ${cot.interes_cliente==='promocion'?'selected':''}>Promoción/oferta</option>
+            <option value="otro_interes" ${cot.interes_cliente==='otro_interes'?'selected':''}>Otro</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label class="field-label">Barrera de cierre</label>
+          <select class="field" id="cotBarrera_${cot.folio}" style="font-size:11px">
+            <option value="">Sin especificar</option>
+            <option value="precio_alto" ${cot.barrera_cierre==='precio_alto'?'selected':''}>Precio alto</option>
+            <option value="consultar_familia" ${cot.barrera_cierre==='consultar_familia'?'selected':''}>Quiere consultar</option>
+            <option value="sin_credito" ${cot.barrera_cierre==='sin_credito'?'selected':''}>No tiene crédito</option>
+            <option value="no_titular" ${cot.barrera_cierre==='no_titular'?'selected':''}>No es el titular</option>
+            <option value="comparar_opciones" ${cot.barrera_cierre==='comparar_opciones'?'selected':''}>Quiere comparar</option>
+            <option value="adeudo" ${cot.barrera_cierre==='adeudo'?'selected':''}>Tiene adeudo</option>
+            <option value="desconfianza" ${cot.barrera_cierre==='desconfianza'?'selected':''}>Desconfianza</option>
+            <option value="sin_docs" ${cot.barrera_cierre==='sin_docs'?'selected':''}>Sin documentos</option>
+            <option value="otro_barrera" ${cot.barrera_cierre==='otro_barrera'?'selected':''}>Otro</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="font-size:10px;padding:4px 12px;margin-top:6px" onclick="guardarContexto('${cot.folio}')">💾 Guardar contexto</button>
+    </div>
+    <div class="section" style="padding:14px">
+      <div class="section-title" style="margin-bottom:8px">📝 Notas de Seguimiento</div>
+      <div id="notasList_${cot.folio}" style="margin-bottom:8px"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+        <select class="field" id="notaTipo_${cot.folio}" style="width:auto;font-size:11px;padding:5px 8px">
+          <option value="llamada">📞 Llamada</option>
+          <option value="mensaje">💬 Mensaje</option>
+          <option value="nota">📝 Nota interna</option>
+        </select>
+        <input type="text" class="field" id="notaTexto_${cot.folio}" placeholder="Escribe tu nota..." style="flex:1;font-size:11px;min-width:150px">
+        <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="agregarNota('${cot.folio}')">Agregar</button>
       </div>
     </div>
     <div class="section">
@@ -4995,7 +5153,7 @@ function showDetalle(folio) {
   `;
 
   showView('detalle', 'Cotización ' + cot.folio);
-  setTimeout(function() { onEstatusChange(cot.folio, true); }, 50);
+  setTimeout(function() { onEstatusChange(cot.folio, true); loadNotas(cot.folio); }, 50);
   // Admin and coordinador delete button
   if (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador')) {
     var delBtn = document.createElement('div');
@@ -5040,6 +5198,12 @@ function onEstatusChange(folio, init) {
   if (est === 'enviada') subRow.style.display = 'none';
 }
 
+function onSubPerChange(folio) {
+  var val = document.getElementById('subPer_' + folio).value;
+  var panel = document.getElementById('adeudoPerdida_' + folio);
+  if (panel) panel.style.display = val === 'adeudo_pendiente' ? '' : 'none';
+}
+
 function onSubSegChange(folio) {
   var val = document.getElementById('subSeg_' + folio).value;
   var acDiv = document.getElementById('subAceleracion_' + folio);
@@ -5061,6 +5225,17 @@ async function guardarEstatus(folio) {
   if (est === 'seguimiento') {
     subEstatus = document.getElementById('subSeg_' + folio).value;
     if (!subEstatus) { alert('Selecciona el motivo de seguimiento.'); return; }
+    // Check if at least one nota exists
+    var cot = state.cotizaciones.find(function(c){return c.folio === folio});
+    if (cot && (!cot.notas || cot.notas.length === 0)) {
+      var notaTexto = document.getElementById('notaTexto_' + folio);
+      if (!notaTexto || !notaTexto.value.trim()) {
+        alert('⚠️ Agrega al menos una nota de seguimiento antes de guardar.\n\nEscribe qué acción realizaste (llamada, mensaje, etc.) en la sección de Notas de Seguimiento.');
+        var notasSection = document.getElementById('notaTexto_' + folio);
+        if (notasSection) { notasSection.focus(); notasSection.style.border = '2px solid #DC3545'; setTimeout(function(){notasSection.style.border='';}, 3000); }
+        return;
+      }
+    }
     if (subEstatus === 'aceleracion') {
       fechaFinPlazo = document.getElementById('fechaFinPlazo_' + folio).value;
       tieneIne = document.getElementById('tieneIne_' + folio).value;
@@ -5076,6 +5251,11 @@ async function guardarEstatus(folio) {
   } else if (est === 'perdida') {
     subEstatus = document.getElementById('subPer_' + folio).value;
     if (!subEstatus) { alert('Selecciona el motivo de pérdida.'); return; }
+    if (subEstatus === 'adeudo_pendiente') {
+      adeudoMonto = document.getElementById('adeudoMontoPer_' + folio).value;
+      adeudoFechaCompromiso = document.getElementById('adeudoFechaPer_' + folio).value;
+      if (!adeudoMonto || parseFloat(adeudoMonto) <= 0) { alert('El monto del adeudo es obligatorio.'); return; }
+    }
   } else if (est === 'venta') {
     folioAtt = document.getElementById('folioAtt_' + folio).value.trim();
     if (!folioAtt) { alert('El folio AT&T es obligatorio para ventas exitosas.'); return; }
@@ -5113,6 +5293,91 @@ async function guardarEstatus(folio) {
 
   alert('Estatus actualizado: ' + {enviada:'Enviada', seguimiento:'Seguimiento', venta:'Venta Exitosa', perdida:'Perdida'}[est]);
   showDetalle(folio);
+}
+
+async function guardarContexto(folio) {
+  var interes = document.getElementById('cotInteres_' + folio).value;
+  var barrera = document.getElementById('cotBarrera_' + folio).value;
+  var cot = state.cotizaciones.find(function(c){return c.folio === folio});
+  if (cot) { cot.interes_cliente = interes; cot.barrera_cierre = barrera; saveState(); }
+  if (supabase) {
+    try {
+      await supabase.from('cotizaciones').update({interes_cliente: interes || null, barrera_cierre: barrera || null}).eq('folio', folio);
+    } catch(e) { console.error(e); }
+  }
+  alert('✅ Contexto guardado');
+}
+
+async function agregarNota(folio) {
+  var tipo = document.getElementById('notaTipo_' + folio).value;
+  var texto = document.getElementById('notaTexto_' + folio).value.trim();
+  if (!texto) { alert('Escribe una nota'); return; }
+  if (!supabase) return;
+  
+  var autor = currentUser ? currentUser.nombre : '';
+  var rolAutor = currentUser ? currentUser.rol : '';
+  
+  try {
+    // Get cotizacion id
+    var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', folio).single();
+    if (!cotRow) return;
+    
+    await supabase.from('cotizacion_notas').insert({
+      cotizacion_id: cotRow.id,
+      tipo: tipo,
+      texto: texto,
+      autor: autor,
+      rol_autor: rolAutor
+    });
+    
+    document.getElementById('notaTexto_' + folio).value = '';
+    loadNotas(folio);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function loadNotas(folio) {
+  var el = document.getElementById('notasList_' + folio);
+  if (!supabase) return;
+  
+  try {
+    var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', folio).single();
+    if (!cotRow) { if(el) el.innerHTML = ''; return; }
+    
+    var {data: notas} = await supabase.from('cotizacion_notas').select('*').eq('cotizacion_id', cotRow.id).order('created_at', {ascending: false});
+    
+    // Update local state
+    var cot = state.cotizaciones.find(function(c){return c.folio === folio});
+    if (cot) {
+      cot.notas = notas || [];
+      if (notas && notas.length > 0) {
+        var n = notas[0];
+        var tipoIcons = {llamada:'📞', mensaje:'💬', nota:'📝'};
+        cot.ultimaNota = (tipoIcons[n.tipo]||'📝') + ' ' + n.autor + ': ' + n.texto.substring(0,60) + (n.texto.length>60?'...':'');
+      }
+    }
+    
+    if (!el) return;
+    if (!notas || !notas.length) { el.innerHTML = '<div style="font-size:10px;color:var(--text-3);padding:4px 0">Sin notas aún</div>'; return; }
+    
+    var tipoIcons = {llamada:'📞', mensaje:'💬', nota:'📝'};
+    var rolColors = {admin:'#8B5CF6', coordinador:'#3B82F6', supervisor:'#10B981', agente:'#F59E0B'};
+    
+    var h = '<div style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">';
+    notas.forEach(function(n) {
+      var d = new Date(n.created_at);
+      var dateStr = d.toLocaleDateString('es-MX') + ' ' + d.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
+      var rc = rolColors[n.rol_autor] || '#888';
+      h += '<div style="background:var(--surface-2);border-radius:6px;padding:6px 10px;border-left:3px solid '+rc+'">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">';
+      h += '<span style="font-size:9px;font-weight:700;color:'+rc+'">'+(tipoIcons[n.tipo]||'📝')+' '+n.autor+' <span style="font-weight:400;color:var(--text-3)">('+n.rol_autor+')</span></span>';
+      h += '<span style="font-size:8px;color:var(--text-3)">'+dateStr+'</span>';
+      h += '</div>';
+      h += '<div style="font-size:11px;color:var(--text-2)">'+n.texto+'</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+    el.innerHTML = h;
+  } catch(e) { if(el) el.innerHTML = ''; }
 }
 
 // ============================================================
@@ -6619,12 +6884,34 @@ async function openRecuperacion() {
     var userMap = {};
     (allUsers || []).forEach(function(u) { userMap[u.id] = u; });
 
-    // Load ALL non-venta cotizaciones
-    var { data: allCots } = await supabase.from('cotizaciones')
-      .select('*')
-      .neq('estatus', 'venta')
-      .order('created_at', { ascending: false });
+    // Load cotizaciones based on role
+    var cotQuery = supabase.from('cotizaciones').select('*').neq('estatus', 'venta').order('created_at', { ascending: false });
+    
+    if (currentUser.rol === 'supervisor') {
+      // Supervisor only sees their own agents
+      var myAgentIds = (allUsers||[]).filter(function(u){return u.supervisor_id === currentUser.id}).map(function(u){return u.id});
+      myAgentIds.push(currentUser.id);
+      cotQuery = cotQuery.in('agente_id', myAgentIds);
+    } else if (currentUser.rol === 'coordinador') {
+      // Coordinator sees their supervisors' agents
+      var coordAgentIds = (allUsers||[]).filter(function(u){return u.coordinador_id === currentUser.id}).map(function(u){return u.id});
+      coordAgentIds.push(currentUser.id);
+      cotQuery = cotQuery.in('agente_id', coordAgentIds);
+    }
+    // admin sees all
+    
+    var { data: allCots } = await cotQuery;
     console.log('Recup: cots loaded:', (allCots||[]).length);
+
+    // Load notas for these cotizaciones
+    var cotIds = (allCots||[]).map(function(c){return c.id});
+    var notasMap = {};
+    if (cotIds.length > 0) {
+      var {data: allNotas} = await supabase.from('cotizacion_notas').select('*').in('cotizacion_id', cotIds).order('created_at', {ascending: false});
+      (allNotas||[]).forEach(function(n) {
+        if (!notasMap[n.cotizacion_id]) notasMap[n.cotizacion_id] = n;
+      });
+    }
 
     // Count items per cotizacion
     var { data: allItems } = await supabase.from('cotizacion_items').select('cotizacion_id');
@@ -6662,6 +6949,7 @@ async function openRecuperacion() {
         adeudo_monto: c.adeudo_monto || null,
         adeudo_fecha_compromiso: c.adeudo_fecha_compromiso || null,
         tipo: isInactive ? 'exagente' : adeudoVence ? 'adeudo' : isLost ? 'perdida' : isStaleEnv ? 'enviada' : isStaleSeg ? 'seguimiento' : isAdeudo ? 'adeudo_proximo' : 'otro',
+        ultimaNota: notasMap[c.id] ? (({llamada:'📞',mensaje:'💬',nota:'📝'})[notasMap[c.id].tipo]||'📝') + ' ' + notasMap[c.id].autor + ': ' + notasMap[c.id].texto.substring(0,50) : null,
       };
     }).filter(function(c) { return c.isRecuperable || c.isExAgent || c.isAdeudo; });
     console.log('Recup: filtered:', recupCots.length);
@@ -6780,6 +7068,8 @@ function renderRecuperacion() {
     html += '<div style="font-size:11px;color:var(--text-2);margin-top:2px">👤 '+c.cliente+' · 📞 '+(c.telefono||'Sin tel')+' · 📦 '+c.items+' equipo(s) · '+c.fecha+'</div>';
     if(c.isAdeudo) html += '<div style="font-size:10px;color:#E65100;font-weight:600;margin-top:2px">💰 Adeudo: $'+(c.adeudo_monto?c.adeudo_monto.toLocaleString():'?')+' · Compromiso: '+(c.adeudo_fecha_compromiso||'Sin fecha')+(c.adeudoVence?' · <span style="color:#DC3545;font-weight:800">¡FECHA VENCIDA!</span>':'')+'</div>';
     html += '<div style="font-size:10px;color:var(--text-3)">Agente: <b>'+c.agente_nombre+'</b>'+(c.agente_activo?'':' <span style="color:#DC3545">(BAJA)</span>')+' · '+c.centro+'</div>';
+    if (c.ultimaNota) html += '<div style="font-size:10px;color:#3B82F6;margin-top:3px;padding:3px 6px;background:#EFF6FF;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+c.ultimaNota+'</div>';
+    else html += '<div style="font-size:9px;color:#DC3545;margin-top:3px;padding:2px 6px;background:#FEF2F2;border-radius:4px;font-weight:600">⚠️ Sin notas de seguimiento</div>';
     html += '</div></div>';
   });
   html += '</div>';
@@ -7268,6 +7558,8 @@ function renderAceleraciones() {
       s += '<span style="font-size:11px">' + diasFaltan + '</span>';
       s += '</div>';
       s += '<div style="font-size:10px;color:var(--text-3);margin-top:3px">Agente: ' + (c.ejecutivo ? c.ejecutivo.nombre : 'N/A') + ' · Folio: ' + c.folio + '</div>';
+      if (c.ultimaNota) s += '<div style="font-size:10px;color:#3B82F6;margin-top:3px;padding:3px 6px;background:#EFF6FF;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + c.ultimaNota + '</div>';
+      else s += '<div style="font-size:9px;color:#DC3545;margin-top:3px;padding:2px 6px;background:#FEF2F2;border-radius:4px;font-weight:600">⚠️ Sin notas de seguimiento</div>';
       s += '</div>';
     });
     s += '</div>';
