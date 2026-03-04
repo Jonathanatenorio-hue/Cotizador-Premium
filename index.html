@@ -1155,29 +1155,16 @@ body{padding-bottom:60px}
     <!-- Cruce de Ventas -->
     <div class="section" style="padding:14px;margin-bottom:8px" id="cruceSection">
       <div class="section-title">Cruce de Ventas</div>
-      <p style="font-size:12px;color:var(--text-3);margin:6px 0 10px">Sube el archivo de ventas de AT&T (.xlsx) para validar las cotizaciones marcadas como "Venta Exitosa".</p>
+      <p style="font-size:12px;color:var(--text-3);margin:6px 0 10px">Sube el archivo GlobalMes de AT&T (.xlsx). Se cruza automáticamente con las cotizaciones "Venta Exitosa" por teléfono. Los cruces se acumulan entre archivos.</p>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <label class="btn btn-primary" style="cursor:pointer;font-size:12px">
-          📁 Subir archivo de ventas
+          📁 Subir archivo GlobalMes
           <input type="file" id="cruceFile" accept=".xlsx,.xls" onchange="procesarCruceVentas(this)" style="display:none">
         </label>
         <span id="cruceFileName" style="font-size:11px;color:var(--text-3)"></span>
+        <button onclick="resetCruces()" class="btn btn-secondary" style="font-size:10px;padding:4px 10px">🗑️ Reiniciar cruces del mes</button>
       </div>
-      <div id="cruceColumnConfig" style="display:none;margin-top:12px;background:var(--surface-2);padding:12px;border-radius:8px">
-        <div style="font-weight:700;font-size:12px;margin-bottom:8px;color:var(--att-blue)">Mapea las columnas del archivo:</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div>
-            <label class="field-label">Columna de Teléfono</label>
-            <select class="field" id="cruceColTelefono" style="font-size:12px"></select>
-          </div>
-          <div>
-            <label class="field-label">Columna de Folio AT&T</label>
-            <select class="field" id="cruceColFolio" style="font-size:12px"></select>
-          </div>
-        </div>
-        <button class="btn btn-primary" style="margin-top:10px;font-size:12px" onclick="ejecutarCruce()">🔍 Ejecutar Cruce</button>
-      </div>
-      <div id="cruceFilters" style="display:none;margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <div id="cruceFilters" style="display:none;margin-top:10px;gap:6px;flex-wrap:wrap;align-items:center">
         <select class="field" id="cruceFilterStatus" onchange="renderCruceResults()" style="width:auto;font-size:11px;padding:5px 8px">
           <option value="all">Todos</option>
           <option value="confirmada">✅ Confirmadas</option>
@@ -5567,6 +5554,7 @@ async function guardarEstatus(folio) {
         tiene_ine: tieneIne || null,
         adeudo_monto: adeudoMonto ? parseFloat(adeudoMonto) : null,
         adeudo_fecha_compromiso: adeudoFechaCompromiso || null,
+        updated_at: new Date().toISOString(),
       }).eq('folio', folio);
       console.log('Estatus updated:', folio, est, subEstatus, folioAtt);
     } catch(e) { console.error(e); }
@@ -6424,10 +6412,14 @@ function exportDashPDF() {
 // ============================================================
 // CRUCE DE VENTAS
 // ============================================================
-var cruceData = []; // parsed rows from uploaded file
-var cruceHeaders = []; // column headers
-var cruceConfirmadas = []; // confirmed after cruce
-var cruceNoConfirmadas = []; // not confirmed after cruce
+// ── CRUCE DE VENTAS ──
+var cruceConfirmadas = [];
+var cruceNoConfirmadas = [];
+
+function normalizeTel(tel) {
+  if (!tel) return '';
+  return String(tel).replace(/\D/g, '').slice(-10);
+}
 
 function procesarCruceVentas(input) {
   var file = input.files[0];
@@ -6435,30 +6427,92 @@ function procesarCruceVentas(input) {
   document.getElementById('cruceFileName').textContent = file.name;
 
   var reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = async function(e) {
     try {
       var wb = XLSX.read(e.target.result, { type: 'array' });
       var ws = wb.Sheets[wb.SheetNames[0]];
       var json = XLSX.utils.sheet_to_json(ws, { defval: '' });
       if (json.length === 0) { alert('El archivo está vacío.'); return; }
 
-      cruceData = json;
-      cruceHeaders = Object.keys(json[0]);
+      // Auto-detect FOLIO column (phone number)
+      var headers = Object.keys(json[0]);
+      var folioCol = headers.find(function(h) { return h.toUpperCase() === 'FOLIO'; }) || 
+                     headers.find(function(h) { return h.toLowerCase().includes('tel') || h.toLowerCase().includes('folio'); }) ||
+                     headers[0];
 
-      // Fill column mapping dropdowns
-      var telSel = document.getElementById('cruceColTelefono');
-      var folSel = document.getElementById('cruceColFolio');
-      telSel.innerHTML = '<option value="">No disponible</option>';
-      folSel.innerHTML = '<option value="">No disponible</option>';
-
-      cruceHeaders.forEach(function(h) {
-        var hLow = h.toLowerCase();
-        telSel.innerHTML += '<option value="' + h + '"' + (hLow.includes('tel') || hLow.includes('phone') || hLow.includes('celular') || hLow.includes('móvil') || hLow.includes('movil') ? ' selected' : '') + '>' + h + '</option>';
-        folSel.innerHTML += '<option value="' + h + '"' + (hLow.includes('folio') || hLow.includes('order') || hLow.includes('orden') || hLow.includes('pedido') ? ' selected' : '') + '>' + h + '</option>';
+      // Build set of phones from GlobalMes
+      var ventaTels = new Set();
+      json.forEach(function(row) {
+        var tel = normalizeTel(row[folioCol]);
+        if (tel.length === 10) ventaTels.add(tel);
       });
 
-      document.getElementById('cruceColumnConfig').style.display = 'block';
-      document.getElementById('cruceResults').innerHTML = '<div style="font-size:12px;color:var(--text-3)">' + cruceData.length + ' registros encontrados. Mapea las columnas y ejecuta el cruce.</div>';
+      // Get all ventas from cotizaciones
+      var ventaCots = state.cotizaciones.filter(function(c) { return c.estatus === 'venta'; });
+
+      var newConfirmed = 0;
+      var alreadyConfirmed = 0;
+
+      // Cross-reference
+      for (var i = 0; i < ventaCots.length; i++) {
+        var c = ventaCots[i];
+        var cTel = normalizeTel(c.cliente ? c.cliente.telefono : '');
+        
+        if (cTel && ventaTels.has(cTel)) {
+          if (c.sub_estatus === 'confirmada') {
+            alreadyConfirmed++;
+          } else {
+            // New confirmation - save to Supabase
+            newConfirmed++;
+            c.sub_estatus = 'confirmada';
+            if (supabase) {
+              try {
+                await supabase.from('cotizaciones').update({ sub_estatus: 'confirmada' }).eq('folio', c.folio);
+              } catch(e) { console.error(e); }
+            }
+          }
+        }
+      }
+
+      // Mark remaining ventas without confirmation as no_confirmada (only if not already confirmed)
+      for (var j = 0; j < ventaCots.length; j++) {
+        var vc = ventaCots[j];
+        if (vc.sub_estatus !== 'confirmada' && vc.sub_estatus !== 'no_confirmada') {
+          vc.sub_estatus = 'no_confirmada';
+          if (supabase) {
+            try {
+              await supabase.from('cotizaciones').update({ sub_estatus: 'no_confirmada' }).eq('folio', vc.folio);
+            } catch(e) { console.error(e); }
+          }
+        }
+      }
+
+      // Build results from current state
+      cruceConfirmadas = [];
+      cruceNoConfirmadas = [];
+      ventaCots.forEach(function(c) {
+        if (c.sub_estatus === 'confirmada') {
+          cruceConfirmadas.push(c);
+        } else {
+          cruceNoConfirmadas.push(c);
+        }
+      });
+
+      saveState();
+
+      // Show summary of this upload
+      var msg = '✅ Cruce completado con ' + json.length + ' registros del archivo.\n\n';
+      msg += '• ' + newConfirmed + ' nuevas confirmadas en esta carga\n';
+      msg += '• ' + alreadyConfirmed + ' ya estaban confirmadas\n';
+      msg += '• Total confirmadas: ' + cruceConfirmadas.length + '\n';
+      msg += '• No confirmadas: ' + cruceNoConfirmadas.length;
+      alert(msg);
+
+      // Show filters and render
+      populateCruceFilters();
+      document.getElementById('cruceFilters').style.display = 'flex';
+      renderCruceResults();
+
     } catch(err) {
       alert('Error al leer archivo: ' + err.message);
     }
@@ -6466,70 +6520,23 @@ function procesarCruceVentas(input) {
   reader.readAsArrayBuffer(file);
 }
 
-function normalizeTel(tel) {
-  if (!tel) return '';
-  return String(tel).replace(/\D/g, '').slice(-10);
+function loadCruceFromState() {
+  // Load existing cruce results from cotizaciones state (for when opening informe without uploading)
+  var ventaCots = state.cotizaciones.filter(function(c) { return c.estatus === 'venta'; });
+  cruceConfirmadas = ventaCots.filter(function(c) { return c.sub_estatus === 'confirmada'; });
+  cruceNoConfirmadas = ventaCots.filter(function(c) { return c.sub_estatus === 'no_confirmada'; });
+  
+  if (cruceConfirmadas.length > 0 || cruceNoConfirmadas.length > 0) {
+    populateCruceFilters();
+    document.getElementById('cruceFilters').style.display = 'flex';
+    renderCruceResults();
+  }
 }
 
-async function ejecutarCruce() {
-  var colTel = document.getElementById('cruceColTelefono').value;
-  var colFolio = document.getElementById('cruceColFolio').value;
-
-  if (!colTel && !colFolio) {
-    alert('Selecciona al menos una columna para cruzar.');
-    return;
-  }
-
-  // Build lookup sets from file
-  var ventaTels = new Set();
-  var ventaFolios = new Set();
-  cruceData.forEach(function(row) {
-    if (colTel && row[colTel]) ventaTels.add(normalizeTel(row[colTel]));
-    if (colFolio && row[colFolio]) ventaFolios.add(String(row[colFolio]).trim().toUpperCase());
-  });
-
-  // Get ventas from cotizaciones
-  var ventaCots = state.cotizaciones.filter(function(c) { return c.estatus === 'venta'; });
-
-  var confirmadas = [];
-  var noConfirmadas = [];
-
-  ventaCots.forEach(function(c) {
-    var telMatch = colTel && c.cliente && c.cliente.telefono && ventaTels.has(normalizeTel(c.cliente.telefono));
-    var folioMatch = colFolio && c.folio_att && ventaFolios.has(c.folio_att.trim().toUpperCase());
-
-    if (telMatch || folioMatch) {
-      confirmadas.push({ cot: c, matchType: telMatch && folioMatch ? 'Teléfono + Folio' : telMatch ? 'Teléfono' : 'Folio AT&T' });
-    } else {
-      noConfirmadas.push(c);
-    }
-  });
-
-  // Update Supabase - mark confirmed
-  if (supabase) {
-    for (var i = 0; i < confirmadas.length; i++) {
-      try {
-        await supabase.from('cotizaciones').update({ sub_estatus: 'confirmada' }).eq('folio', confirmadas[i].cot.folio);
-        confirmadas[i].cot.sub_estatus = 'confirmada';
-      } catch(e) { console.error(e); }
-    }
-    for (var j = 0; j < noConfirmadas.length; j++) {
-      try {
-        await supabase.from('cotizaciones').update({ sub_estatus: 'no_confirmada' }).eq('folio', noConfirmadas[j].folio);
-        noConfirmadas[j].sub_estatus = 'no_confirmada';
-      } catch(e) { console.error(e); }
-    }
-  }
-  saveState();
-
-  // Store globally
-  cruceConfirmadas = confirmadas;
-  cruceNoConfirmadas = noConfirmadas;
-
-  // Populate filters
-  document.getElementById('cruceFilters').style.display = 'flex';
+function populateCruceFilters() {
+  var allCruce = cruceConfirmadas.concat(cruceNoConfirmadas);
   var sups = {}, agentes = {};
-  ventaCots.forEach(function(c) {
+  allCruce.forEach(function(c) {
     if (c.supervisorNombre) sups[c.supervisorNombre] = true;
     if (c.ejecutivo && c.ejecutivo.nombre) agentes[c.ejecutivo.nombre] = true;
   });
@@ -6539,8 +6546,23 @@ async function ejecutarCruce() {
   var agSel = document.getElementById('cruceFilterAgente');
   agSel.innerHTML = '<option value="all">Todos los agentes</option>';
   Object.keys(agentes).sort().forEach(function(a) { agSel.innerHTML += '<option value="'+a+'">'+a+'</option>'; });
+}
 
-  renderCruceResults();
+async function resetCruces() {
+  if (!confirm('¿Reiniciar todos los cruces del mes? Se quitará confirmada/no_confirmada de todas las ventas.')) return;
+  var ventaCots = state.cotizaciones.filter(function(c) { return c.estatus === 'venta' && (c.sub_estatus === 'confirmada' || c.sub_estatus === 'no_confirmada'); });
+  for (var i = 0; i < ventaCots.length; i++) {
+    ventaCots[i].sub_estatus = null;
+    if (supabase) {
+      try { await supabase.from('cotizaciones').update({ sub_estatus: null }).eq('folio', ventaCots[i].folio); } catch(e) {}
+    }
+  }
+  cruceConfirmadas = [];
+  cruceNoConfirmadas = [];
+  document.getElementById('cruceFilters').style.display = 'none';
+  document.getElementById('cruceResults').innerHTML = '';
+  document.getElementById('cruceFileName').textContent = '';
+  alert('✅ Cruces reiniciados');
 }
 
 function renderCruceResults() {
@@ -6548,8 +6570,7 @@ function renderCruceResults() {
   var supFilter = document.getElementById('cruceFilterSup').value;
   var agFilter = document.getElementById('cruceFilterAgente').value;
 
-  var filtConf = cruceConfirmadas.filter(function(item) {
-    var c = item.cot;
+  var filtConf = cruceConfirmadas.filter(function(c) {
     if (supFilter !== 'all' && c.supervisorNombre !== supFilter) return false;
     if (agFilter !== 'all' && (!c.ejecutivo || c.ejecutivo.nombre !== agFilter)) return false;
     return true;
@@ -6560,28 +6581,27 @@ function renderCruceResults() {
     return true;
   });
 
-  var totalShown = filtConf.length + filtNoConf.length;
   var html = '';
 
-  // Summary
+  // KPIs
   html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">';
-  html += '<div class="kpi-card"><div class="kpi-value">' + totalShown + '</div><div class="kpi-label">Total filtradas</div></div>';
+  html += '<div class="kpi-card"><div class="kpi-value">' + (filtConf.length + filtNoConf.length) + '</div><div class="kpi-label">Total ventas</div></div>';
   html += '<div class="kpi-card"><div class="kpi-value" style="color:#0FA958">' + filtConf.length + '</div><div class="kpi-label">Confirmadas ✅</div></div>';
   html += '<div class="kpi-card"><div class="kpi-value" style="color:#DC3545">' + filtNoConf.length + '</div><div class="kpi-label">No confirmadas ⚠️</div></div>';
   html += '</div>';
 
   // No confirmadas
   if ((statusFilter === 'all' || statusFilter === 'no_confirmada') && filtNoConf.length > 0) {
-    html += '<div style="font-weight:700;font-size:13px;color:#DC3545;margin-bottom:6px">⚠️ No confirmadas (' + filtNoConf.length + ') — Requieren revisión</div>';
+    html += '<div style="font-weight:700;font-size:13px;color:#DC3545;margin-bottom:6px">⚠️ No confirmadas (' + filtNoConf.length + ')</div>';
     filtNoConf.forEach(function(c) {
-      html += '<div class="cruce-card no-confirmada">';
+      html += '<div class="cruce-card no-confirmada" onclick="showDetalle(\'' + c.folio + '\')" style="cursor:pointer">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center">';
-      html += '<div><span style="font-weight:700">' + c.folio + '</span> <span class="cruce-badge warn">NO CONFIRMADA</span></div>';
+      html += '<div><span style="font-weight:700;color:var(--att-blue)">' + c.folio + '</span> <span class="cruce-badge warn">NO CONFIRMADA</span></div>';
+      html += '<span style="font-size:10px;color:var(--text-3)">Ver lead →</span>';
       html += '</div>';
       html += '<div style="font-size:11px;color:var(--text-2);margin-top:4px">';
-      html += c.cliente.nombre + ' · ' + (c.cliente.telefono || 'Sin tel') + ' · Folio ATT: ' + (c.folio_att || 'N/A');
-      html += ' · Ejecutivo: ' + (c.ejecutivo ? c.ejecutivo.nombre : 'N/A');
-      html += ' · Sup: ' + (c.supervisorNombre || 'N/A');
+      html += c.cliente.nombre + ' · ' + (c.cliente.telefono || '') + ' · Folio ATT: ' + (c.folio_att || 'N/A');
+      html += ' · ' + (c.ejecutivo ? c.ejecutivo.nombre : '') + ' · Sup: ' + (c.supervisorNombre || '');
       html += '</div></div>';
     });
   }
@@ -6589,23 +6609,21 @@ function renderCruceResults() {
   // Confirmadas
   if ((statusFilter === 'all' || statusFilter === 'confirmada') && filtConf.length > 0) {
     html += '<div style="font-weight:700;font-size:13px;color:#0FA958;margin:12px 0 6px">✅ Confirmadas (' + filtConf.length + ')</div>';
-    filtConf.forEach(function(item) {
-      var c = item.cot;
-      html += '<div class="cruce-card confirmada">';
+    filtConf.forEach(function(c) {
+      html += '<div class="cruce-card confirmada" onclick="showDetalle(\'' + c.folio + '\')" style="cursor:pointer">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center">';
-      html += '<div><span style="font-weight:700">' + c.folio + '</span> <span class="cruce-badge ok">CONFIRMADA</span>';
-      html += ' <span style="font-size:10px;color:var(--text-3)">por ' + item.matchType + '</span></div>';
+      html += '<div><span style="font-weight:700;color:var(--att-blue)">' + c.folio + '</span> <span class="cruce-badge ok">CONFIRMADA</span></div>';
+      html += '<span style="font-size:10px;color:var(--text-3)">Ver lead →</span>';
       html += '</div>';
       html += '<div style="font-size:11px;color:var(--text-2);margin-top:4px">';
-      html += c.cliente.nombre + ' · ' + (c.cliente.telefono || 'Sin tel') + ' · Folio ATT: ' + (c.folio_att || 'N/A');
-      html += ' · Ejecutivo: ' + (c.ejecutivo ? c.ejecutivo.nombre : 'N/A');
-      html += ' · Sup: ' + (c.supervisorNombre || 'N/A');
+      html += c.cliente.nombre + ' · ' + (c.cliente.telefono || '') + ' · Folio ATT: ' + (c.folio_att || '');
+      html += ' · ' + (c.ejecutivo ? c.ejecutivo.nombre : '') + ' · Sup: ' + (c.supervisorNombre || '');
       html += '</div></div>';
     });
   }
 
-  if (totalShown === 0) {
-    html += '<div style="font-size:12px;color:var(--text-3);text-align:center;padding:15px">No hay resultados con estos filtros.</div>';
+  if (filtConf.length === 0 && filtNoConf.length === 0) {
+    html += '<div style="text-align:center;padding:15px;color:var(--text-3);font-size:12px">No hay ventas cruzadas. Sube un archivo GlobalMes para iniciar.</div>';
   }
 
   document.getElementById('cruceResults').innerHTML = html;
@@ -6615,50 +6633,26 @@ function exportCruceExcel() {
   var statusFilter = document.getElementById('cruceFilterStatus').value;
   var supFilter = document.getElementById('cruceFilterSup').value;
   var agFilter = document.getElementById('cruceFilterAgente').value;
-
   var rows = [];
-
-  var addRows = function(items, status) {
-    items.forEach(function(item) {
-      var c = item.cot || item;
-      var matchType = item.matchType || '';
-      if (supFilter !== 'all' && c.supervisorNombre !== supFilter) return;
-      if (agFilter !== 'all' && (!c.ejecutivo || c.ejecutivo.nombre !== agFilter)) return;
-      rows.push({
-        'Folio': c.folio,
-        'Cliente': c.cliente.nombre,
-        'Teléfono': c.cliente.telefono || '',
-        'Folio ATT': c.folio_att || '',
-        'Ejecutivo': c.ejecutivo ? c.ejecutivo.nombre : '',
-        'Supervisor': c.supervisorNombre || '',
-        'Resultado': status,
-        'Match por': matchType,
-        'Fecha': c.fecha || '',
-      });
+  
+  var addRow = function(c, status) {
+    if (supFilter !== 'all' && c.supervisorNombre !== supFilter) return;
+    if (agFilter !== 'all' && (!c.ejecutivo || c.ejecutivo.nombre !== agFilter)) return;
+    rows.push({
+      'Folio': c.folio, 'Cliente': c.cliente.nombre, 'Teléfono': c.cliente.telefono || '',
+      'Folio ATT': c.folio_att || '', 'Ejecutivo': c.ejecutivo ? c.ejecutivo.nombre : '',
+      'Supervisor': c.supervisorNombre || '', 'Resultado': status, 'Fecha': c.fecha || '',
     });
   };
 
-  if (statusFilter === 'all' || statusFilter === 'no_confirmada') {
-    cruceNoConfirmadas.forEach(function(c) {
-      addRows([{cot: c, matchType: ''}], 'No confirmada');
-    });
-  }
-  if (statusFilter === 'all' || statusFilter === 'confirmada') {
-    addRows(cruceConfirmadas, 'Confirmada');
-  }
+  if (statusFilter === 'all' || statusFilter === 'no_confirmada') cruceNoConfirmadas.forEach(function(c) { addRow(c, 'No confirmada'); });
+  if (statusFilter === 'all' || statusFilter === 'confirmada') cruceConfirmadas.forEach(function(c) { addRow(c, 'Confirmada'); });
 
-  if (rows.length === 0) { alert('No hay datos para exportar'); return; }
-
+  if (!rows.length) { alert('No hay datos'); return; }
   var ws = XLSX.utils.json_to_sheet(rows);
-  var colWidths = {};
-  Object.keys(rows[0]).forEach(function(k) {
-    var maxLen = k.length;
-    rows.forEach(function(r) { if (r[k] && r[k].toString().length > maxLen) maxLen = Math.min(r[k].toString().length, 40); });
-    colWidths[k] = {wch: maxLen + 2};
-  });
-  ws['!cols'] = Object.values(colWidths);
+  ws['!cols'] = Object.keys(rows[0]).map(function(k) { var mx = k.length; rows.forEach(function(r){if(r[k]&&r[k].toString().length>mx)mx=Math.min(r[k].toString().length,40)}); return {wch:mx+2}; });
   var wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Cruce Ventas');
+  XLSX.utils.book_append_sheet(wb, ws, 'Cruce');
   XLSX.writeFile(wb, 'Cruce_Ventas_ExpertCell.xlsx');
 }
 
@@ -10627,6 +10621,7 @@ function openInformes() {
   showView('informes', 'Informes');
   document.getElementById('infFecha').value = new Date().toISOString().split('T')[0];
   renderInforme();
+  loadCruceFromState();
 }
 
 async function renderInforme() {
