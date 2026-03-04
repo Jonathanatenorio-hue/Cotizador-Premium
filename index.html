@@ -3270,43 +3270,44 @@ async function loadAllDeviceImgs() {
   var imgs = document.querySelectorAll('[data-imgkey]');
   if (!imgs.length) return;
   
-  // For each image, try common extensions via getPublicUrl
-  var exts = ['.png', '.jpg', '.jpeg', '.webp'];
-  
+  // Collect unique keys
+  var keysNeeded = {};
   imgs.forEach(function(imgEl) {
     var key = imgEl.getAttribute('data-imgkey');
-    if (!key) return;
+    if (key) keysNeeded[key] = true;
+  });
+  
+  var exts = ['.png', '.jpg', '.jpeg', '.webp'];
+  
+  // Resolve URLs for keys not yet cached
+  for (var key in keysNeeded) {
+    if (deviceImgCache[key]) continue; // already have URL
     
-    // Already loaded successfully with URL
-    if (deviceImgCache[key] && deviceImgCache[key] !== 'none') {
+    for (var i = 0; i < exts.length; i++) {
+      var {data} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(key + exts[i]);
+      if (!data || !data.publicUrl) continue;
+      try {
+        var resp = await fetch(data.publicUrl, {method: 'HEAD'});
+        if (resp.ok) {
+          deviceImgCache[key] = data.publicUrl;
+          break;
+        }
+      } catch(e) {}
+    }
+  }
+  
+  // Apply all cached URLs to DOM
+  applyDeviceImgs();
+}
+
+function applyDeviceImgs() {
+  document.querySelectorAll('[data-imgkey]').forEach(function(imgEl) {
+    var key = imgEl.getAttribute('data-imgkey');
+    if (key && deviceImgCache[key]) {
       imgEl.src = deviceImgCache[key];
       imgEl.style.display = '';
       if (imgEl.nextElementSibling) imgEl.nextElementSibling.style.display = 'none';
-      return;
     }
-    
-    // Try each extension
-    var tryExt = function(i) {
-      if (i >= exts.length) {
-        return;
-      }
-      var {data} = supabase.storage.from(DEVICE_IMG_BUCKET).getPublicUrl(key + exts[i]);
-      if (!data || !data.publicUrl) { tryExt(i+1); return; }
-      
-      var testImg = new Image();
-      testImg.onload = function() {
-        deviceImgCache[key] = data.publicUrl;
-        // Apply to ALL elements with this key
-        document.querySelectorAll('[data-imgkey="'+key+'"]').forEach(function(el) {
-          el.src = data.publicUrl;
-          el.style.display = '';
-          if (el.nextElementSibling) el.nextElementSibling.style.display = 'none';
-        });
-      };
-      testImg.onerror = function() { tryExt(i+1); };
-      testImg.src = data.publicUrl;
-    };
-    tryExt(0);
   });
 }
 
@@ -3342,6 +3343,8 @@ function uploadDeviceImg(imgKey, devId) {
         });
       }
       alert('✅ Imagen actualizada para todos los usuarios');
+      // Re-apply to any view that might have rendered since
+      setTimeout(applyDeviceImgs, 200);
     } catch(e) { alert('Error: ' + e.message); }
   };
   inp.click();
@@ -3384,7 +3387,7 @@ function searchDevices() {
   }
   html += '</div>';
   container.innerHTML = html;
-  setTimeout(loadAllDeviceImgs, 100);
+  applyDeviceImgs(); setTimeout(loadAllDeviceImgs, 50);
 }
 
 function renderDeviceCard(dev) {
@@ -3656,7 +3659,8 @@ function renderItems() {
   });
 
   list.innerHTML = html;
-  setTimeout(loadAllDeviceImgs, 100);
+  applyDeviceImgs();
+  setTimeout(loadAllDeviceImgs, 50);
 }
 
 function addImageToItem(idx, input) {
@@ -5228,7 +5232,7 @@ function showDetalle(folio) {
   `;
 
   showView('detalle', 'Cotización ' + cot.folio);
-  setTimeout(function() { onEstatusChange(cot.folio, true); loadNotas(cot.folio); loadAllDeviceImgs(); }, 50);
+  setTimeout(function() { onEstatusChange(cot.folio, true); loadNotas(cot.folio); applyDeviceImgs(); loadAllDeviceImgs(); }, 50);
   // Admin and coordinador delete button
   if (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador')) {
     var delBtn = document.createElement('div');
