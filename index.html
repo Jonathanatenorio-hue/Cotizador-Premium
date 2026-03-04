@@ -3793,7 +3793,16 @@ async function generarCotizacion() {
     var wa = cotizacion.ejecutivo ? cotizacion.ejecutivo.whatsapp : '';
     var msgParts = ['Hola ' + cotizacion.cliente.nombre + ', soy ' + (cotizacion.ejecutivo ? cotizacion.ejecutivo.nombre : '') + ' de AT&T.'];
     msgParts.push('Te envío tu cotización ' + cotizacion.folio + '.');
-    cotizacion.items.forEach(function(it){ msgParts.push('• ' + it.planName + (it.equipoNombre ? ' + ' + it.equipoNombre : '')); });
+    cotizacion.items.forEach(function(it){
+      var plan = it.planNombre || it.plan_nombre || it.planName || '';
+      var equipo = it.equipo || '';
+      var plazo = it.plazo || '';
+      var line = '';
+      if (equipo && plan) line = equipo + ' · Plan ' + plan + (plazo ? ' · ' + plazo + 'm' : '');
+      else if (equipo) line = equipo;
+      else if (plan) line = 'Plan ' + plan;
+      if (line) msgParts.push('• ' + line);
+    });
     msgParts.push('¿Tienes alguna duda? ¡Con gusto te ayudo!');
     var waMsg = msgParts.join('\n');
     var waUrl = 'https://wa.me/52' + telCliente + '?text=' + encodeURIComponent(waMsg);
@@ -3921,19 +3930,23 @@ function addTitanioMessage(doc, mg, y, cW, H) {
 function addPriceWarning(doc, mg, y, cW, H) {
   if (y > H - 25) { doc.addPage(); y = 16; }
   y += 3;
-  doc.setFillColor(255, 243, 205);
-  doc.setDrawColor(230, 162, 0);
-  doc.roundedRect(mg, y, cW, 14, 2, 2, 'FD');
-  doc.setTextColor(133, 100, 4);
-  doc.setFontSize(6.5);
-  doc.setFont('helvetica','bold');
-  doc.text('AVISO IMPORTANTE', mg + 4, y + 5);
-  doc.setFont('helvetica','normal');
-  doc.setFontSize(5.5);
-  var warningText = 'A partir de marzo 2026, el costo de todos los planes AT&T (nuevos y actuales) tendrá un incremento. El ajuste aplica el 6 de marzo para planes Diamante, Ármalo 17GB y 40GB, y el 13 de marzo para el resto de los planes. Adicionalmente, los planes Azul 3, Oro, Black, Platino, Diamante y Titanio recibirán un incremento en datos incluidos.';
-  var warnLines = doc.splitTextToSize(warningText, cW - 8);
-  doc.text(warnLines, mg + 4, y + 9.5);
-  y += 16;
+  // Aviso de incremento — solo mostrar antes del 14 de marzo 2026
+  var avisoDate = new Date('2026-03-14T00:00:00');
+  if (new Date() < avisoDate) {
+    doc.setFillColor(255, 243, 205);
+    doc.setDrawColor(255, 193, 7);
+    doc.roundedRect(mg, y, cW, 14, 2, 2, 'FD');
+    doc.setTextColor(133, 100, 4);
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica','bold');
+    doc.text('AVISO IMPORTANTE', mg + 4, y + 5);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(5.5);
+    var warningText = 'A partir de marzo 2026, el costo de todos los planes AT&T (nuevos y actuales) tendrá un incremento. El ajuste aplica el 6 de marzo para planes Diamante, Ármalo 17GB y 40GB, y el 13 de marzo para el resto de los planes. Adicionalmente, los planes Azul 3, Oro, Black, Platino, Diamante y Titanio recibirán un incremento en datos incluidos.';
+    var warnLines = doc.splitTextToSize(warningText, cW - 8);
+    doc.text(warnLines, mg + 4, y + 9.5);
+    y += 16;
+  }
   return y;
 }
 
