@@ -9236,7 +9236,7 @@ async function metasRender() {
   // Build agent data from ventas
   var agData = {};
   if (showAgentList) {
-    fv.forEach(function(v) { if (!v.ejecutivo) return; if (!agData[v.ejecutivo]) agData[v.ejecutivo]={count:0,sup:v.supervisor}; agData[v.ejecutivo].count++; });
+    fv.forEach(function(v) { if (!v.ejecutivo) return; if (!agData[v.ejecutivo]) agData[v.ejecutivo]={count:0,sup:v.supervisor,centro_key:v.centro_key||''}; agData[v.ejecutivo].count++; if(v.centro_key && !agData[v.ejecutivo].centro_key) agData[v.ejecutivo].centro_key=v.centro_key; });
     
     // Also include agents with metas but 0 ventas (so they still show)
     metasMetas.filter(function(m) { return m.tipo === 'agente'; }).forEach(function(m) {
@@ -9258,7 +9258,7 @@ async function metasRender() {
             inScope = supName === supVal;
           }
         }
-        if (inScope) agData[m.nombre] = {count:0, sup: ''};
+        if (inScope) agData[m.nombre] = {count:0, sup: '', centro_key: ''};
       }
     });
   }
@@ -9278,6 +9278,14 @@ async function metasRender() {
     return agData[b].count - agData[a].count;
   });
   
+  // Operation color palette (pastel/semi-transparent)
+  var opColors = {
+    'CC2': {bar:'rgba(59,130,246,0.6)', border:'#3B82F6', bg:'#EFF6FF', label:'Antequera'},
+    'JV':  {bar:'rgba(16,185,129,0.6)', border:'#10B981', bg:'#ECFDF5', label:'Torre JV'},
+    'CDMX':{bar:'rgba(168,85,247,0.6)', border:'#A855F7', bg:'#FAF5FF', label:'Sub Yelitza'}
+  };
+  var defaultOpColor = {bar:'rgba(107,114,128,0.5)', border:'#6B7280', bg:'#F9FAFB', label:''};
+
   var agH = '<div class="section" style="padding:16px">';
   agH += '<div style="font-size:14px;font-weight:800;margin-bottom:10px">'+(rol==='agente'?'📈 Mi Avance':'👤 Por Agente')+'</div>';
   if (!showAgentList) {
@@ -9288,20 +9296,34 @@ async function metasRender() {
     agKeys.forEach(function(ag) {
       var av = agData[ag].count, am = metasGetMeta('agente',ag);
       var ap = am>0?Math.round(av/am*100):0;
-      var ac = ap>=100?'#10B981':ap>=70?'#F59E0B':'#DC3545';
+      var ck = agData[ag].centro_key || '';
+      var oc = opColors[ck] || defaultOpColor;
       var isBaja = agentActivo[ag] === false;
       var medal = '';
       if (!isBaja) { activeIdx++; medal = activeIdx===1?'🥇 ':activeIdx===2?'🥈 ':activeIdx===3?'🥉 ':''; }
       var opacity = isBaja ? 'opacity:0.45;' : '';
       var bajaLabel = isBaja ? ' <span style="font-size:9px;background:#DC3545;color:white;padding:1px 6px;border-radius:4px;font-weight:700;vertical-align:middle">BAJA</span>' : '';
-      agH += '<div style="background:var(--bg-main);border-radius:10px;padding:10px 12px;margin-bottom:6px;border-left:4px solid '+ac+';'+opacity+'">';
+      
+      // Daily metrics
+      var aDiaria = am > 0 && workDaysTotal > 0 ? (am / workDaysTotal) : 0;
+      var aEsperado = Math.round(aDiaria * workDaysPassed * 10) / 10;
+      var aDiff = av - aEsperado;
+      var aDiffColor = aDiff >= 0 ? '#10B981' : '#DC3545';
+      var aDiffSign = aDiff >= 0 ? '+' : '';
+      var aProyeccion = workDaysPassed > 0 ? Math.round(av / workDaysPassed * workDaysTotal) : av;
+      var pctColor = ap>=100?'#10B981':ap>=70?'#F59E0B':oc.border;
+
+      agH += '<div style="background:'+oc.bg+';border-radius:10px;padding:10px 12px;margin-bottom:6px;border-left:4px solid '+oc.border+';'+opacity+'">';
       agH += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
       agH += '<div style="font-size:12px;font-weight:700">'+medal+ag+bajaLabel+'</div>';
-      agH += '<span style="font-size:14px;font-weight:900;color:'+ac+'">'+ap+'%</span>';
-      agH += '</div>';
-      agH += '<div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden;margin-bottom:4px"><div style="height:100%;width:'+Math.min(ap,100)+'%;background:'+ac+';border-radius:3px;transition:width 0.4s"></div></div>';
-      agH += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3)">';
-      agH += '<span>'+av+' ventas / '+am+' meta</span>';
+      agH += '<div style="text-align:right"><span style="font-size:16px;font-weight:900;color:'+pctColor+'">'+ap+'%</span>';
+      if (oc.label) agH += '<div style="font-size:8px;color:'+oc.border+';font-weight:600">'+oc.label+'</div>';
+      agH += '</div></div>';
+      agH += '<div style="height:6px;border-radius:3px;background:rgba(0,0,0,0.06);overflow:hidden;margin-bottom:4px"><div style="height:100%;width:'+Math.min(ap,100)+'%;background:'+oc.bar+';border-radius:3px;transition:width 0.4s"></div></div>';
+      agH += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);flex-wrap:wrap;gap:2px">';
+      agH += '<span>'+av+'/'+am;
+      if (isCurrentMonth && am > 0) agH += ' · Diaria: <b>'+aDiaria.toFixed(1)+'</b> · Esperado: <b>'+Math.round(aEsperado)+'</b> · <span style="color:'+aDiffColor+';font-weight:700">'+aDiffSign+Math.round(aDiff)+'</span> · <span style="color:#8B5CF6">Proy: '+aProyeccion+'</span>';
+      agH += '</span>';
       if (rol !== 'agente') agH += '<span>Sup: '+agData[ag].sup+'</span>';
       agH += '</div></div>';
     });
