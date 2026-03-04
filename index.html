@@ -937,6 +937,9 @@ body{padding-bottom:60px}
           <option value="all">Todos los agentes</option>
         </select>
       </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px">
+        <button onclick="exportHistorialExcel()" class="btn btn-secondary" style="font-size:10px;padding:5px 12px">📥 Exportar Excel</button>
+      </div>
     </div>
     <div class="filter-row" id="filterRow"></div>
     <div id="historialList"></div>
@@ -5098,6 +5101,127 @@ function renderHistorial() {
 function filterHistorial(est) {
   state.filterEstatus = est;
   renderHistorial();
+}
+
+function exportHistorialExcel() {
+  // Get currently filtered cotizaciones (same logic as renderHistorial)
+  var agentIds = getFilteredAgentIds();
+  var filtered = state.cotizaciones;
+  if (agentIds) filtered = filtered.filter(function(c) { return agentIds.indexOf(c.agente_id || (currentUser ? currentUser.id : null)) !== -1; });
+  
+  var searchTerm = (document.getElementById('historialSearch').value || '').toLowerCase().trim();
+  if (searchTerm) {
+    filtered = filtered.filter(function(c) {
+      return c.cliente.nombre.toLowerCase().includes(searchTerm) ||
+        (c.cliente.telefono && c.cliente.telefono.includes(searchTerm)) ||
+        c.folio.toLowerCase().includes(searchTerm) ||
+        (c.cliente.email && c.cliente.email.toLowerCase().includes(searchTerm)) ||
+        (c.ejecutivo && c.ejecutivo.nombre && c.ejecutivo.nombre.toLowerCase().includes(searchTerm));
+    });
+  }
+  
+  var hDesde = document.getElementById('hFilterDesde') ? document.getElementById('hFilterDesde').value : '';
+  var hHasta = document.getElementById('hFilterHasta') ? document.getElementById('hFilterHasta').value : '';
+  if (hDesde || hHasta) {
+    filtered = filtered.filter(function(c) {
+      var cDate = (c.createdAt || c.fecha || '').substring(0,10);
+      if (hDesde && cDate < hDesde) return false;
+      if (hHasta && cDate > hHasta) return false;
+      return true;
+    });
+  }
+  
+  var hSubEst = document.getElementById('hFilterSubEstatus') ? document.getElementById('hFilterSubEstatus').value : 'all';
+  if (hSubEst !== 'all') filtered = filtered.filter(function(c) { return c.sub_estatus === hSubEst; });
+  
+  if (state.filterEstatus !== 'all') filtered = filtered.filter(function(c) { return c.estatus === state.filterEstatus; });
+  
+  if (filtered.length === 0) { alert('No hay cotizaciones para exportar con estos filtros'); return; }
+  
+  // Build rows
+  var rows = filtered.map(function(cot) {
+    var equipos = (cot.items || []).map(function(it) { return it.equipo || ''; }).join(', ');
+    var planes = (cot.items || []).map(function(it) { return it.planNombre || ''; }).join(', ');
+    var plazos = (cot.items || []).map(function(it) { return (it.plazo||'') + 'm'; }).join(', ');
+    var mensuales = (cot.items || []).map(function(it) {
+      var base = (it.precioPromo||0) - (it.enganche||0);
+      var m = base / (it.plazo||1) + (it.planPrecio||0);
+      return '$' + m.toFixed(2);
+    }).join(', ');
+    
+    // Plan actual
+    var planActualLabel = '';
+    if (cot.planActual && cot.planActual.id && typeof PLANS_ACTUALES !== 'undefined') {
+      var pa = PLANS_ACTUALES.find(function(p) { return p.id === cot.planActual.id; });
+      if (pa) planActualLabel = pa.name;
+    }
+    
+    // Notas
+    var notasTexto = (cot.notas || []).map(function(n) {
+      var d = new Date(n.created_at);
+      var dateStr = d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'2-digit'}) + ' ' + d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+      var tipoIcon = {llamada:'TEL',mensaje:'MSG',nota:'NOTA'}[n.tipo] || 'NOTA';
+      return '[' + dateStr + ' ' + tipoIcon + ' ' + (n.autor||'') + '] ' + n.texto;
+    }).join(' | ');
+    
+    // Campos de tipificación
+    var folioATT = cot.folio_att || '';
+    var fechaPlazo = cot.fecha_fin_plazo || '';
+    var adeudoMonto = cot.adeudo_monto ? '$' + cot.adeudo_monto : '';
+    var adeudoFecha = cot.adeudo_fecha_compromiso || '';
+    var interes = cot.interes_cliente || '';
+    var barrera = cot.barrera_cierre || '';
+    
+    return {
+      'Folio': cot.folio,
+      'Fecha': cot.fecha,
+      'Hora': cot.createdAt ? new Date(cot.createdAt).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : '',
+      'Cliente': cot.cliente.nombre,
+      'Teléfono': cot.cliente.telefono || '',
+      'Email': cot.cliente.email || '',
+      'Dirección': cot.cliente.direccion || '',
+      'Plan Actual': planActualLabel,
+      'Ejecutivo': cot.ejecutivo ? cot.ejecutivo.nombre : '',
+      'Supervisor': cot.supervisorNombre || '',
+      'Equipos': equipos,
+      'Planes Ofertados': planes,
+      'Plazos': plazos,
+      'Mensualidades': mensuales,
+      'Estatus': {enviada:'Enviada',seguimiento:'Seguimiento',venta:'Venta Exitosa',perdida:'Perdida'}[cot.estatus] || cot.estatus,
+      'Tipificación': subEstatusLabel(cot.sub_estatus),
+      'Folio ATT': folioATT,
+      'Fecha Plazo': fechaPlazo,
+      'Interés Cliente': interes,
+      'Barrera Cierre': barrera,
+      'Adeudo Monto': adeudoMonto,
+      'Adeudo Fecha': adeudoFecha,
+      'Notas de Seguimiento': notasTexto,
+      'Válido Hasta': cot.validoHasta || '',
+    };
+  });
+  
+  // Generate Excel
+  var ws = XLSX.utils.json_to_sheet(rows);
+  
+  // Auto column widths
+  var colWidths = {};
+  Object.keys(rows[0]).forEach(function(k) {
+    var maxLen = k.length;
+    rows.forEach(function(r) { if (r[k] && r[k].toString().length > maxLen) maxLen = Math.min(r[k].toString().length, 50); });
+    colWidths[k] = {wch: maxLen + 2};
+  });
+  ws['!cols'] = Object.values(colWidths);
+  
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Cotizaciones');
+  
+  var fileName = 'Cotizaciones_ExpertCell';
+  if (state.filterEstatus !== 'all') fileName += '_' + state.filterEstatus;
+  if (hDesde) fileName += '_desde_' + hDesde;
+  if (hHasta) fileName += '_hasta_' + hHasta;
+  fileName += '.xlsx';
+  
+  XLSX.writeFile(wb, fileName);
 }
 
 // ============================================================
