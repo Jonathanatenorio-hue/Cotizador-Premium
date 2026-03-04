@@ -9092,7 +9092,7 @@ async function metasRender() {
 
     opsH += '<div class="section" style="padding:16px">';
     opsH += '<div style="font-size:14px;font-weight:800;margin-bottom:12px">🏢 Operaciones</div>';
-    opsH += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px">';
+    opsH += '<div style="display:flex;flex-direction:column;gap:12px">';
     ['PUE','CDMX'].forEach(function(op) {
       if (opVal !== 'all' && opVal !== op) return;
       var opVentas = metasVentas.filter(function(v){return METAS_CENTROS[v.centro_key] && METAS_CENTROS[v.centro_key].op===op}).length;
