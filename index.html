@@ -6803,7 +6803,7 @@ async function openAnalisisIA(){
     if (!aiView) {
       // Create the view container
       var viewHtml = '<div id="viewAiDashboard" class="view"><div class="container" id="aiDashContent"></div></div>';
-      document.querySelector('.app').insertAdjacentHTML('beforeend', viewHtml);
+      document.getElementById('appContainer').insertAdjacentHTML('beforeend', viewHtml);
       aiView = document.getElementById('viewAiDashboard');
     }
 
