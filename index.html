@@ -928,19 +928,23 @@ body{padding-bottom:60px}
           <option value="no_confirmada">No confirmada ⚠️</option>
         </select>
       </div>
-      <div id="historialRoleFilters" style="display:none;gap:6px;flex-wrap:wrap">
+      <div id="historialRoleFilters" style="display:none;gap:6px;flex-wrap:wrap;align-items:center">
         <select class="field" id="hFilterCentro" onchange="onHFilterCentroChange()" style="width:auto;min-width:120px;font-size:12px;padding:6px 8px">
           <option value="all">Todos los centros</option>
         </select>
         <select class="field" id="hFilterCoord" onchange="onHFilterCoordChange()" style="width:auto;min-width:140px;font-size:12px;padding:6px 8px">
           <option value="all">Todos los coordinadores</option>
         </select>
-        <select class="field" id="hFilterSup" onchange="onHFilterSupChange()" style="width:auto;min-width:140px;font-size:12px;padding:6px 8px">
-          <option value="all">Todos los supervisores</option>
-        </select>
-        <select class="field" id="hFilterAgente" onchange="renderHistorial()" style="width:auto;min-width:140px;font-size:12px;padding:6px 8px">
-          <option value="all">Todos los agentes</option>
-        </select>
+        <div style="position:relative;display:inline-block" id="hFilterSupWrap">
+          <button class="field" onclick="toggleMultiDrop('hFilterSupDrop')" style="min-width:140px;font-size:12px;padding:6px 8px;cursor:pointer;text-align:left" id="hFilterSupBtn">Todos los supervisores ▾</button>
+          <div id="hFilterSupDrop" style="display:none;position:absolute;top:100%;left:0;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:1000;max-height:250px;overflow-y:auto;min-width:200px;padding:6px 0">
+          </div>
+        </div>
+        <div style="position:relative;display:inline-block" id="hFilterAgenteWrap">
+          <button class="field" onclick="toggleMultiDrop('hFilterAgenteDrop')" style="min-width:140px;font-size:12px;padding:6px 8px;cursor:pointer;text-align:left" id="hFilterAgenteBtn">Todos los agentes ▾</button>
+          <div id="hFilterAgenteDrop" style="display:none;position:absolute;top:100%;left:0;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:1000;max-height:250px;overflow-y:auto;min-width:220px;padding:6px 0">
+          </div>
+        </div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;flex-wrap:wrap;gap:6px">
         <div id="historialSelectBar" style="display:none;gap:6px;align-items:center">
@@ -4939,20 +4943,14 @@ function populateSupFilter() {
   var rol = currentUser.rol;
   var centroVal = document.getElementById('hFilterCentro').value;
   var coordVal = document.getElementById('hFilterCoord').value;
-  var supSel = document.getElementById('hFilterSup');
-  
   var sups;
   if (rol === 'coordinador') {
-    // For coordinador: find supervisors whose agents have this coordinador_id,
-    // OR supervisors who directly have coordinador_id = currentUser
     var mySupIds = {};
     hFilterUsers.forEach(function(u) {
       if (u.coordinador_id === currentUser.id && u.supervisor_id) mySupIds[u.supervisor_id] = true;
       if (u.coordinador_id === currentUser.id && u.rol === 'supervisor') mySupIds[u.id] = true;
     });
-    sups = hFilterUsers.filter(function(u) {
-      return u.rol === 'supervisor' && mySupIds[u.id];
-    });
+    sups = hFilterUsers.filter(function(u) { return u.rol === 'supervisor' && mySupIds[u.id]; });
   } else {
     sups = hFilterUsers.filter(function(u) {
       if (u.rol !== 'supervisor') return false;
@@ -4961,11 +4959,14 @@ function populateSupFilter() {
       return true;
     });
   }
-  
-  supSel.innerHTML = '<option value="all">Todos los supervisores</option>';
-  sups.sort(function(a,b){return a.nombre.localeCompare(b.nombre)}).forEach(function(u) {
-    supSel.innerHTML += '<option value="'+u.id+'">'+u.nombre+'</option>';
+  sups.sort(function(a,b){return a.nombre.localeCompare(b.nombre)});
+  window._hSupsList = sups;
+  var drop = document.getElementById('hFilterSupDrop');
+  drop.innerHTML = '<label style="display:flex;align-items:center;gap:6px;padding:4px 12px;cursor:pointer;font-size:11px;font-weight:700;border-bottom:1px solid var(--border);margin-bottom:2px"><input type="checkbox" id="hSupAll" onchange="hMultiToggleAll(\'sup\')" style="accent-color:#8B5CF6"> Todos</label>';
+  sups.forEach(function(u) {
+    drop.innerHTML += '<label style="display:flex;align-items:center;gap:6px;padding:3px 12px;cursor:pointer;font-size:11px;white-space:nowrap"><input type="checkbox" class="hSupCb" value="'+u.id+'" onchange="onHMultiSupChange()" style="accent-color:#8B5CF6"> '+u.nombre+'</label>';
   });
+  document.getElementById('hFilterSupBtn').textContent = 'Todos los supervisores ▾';
   populateAgenteFilter();
 }
 
@@ -4973,27 +4974,75 @@ function populateAgenteFilter() {
   var rol = currentUser.rol;
   var centroVal = document.getElementById('hFilterCentro').value;
   var coordVal = document.getElementById('hFilterCoord').value;
-  var supVal = document.getElementById('hFilterSup').value;
-  var agenteSel = document.getElementById('hFilterAgente');
+  var selectedSups = getSelectedMulti('sup');
   var agentes = hFilterUsers.filter(function(u) {
     if (u.rol !== 'agente') return false;
     if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
     if (coordVal !== 'all' && u.coordinador_id !== coordVal) return false;
-    if (supVal !== 'all' && u.supervisor_id !== supVal) return false;
+    if (selectedSups.length > 0 && selectedSups.indexOf(u.supervisor_id) === -1) return false;
     if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
     if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
     return true;
   });
-  agenteSel.innerHTML = '<option value="all">Todos los agentes</option>';
+  agentes.sort(function(a,b){return a.nombre.localeCompare(b.nombre)});
+  window._hAgentesList = agentes;
+  var drop = document.getElementById('hFilterAgenteDrop');
+  drop.innerHTML = '<label style="display:flex;align-items:center;gap:6px;padding:4px 12px;cursor:pointer;font-size:11px;font-weight:700;border-bottom:1px solid var(--border);margin-bottom:2px"><input type="checkbox" id="hAgenteAll" onchange="hMultiToggleAll(\'agente\')" style="accent-color:#8B5CF6"> Todos</label>';
   agentes.forEach(function(u) {
-    agenteSel.innerHTML += '<option value="'+u.id+'">'+u.nombre+' ('+u.attuid+')</option>';
+    drop.innerHTML += '<label style="display:flex;align-items:center;gap:6px;padding:3px 12px;cursor:pointer;font-size:11px;white-space:nowrap"><input type="checkbox" class="hAgenteCb" value="'+u.id+'" onchange="onHMultiAgenteChange()" style="accent-color:#8B5CF6"> '+u.nombre+'</label>';
   });
+  document.getElementById('hFilterAgenteBtn').textContent = 'Todos los agentes ▾';
+  renderHistorial();
+}
+
+function toggleMultiDrop(id) {
+  var el = document.getElementById(id);
+  var isOpen = el.style.display !== 'none';
+  document.querySelectorAll('#hFilterSupDrop,#hFilterAgenteDrop').forEach(function(d){d.style.display='none'});
+  if (!isOpen) el.style.display = '';
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#hFilterSupWrap')) { var d=document.getElementById('hFilterSupDrop'); if(d) d.style.display='none'; }
+  if (!e.target.closest('#hFilterAgenteWrap')) { var d=document.getElementById('hFilterAgenteDrop'); if(d) d.style.display='none'; }
+});
+
+function getSelectedMulti(type) {
+  var cls = type === 'sup' ? '.hSupCb' : '.hAgenteCb';
+  var selected = [];
+  document.querySelectorAll(cls+':checked').forEach(function(cb){selected.push(cb.value)});
+  return selected;
+}
+
+function hMultiToggleAll(type) {
+  var cls = type === 'sup' ? '.hSupCb' : '.hAgenteCb';
+  var allId = type === 'sup' ? 'hSupAll' : 'hAgenteAll';
+  var newState = document.getElementById(allId).checked;
+  document.querySelectorAll(cls).forEach(function(cb){cb.checked=newState});
+  if (type==='sup') onHMultiSupChange(); else onHMultiAgenteChange();
+}
+
+function onHMultiSupChange() {
+  var selected = getSelectedMulti('sup');
+  var btn = document.getElementById('hFilterSupBtn');
+  if (selected.length === 0) btn.textContent = 'Todos los supervisores ▾';
+  else if (selected.length === 1) { var s=(window._hSupsList||[]).find(function(u){return u.id===selected[0]}); btn.textContent = (s?s.nombre:'1') + ' ▾'; }
+  else btn.textContent = selected.length + ' supervisores ▾';
+  populateAgenteFilter();
+}
+
+function onHMultiAgenteChange() {
+  var selected = getSelectedMulti('agente');
+  var btn = document.getElementById('hFilterAgenteBtn');
+  if (selected.length === 0) btn.textContent = 'Todos los agentes ▾';
+  else if (selected.length === 1) { var a=(window._hAgentesList||[]).find(function(u){return u.id===selected[0]}); btn.textContent = (a?a.nombre:'1') + ' ▾'; }
+  else btn.textContent = selected.length + ' agentes ▾';
   renderHistorial();
 }
 
 function onHFilterCentroChange() { populateCoordFilter(); }
 function onHFilterCoordChange() { populateSupFilter(); }
 function onHFilterSupChange() { populateAgenteFilter(); }
+
 
 function populateMonthFilter() {
   var sel = document.getElementById('hFilterMes');
@@ -5042,8 +5091,12 @@ function limpiarFiltrosHistorial() {
   document.getElementById('historialSearch').value = '';
   var centro = document.getElementById('hFilterCentro'); if (centro) centro.value = 'all';
   var coord = document.getElementById('hFilterCoord'); if (coord) coord.value = 'all';
-  var sup = document.getElementById('hFilterSup'); if (sup) sup.value = 'all';
-  var agente = document.getElementById('hFilterAgente'); if (agente) agente.value = 'all';
+  // Clear multi-select checkboxes
+  document.querySelectorAll('.hSupCb,.hAgenteCb').forEach(function(cb){cb.checked=false});
+  var sa=document.getElementById('hSupAll'); if(sa) sa.checked=false;
+  var aa=document.getElementById('hAgenteAll'); if(aa) aa.checked=false;
+  document.getElementById('hFilterSupBtn').textContent = 'Todos los supervisores ▾';
+  document.getElementById('hFilterAgenteBtn').textContent = 'Todos los agentes ▾';
   state.filterEstatus = 'all';
   renderHistorial();
 }
@@ -5054,30 +5107,30 @@ function getFilteredAgentIds() {
 
   var centroVal = document.getElementById('hFilterCentro').value;
   var coordVal = document.getElementById('hFilterCoord').value;
-  var supVal = document.getElementById('hFilterSup').value;
-  var agenteVal = document.getElementById('hFilterAgente').value;
+  var selectedSups = getSelectedMulti('sup');
+  var selectedAgentes = getSelectedMulti('agente');
 
-  // If specific agent selected
-  if (agenteVal !== 'all') return [agenteVal];
+  // If specific agents selected, use those directly
+  if (selectedAgentes.length > 0) return selectedAgentes;
 
   // If ALL filters are "all" - admin shows everything
-  if (centroVal === 'all' && coordVal === 'all' && supVal === 'all') {
-    if (rol === 'admin') return null; // show everything
+  if (centroVal === 'all' && coordVal === 'all' && selectedSups.length === 0) {
+    if (rol === 'admin') return null;
   }
 
   // Filter users to get matching IDs
   var ids = hFilterUsers.filter(function(u) {
     if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
     if (coordVal !== 'all' && u.coordinador_id !== coordVal) return false;
-    if (supVal !== 'all' && u.supervisor_id !== supVal) return false;
+    if (selectedSups.length > 0 && u.supervisor_id && selectedSups.indexOf(u.supervisor_id) === -1) return false;
     if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
     if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
     return true;
   }).map(function(u) { return u.id; });
 
-  // Include supervisors/coordinators who might have cotizaciones
-  if (supVal !== 'all') ids.push(supVal);
-  if (coordVal !== 'all') ids.push(coordVal);
+  // Include selected supervisors themselves
+  selectedSups.forEach(function(sid) { if (ids.indexOf(sid) === -1) ids.push(sid); });
+  if (coordVal !== 'all' && ids.indexOf(coordVal) === -1) ids.push(coordVal);
   
   // Always include self
   if (ids.indexOf(currentUser.id) === -1) ids.push(currentUser.id);
