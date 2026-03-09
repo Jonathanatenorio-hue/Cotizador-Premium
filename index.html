@@ -2507,6 +2507,7 @@ async function loadCotizacionesFromSupabase() {
         sub_estatus: c.sub_estatus,
         folio_att: c.folio_att,
         fecha_fin_plazo: c.fecha_fin_plazo,
+        fecha_efectiva: c.fecha_efectiva,
         tiene_ine: c.tiene_ine,
         interes_cliente: c.interes_cliente,
         barrera_cierre: c.barrera_cierre,
@@ -5239,7 +5240,7 @@ function renderHistorial() {
       <div class="historial-body">
         <span class="historial-client">${cot.cliente.nombre}</span>
         <span class="historial-meta">${cot.cliente.telefono ? '<span onclick="event.stopPropagation();navigator.clipboard.writeText(\''+cot.cliente.telefono+'\');this.textContent=\'✅\';var _t=this;setTimeout(function(){_t.textContent=\'📋\'},800)" style="cursor:pointer;font-size:10px;margin-right:2px" title="Copiar teléfono">📋</span>' : ''}${cot.cliente.telefono || ''} · ${cot.items.length} equipo(s) · ${cot.fecha}${cot.createdAt ? ' ' + new Date(cot.createdAt).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
-        <span class="historial-meta">Ejecutivo: ${cot.ejecutivo ? cot.ejecutivo.nombre : 'N/A'}${cot.supervisorNombre ? ' · Sup: ' + cot.supervisorNombre : ''}${cot.sub_estatus ? ' · ' + subEstatusLabel(cot.sub_estatus) : ''}${cot.folio_att ? ' · Folio ATT: ' + cot.folio_att : ''}${cot.sub_estatus==='aceleracion' && cot.fecha_fin_plazo ? ' · Plazo: ' + cot.fecha_fin_plazo + (new Date(cot.fecha_fin_plazo+'T00:00:00') <= new Date() ? ' 🚨 VENCIDO' : '') : ''}</span>
+        <span class="historial-meta">Ejecutivo: ${cot.ejecutivo ? cot.ejecutivo.nombre : 'N/A'}${cot.supervisorNombre ? ' · Sup: ' + cot.supervisorNombre : ''}${cot.sub_estatus ? ' · ' + subEstatusLabel(cot.sub_estatus) : ''}${cot.folio_att ? ' · Folio ATT: ' + cot.folio_att : ''}${cot.sub_estatus==='aceleracion' && cot.fecha_fin_plazo ? ' · Plazo: ' + cot.fecha_fin_plazo + (new Date(cot.fecha_fin_plazo+'T00:00:00') <= new Date() ? ' 🚨 VENCIDO' : '') : ''}${cot.fecha_efectiva ? ' · <span style="color:#2E7D32;font-weight:600">📅 F.Efectiva: '+cot.fecha_efectiva+'</span>' : (cot.sub_estatus==='aceleracion' ? ' · <span style="color:#E65100;font-weight:600">⚠️ Sin fecha efectiva</span>' : '')}</span>
         ${cot.notas && cot.notas.length > 0 ? (function(){
           var n = cot.notas[0];
           var d = new Date(n.created_at);
@@ -5649,7 +5650,7 @@ function showDetalle(folio) {
         <h3>${cot.cliente.nombre}</h3>
         <p class="detalle-meta">${cot.cliente.telefono ? '<span onclick="navigator.clipboard.writeText(\''+cot.cliente.telefono+'\');this.textContent=\'✅\';var _t=this;setTimeout(function(){_t.textContent=\'📋\'},800)" style="cursor:pointer;font-size:11px;margin-right:2px" title="Copiar teléfono">📋</span>' : ''}${[cot.cliente.telefono, cot.cliente.email].filter(Boolean).join(' · ')}</p>
         <p class="detalle-meta">${cot.cliente.direccion || ''}</p>
-        <p class="detalle-meta">Fecha: ${cot.fecha}${cot.createdAt ? ' ' + new Date(cot.createdAt).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : ''} · Válido hasta: ${cot.validoHasta}</p>
+        <p class="detalle-meta">Fecha: ${cot.fecha}${cot.createdAt ? ' ' + new Date(cot.createdAt).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : ''} · Válido hasta: ${cot.validoHasta}${cot.fecha_efectiva ? ' · <span style="color:#2E7D32;font-weight:700">📅 Fecha efectiva: '+cot.fecha_efectiva+'</span>' : ''}</p>
         <p class="detalle-meta">Ejecutivo: ${cot.ejecutivo.nombre} (${cot.ejecutivo.attuid})</p>
       </div>
       <div class="detalle-actions">
@@ -12023,6 +12024,12 @@ function calcFechaEfectivaInline(folio){
   var mm = String(fechaEfectiva.getMonth()+1).padStart(2,'0');
   var dd = String(fechaEfectiva.getDate()).padStart(2,'0');
   document.getElementById('fechaFinPlazo_'+folio).value = yyyy+'-'+mm+'-'+dd;
+  // Save fecha_efectiva to cotizacion
+  var cot = state.cotizaciones.find(function(c){return c.folio===folio});
+  if (cot) cot.fecha_efectiva = yyyy+'-'+mm+'-'+dd;
+  if (supabase) {
+    try { supabase.from('cotizaciones').update({fecha_efectiva: yyyy+'-'+mm+'-'+dd}).eq('folio', folio); } catch(e){}
+  }
   // Show result
   var el = document.getElementById('feRes_'+folio);
   el.style.display = 'block';
