@@ -965,6 +965,20 @@ body{padding-bottom:60px}
   </div>
 </div>
 
+<!-- ===== VIEW: MI DÍA ===== -->
+<div class="view" id="viewMidia">
+  <div class="container">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div>
+        <div style="font-size:18px;font-weight:900">📋 Mi Día</div>
+        <div id="midiaDate" style="font-size:11px;color:var(--text-3)"></div>
+      </div>
+      <div id="midiaResumen" style="display:flex;gap:8px"></div>
+    </div>
+    <div id="midiaList"></div>
+  </div>
+</div>
+
 <!-- ===== VIEW: DETALLE ===== -->
 <div class="view" id="viewDetalle">
   <div class="container" id="detalleContent"></div>
@@ -2508,6 +2522,7 @@ async function loadCotizacionesFromSupabase() {
         folio_att: c.folio_att,
         fecha_fin_plazo: c.fecha_fin_plazo,
         fecha_efectiva: c.fecha_efectiva,
+        proximo_contacto: c.proximo_contacto,
         tiene_ine: c.tiene_ine,
         interes_cliente: c.interes_cliente,
         barrera_cierre: c.barrera_cierre,
@@ -2546,11 +2561,12 @@ function bnavGo(name) {
   }
   if (name === 'dashboard') { openDashboard(); return; }
   if (name === 'training') { showView('training', 'Sales Academy'); return; }
+  if (name === 'midia') { openMiDia(); return; }
   showView(name);
 }
 
 function bnavUpdate(name) {
-  var tabs = ['home','cotizar','historial','dashboard','training'];
+  var tabs = ['home','cotizar','midia','historial','training'];
   tabs.forEach(function(t) {
     var btn = document.getElementById('bnav_'+t);
     if (btn) btn.className = (t === name) ? 'bnav-active' : '';
@@ -2573,7 +2589,7 @@ function showView(name, title) {
 
   const titles = {
     home: '', config: 'Mi Perfil', cotizar: 'Nueva Cotización',
-    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Propósito', aiDashboard: 'Análisis IA',
+    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Propósito', aiDashboard: 'Análisis IA', midia: 'Mi Día',
   };
   headerTitle.textContent = title || titles[name] || '';
 
@@ -5793,13 +5809,17 @@ function showDetalle(folio) {
     <div class="section" style="padding:14px">
       <div class="section-title" style="margin-bottom:8px">📝 Notas de Seguimiento</div>
       <div id="notasList_${cot.folio}" style="margin-bottom:8px"></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:flex-end">
         <select class="field" id="notaTipo_${cot.folio}" style="width:auto;font-size:11px;padding:5px 8px">
           <option value="llamada">📞 Llamada</option>
           <option value="mensaje">💬 Mensaje</option>
           <option value="nota">📝 Nota interna</option>
         </select>
-        <input type="text" class="field" id="notaTexto_${cot.folio}" placeholder="Escribe tu nota..." style="flex:1;font-size:11px;min-width:150px">
+        <input type="text" class="field" id="notaTexto_${cot.folio}" placeholder="Escribe tu nota..." style="flex:1;font-size:11px;min-width:120px">
+        <div style="display:flex;align-items:center;gap:3px">
+          <label style="font-size:9px;color:var(--text-3);white-space:nowrap">⏰ Próx:</label>
+          <input type="date" class="field" id="notaProxContacto_${cot.folio}" style="font-size:10px;padding:4px 6px;width:auto" value="${cot.proximo_contacto||''}">
+        </div>
         <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="agregarNota('${cot.folio}')">Agregar</button>
       </div>
     </div>
@@ -5995,9 +6015,9 @@ async function agregarNota(folio) {
   
   var autor = currentUser ? currentUser.nombre : '';
   var rolAutor = currentUser ? currentUser.rol : '';
+  var proxContacto = document.getElementById('notaProxContacto_' + folio) ? document.getElementById('notaProxContacto_' + folio).value : '';
   
   try {
-    // Get cotizacion id
     var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', folio).single();
     if (!cotRow) return;
     
@@ -6008,6 +6028,13 @@ async function agregarNota(folio) {
       autor: autor,
       rol_autor: rolAutor
     });
+    
+    // Save próximo contacto if set
+    if (proxContacto) {
+      await supabase.from('cotizaciones').update({proximo_contacto: proxContacto}).eq('folio', folio);
+      var cot = state.cotizaciones.find(function(c){return c.folio===folio});
+      if (cot) cot.proximo_contacto = proxContacto;
+    }
     
     document.getElementById('notaTexto_' + folio).value = '';
     loadNotas(folio);
@@ -10609,6 +10636,209 @@ function buildPlanIAContext(target, mes, rol) {
   return ctx;
 }
 
+// ── MI DÍA — AGENDA INTELIGENTE ──
+function openMiDia() {
+  showView('midia', 'Mi Día');
+  renderMiDia();
+}
+
+function renderMiDia() {
+  var hoy = new Date();
+  var hoyStr = hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0')+'-'+String(hoy.getDate()).padStart(2,'0');
+  var meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  document.getElementById('midiaDate').textContent = dias[hoy.getDay()] + ' ' + hoy.getDate() + ' de ' + meses[hoy.getMonth()];
+
+  // Get my cotizaciones (agent sees own, sup sees team, admin/coord sees all)
+  var myCots = state.cotizaciones.filter(function(c) {
+    if (c.estatus === 'venta' || c.estatus === 'perdida') return false;
+    return true;
+  });
+
+  // If agent, filter to own
+  if (currentUser && currentUser.rol === 'agente') {
+    myCots = myCots.filter(function(c) { return c.agente_id === currentUser.id; });
+  }
+
+  var urgentes = [], programadas = [], calientes = [], frias = [];
+
+  myCots.forEach(function(c) {
+    var lastNotaDate = (c.notas && c.notas.length > 0) ? new Date(c.notas[0].created_at) : null;
+    var diasSinContacto = lastNotaDate ? Math.floor((hoy - lastNotaDate) / 86400000) : 999;
+    var createdDate = c.createdAt ? new Date(c.createdAt) : null;
+    var diasDesdeCreacion = createdDate ? Math.floor((hoy - createdDate) / 86400000) : 999;
+
+    var item = {
+      cot: c,
+      diasSinContacto: diasSinContacto,
+      diasDesdeCreacion: diasDesdeCreacion,
+      lastNota: lastNotaDate,
+      prioridad: '',
+      razon: ''
+    };
+
+    // 🔴 URGENTES
+    // Aceleraciones vencidas
+    if (c.sub_estatus === 'aceleracion' && c.fecha_fin_plazo && c.fecha_fin_plazo <= hoyStr) {
+      item.prioridad = 'urgente'; item.razon = '🚨 Aceleración vencida'; urgentes.push(item); return;
+    }
+    // Adeudos con fecha compromiso hoy o vencida
+    if (c.sub_estatus === 'adeudo_pendiente' && c.adeudo_fecha_compromiso && c.adeudo_fecha_compromiso <= hoyStr) {
+      item.prioridad = 'urgente'; item.razon = '💰 Adeudo vence hoy'; urgentes.push(item); return;
+    }
+    // Próximo contacto para hoy
+    if (c.proximo_contacto === hoyStr) {
+      item.prioridad = 'urgente'; item.razon = '⏰ Contacto programado hoy'; urgentes.push(item); return;
+    }
+    // Próximo contacto vencido (pasó y no se atendió)
+    if (c.proximo_contacto && c.proximo_contacto < hoyStr) {
+      item.prioridad = 'urgente'; item.razon = '⚠️ Contacto programado atrasado (' + c.proximo_contacto + ')'; urgentes.push(item); return;
+    }
+
+    // 🟡 PROGRAMADAS - próximo contacto futuro (próximos 3 días)
+    if (c.proximo_contacto && c.proximo_contacto > hoyStr) {
+      var proxDate = new Date(c.proximo_contacto + 'T12:00:00');
+      var diasHasta = Math.floor((proxDate - hoy) / 86400000);
+      if (diasHasta <= 3) {
+        item.prioridad = 'programada'; item.razon = '📅 Contacto en ' + diasHasta + ' día' + (diasHasta>1?'s':''); programadas.push(item); return;
+      }
+    }
+
+    // 🟠 CALIENTES - enviadas recientes sin seguimiento
+    if (c.estatus === 'enviada' && diasDesdeCreacion <= 2 && diasSinContacto > 0) {
+      item.prioridad = 'caliente'; item.razon = '🔥 Enviada hace ' + diasDesdeCreacion + 'd, sin seguimiento'; calientes.push(item); return;
+    }
+    // Seguimiento sin contacto hace 3+ días
+    if (c.estatus === 'seguimiento' && diasSinContacto >= 3) {
+      item.prioridad = 'caliente'; item.razon = '📞 Sin contacto hace ' + diasSinContacto + ' días'; calientes.push(item); return;
+    }
+
+    // 🟢 FRÍAS - enviadas viejas
+    if (c.estatus === 'enviada' && diasDesdeCreacion >= 3 && diasDesdeCreacion <= 7) {
+      item.prioridad = 'fria'; item.razon = '📩 Enviada hace ' + diasDesdeCreacion + ' días sin respuesta'; frias.push(item); return;
+    }
+  });
+
+  // Sort each group by dias sin contacto desc
+  var sortByUrgency = function(a,b) { return b.diasSinContacto - a.diasSinContacto; };
+  urgentes.sort(sortByUrgency);
+  calientes.sort(sortByUrgency);
+  frias.sort(sortByUrgency);
+
+  var total = urgentes.length + programadas.length + calientes.length + frias.length;
+
+  // Resumen KPIs
+  var resHtml = '';
+  resHtml += '<div style="text-align:center;padding:4px 10px;background:#FEF2F2;border-radius:8px;min-width:45px"><div style="font-size:16px;font-weight:900;color:#DC3545">'+urgentes.length+'</div><div style="font-size:7px;color:#DC3545">Urgentes</div></div>';
+  resHtml += '<div style="text-align:center;padding:4px 10px;background:#FFF8E1;border-radius:8px;min-width:45px"><div style="font-size:16px;font-weight:900;color:#E6A200">'+programadas.length+'</div><div style="font-size:7px;color:#E6A200">Programadas</div></div>';
+  resHtml += '<div style="text-align:center;padding:4px 10px;background:#FFF3E0;border-radius:8px;min-width:45px"><div style="font-size:16px;font-weight:900;color:#E65100">'+calientes.length+'</div><div style="font-size:7px;color:#E65100">Calientes</div></div>';
+  resHtml += '<div style="text-align:center;padding:4px 10px;background:#E8F5E9;border-radius:8px;min-width:45px"><div style="font-size:16px;font-weight:900;color:#2E7D32">'+frias.length+'</div><div style="font-size:7px;color:#2E7D32">Oportunidad</div></div>';
+  document.getElementById('midiaResumen').innerHTML = resHtml;
+
+  // Render list
+  var html = '';
+
+  if (total === 0) {
+    html = '<div style="text-align:center;padding:40px 20px"><div style="font-size:48px;margin-bottom:12px">🎉</div><div style="font-size:16px;font-weight:800;color:var(--text-1)">¡Todo al día!</div><div style="font-size:12px;color:var(--text-3);margin-top:6px">No tienes pendientes por ahora. Buen trabajo.</div></div>';
+  } else {
+    var renderSection = function(title, color, bgColor, items) {
+      if (items.length === 0) return '';
+      var s = '<div style="margin-bottom:14px">';
+      s += '<div style="font-size:13px;font-weight:800;color:'+color+';margin-bottom:6px">'+title+' ('+items.length+')</div>';
+      items.forEach(function(item) {
+        var c = item.cot;
+        var equipos = (c.items||[]).map(function(it){return it.equipo}).join(', ');
+        var ultimaNota = c.notas && c.notas.length > 0 ? c.notas[0] : null;
+        s += '<div style="background:'+bgColor+';border-radius:10px;padding:10px 12px;margin-bottom:6px;border-left:4px solid '+color+'">';
+        // Header
+        s += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+        s += '<div style="font-size:13px;font-weight:700">'+c.cliente.nombre+'</div>';
+        s += '<span style="font-size:9px;padding:2px 8px;border-radius:10px;background:'+color+'22;color:'+color+';font-weight:700">'+item.razon+'</span>';
+        s += '</div>';
+        // Info
+        s += '<div style="font-size:10px;color:var(--text-2);margin-bottom:4px">';
+        if (c.cliente.telefono) s += '<span onclick="event.stopPropagation();navigator.clipboard.writeText(\''+c.cliente.telefono+'\');this.textContent=\'✅ Copiado\';var _t=this;setTimeout(function(){_t.textContent=\'📋 '+c.cliente.telefono+'\'},800)" style="cursor:pointer;color:var(--att-blue);font-weight:600">📋 '+c.cliente.telefono+'</span> · ';
+        if (equipos) s += equipos + ' · ';
+        s += (c.ejecutivo ? c.ejecutivo.nombre : '');
+        s += '</div>';
+        // Última nota
+        if (ultimaNota) {
+          var nd = new Date(ultimaNota.created_at);
+          var ndStr = nd.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+          s += '<div style="font-size:9px;color:var(--text-3);margin-bottom:6px">Última nota ('+ndStr+'): '+ultimaNota.texto.substring(0,60)+(ultimaNota.texto.length>60?'...':'')+'</div>';
+        } else {
+          s += '<div style="font-size:9px;color:#DC3545;margin-bottom:6px">Sin notas de seguimiento</div>';
+        }
+        // Actions
+        s += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+        s += '<button onclick="showDetalle(\''+c.folio+'\')" style="font-size:9px;padding:3px 10px;background:var(--att-blue);color:white;border:none;border-radius:6px;cursor:pointer">📄 Ver lead</button>';
+        s += '<button onclick="midiaNotaRapida(\''+c.folio+'\')" style="font-size:9px;padding:3px 10px;background:#10B981;color:white;border:none;border-radius:6px;cursor:pointer">✅ Contacté</button>';
+        s += '<button onclick="midiaReagendar(\''+c.folio+'\')" style="font-size:9px;padding:3px 10px;background:#F59E0B;color:white;border:none;border-radius:6px;cursor:pointer">⏰ Reagendar</button>';
+        if (c.cliente.telefono) s += '<a href="https://wa.me/52'+c.cliente.telefono+'" target="_blank" style="font-size:9px;padding:3px 10px;background:#25D366;color:white;border:none;border-radius:6px;cursor:pointer;text-decoration:none">💬 WhatsApp</a>';
+        s += '</div></div>';
+      });
+      s += '</div>';
+      return s;
+    };
+
+    html += renderSection('🔴 Urgentes', '#DC3545', '#FEF2F2', urgentes);
+    html += renderSection('🟡 Programadas', '#E6A200', '#FFFBEB', programadas);
+    html += renderSection('🟠 Calientes', '#E65100', '#FFF3E0', calientes);
+    html += renderSection('🟢 Oportunidades', '#2E7D32', '#F0FFF4', frias);
+  }
+
+  document.getElementById('midiaList').innerHTML = html;
+}
+
+function midiaNotaRapida(folio) {
+  var nota = prompt('¿Qué acción realizaste? (llamada, mensaje, etc.)');
+  if (!nota || !nota.trim()) return;
+  
+  // Ask for next contact
+  var prox = prompt('¿Cuándo es el próximo contacto? (formato AAAA-MM-DD, o deja vacío)');
+  
+  (async function() {
+    try {
+      var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', folio).single();
+      if (!cotRow) return;
+      await supabase.from('cotizacion_notas').insert({
+        cotizacion_id: cotRow.id,
+        tipo: 'llamada',
+        texto: nota.trim(),
+        autor: currentUser ? currentUser.nombre : '',
+        rol_autor: currentUser ? currentUser.rol : ''
+      });
+      if (prox && /^\d{4}-\d{2}-\d{2}$/.test(prox)) {
+        await supabase.from('cotizaciones').update({proximo_contacto: prox}).eq('folio', folio);
+        var cot = state.cotizaciones.find(function(c){return c.folio===folio});
+        if (cot) cot.proximo_contacto = prox;
+      }
+      // Reload notas in state
+      var {data: notas} = await supabase.from('cotizacion_notas').select('*').eq('cotizacion_id', cotRow.id).order('created_at',{ascending:false});
+      var cot = state.cotizaciones.find(function(c){return c.folio===folio});
+      if (cot && notas) cot.notas = notas;
+      renderMiDia();
+    } catch(e) { alert('Error: ' + e.message); }
+  })();
+}
+
+function midiaReagendar(folio) {
+  var manana = new Date();
+  manana.setDate(manana.getDate() + 1);
+  var defDate = manana.getFullYear()+'-'+String(manana.getMonth()+1).padStart(2,'0')+'-'+String(manana.getDate()).padStart(2,'0');
+  var fecha = prompt('¿Para qué fecha reagendar? (AAAA-MM-DD)', defDate);
+  if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return;
+  
+  (async function() {
+    try {
+      await supabase.from('cotizaciones').update({proximo_contacto: fecha}).eq('folio', folio);
+      var cot = state.cotizaciones.find(function(c){return c.folio===folio});
+      if (cot) cot.proximo_contacto = fecha;
+      renderMiDia();
+    } catch(e) { alert('Error: ' + e.message); }
+  })();
+}
+
 // Excel Parser - Auto-detects Puebla vs CDMX format
 async function metasParseExcel() {
   var file = document.getElementById('metasFileInput').files[0];
@@ -13061,8 +13291,8 @@ async function trRenderMetrics() {
 <div class="bottom-nav" id="bottomNav" style="display:none">
   <button onclick="bnavGo('home')" id="bnav_home"><span class="bnav-icon">🏠</span>Inicio</button>
   <button onclick="bnavGo('cotizar')" id="bnav_cotizar"><span class="bnav-icon">📝</span>Cotizar</button>
-  <button onclick="bnavGo('historial')" id="bnav_historial"><span class="bnav-icon">📋</span>Historial</button>
-  <button onclick="bnavGo('dashboard')" id="bnav_dashboard"><span class="bnav-icon">📊</span>Dashboard</button>
+  <button onclick="bnavGo('midia')" id="bnav_midia"><span class="bnav-icon">📋</span>Mi Día</button>
+  <button onclick="bnavGo('historial')" id="bnav_historial"><span class="bnav-icon">📂</span>Historial</button>
   <button onclick="bnavGo('training')" id="bnav_training"><span class="bnav-icon">🎓</span>Academy</button>
 </div>
 <div id="jtFooter" style="text-align:center;padding:16px 0 24px;font-size:10px;color:#BCC7D4;letter-spacing:0.5px;font-weight:600">
