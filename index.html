@@ -4880,9 +4880,14 @@ async function initHistorialFilters() {
 
   // Load users
   try {
-    var { data } = await supabase.from('usuarios').select('*, centros(nombre, ciudad)').eq('activo', true).order('nombre');
+    var { data, error } = await supabase.from('usuarios').select('*, centros(nombre, ciudad)').eq('activo', true).order('nombre');
+    if (error || !data || data.length === 0) {
+      // Fallback: try without activo filter
+      var res = await supabase.from('usuarios').select('*, centros(nombre, ciudad)').order('nombre');
+      data = (res.data || []).filter(function(u) { return u.activo === true || u.activo === 'true' || u.activo === 1; });
+    }
     hFilterUsers = data || [];
-  } catch(e) { hFilterUsers = []; }
+  } catch(e) { console.error('hFilter users error:', e); hFilterUsers = []; }
 
   // Load centros
   var centroSel = document.getElementById('hFilterCentro');
@@ -4921,6 +4926,7 @@ async function initHistorialFilters() {
   } else if (rol === 'supervisor') {
     populateAgenteFilter();
   }
+  console.log('initHistorialFilters done, role:', rol, 'users:', hFilterUsers.length);
 }
 
 function populateCoordFilter() {
