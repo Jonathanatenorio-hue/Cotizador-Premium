@@ -3581,6 +3581,15 @@ function addItemFromDevice(devId) {
 
   if (precioPromo === null || precioPromo === undefined) return;
 
+  // Check for exact duplicate (same device, plan, plazo)
+  var isDuplicate = state.items.some(function(it) {
+    return it.equipo === dev.equipo && it.planId === planId && it.plazo === plazo;
+  });
+  if (isDuplicate) {
+    alert('⚠️ Este equipo ya está en la cotización con el mismo plan y plazo.\n\nSi necesitas agregarlo con diferente configuración, cambia el plan, plazo o enganche.');
+    return;
+  }
+
   // Check if device image exists in bank
   var itemImgKey = deviceImgKey(dev.equipo);
   var itemImgUrl = deviceImgCache[itemImgKey] || null;
