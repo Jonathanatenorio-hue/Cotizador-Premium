@@ -902,11 +902,14 @@ body{padding-bottom:60px}
     <div class="section" style="padding:14px;margin-bottom:8px">
       <input class="field" id="historialSearch" placeholder="🔍 Buscar por nombre, teléfono o folio..." oninput="renderHistorial()" style="width:100%;margin-bottom:8px">
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-        <label style="font-size:11px;font-weight:600;color:var(--text-3)">📅 Fecha:</label>
+        <select class="field" id="hFilterMes" onchange="onHFilterMesChange()" style="width:auto;font-size:11px;padding:5px 8px">
+          <option value="all">Todos los meses</option>
+        </select>
+        <label style="font-size:11px;font-weight:600;color:var(--text-3)">📅</label>
         <input type="date" class="field" id="hFilterDesde" onchange="renderHistorial()" style="width:auto;font-size:11px;padding:5px 8px">
         <span style="font-size:11px;color:var(--text-3)">a</span>
         <input type="date" class="field" id="hFilterHasta" onchange="renderHistorial()" style="width:auto;font-size:11px;padding:5px 8px">
-        <button class="btn btn-secondary" onclick="document.getElementById('hFilterDesde').value='';document.getElementById('hFilterHasta').value='';renderHistorial()" style="font-size:10px;padding:4px 8px">✕ Limpiar</button>
+        <button class="btn btn-secondary" onclick="limpiarFiltrosHistorial()" style="font-size:10px;padding:4px 8px">✕ Limpiar</button>
         <select class="field" id="hFilterSubEstatus" onchange="renderHistorial()" style="width:auto;min-width:140px;font-size:11px;padding:5px 8px">
           <option value="all">Todas las sub-tipificaciones</option>
           <option value="aceleracion">Aceleración pendiente</option>
@@ -919,6 +922,8 @@ body{padding-bottom:60px}
           <option value="prefiere_tienda">Prefiere ir a tienda</option>
           <option value="pago_rechazado">Pago rechazado</option>
           <option value="desconfianza">Desconfianza trámite</option>
+          <option value="adeudo_pendiente">Adeudo por pagar</option>
+          <option value="reasignada">Reasignada</option>
           <option value="confirmada">Venta confirmada ✅</option>
           <option value="no_confirmada">No confirmada ⚠️</option>
         </select>
@@ -4852,6 +4857,7 @@ async function initHistorialFilters() {
   // Only show filters for roles that see other people's cotizaciones
   if (rol === 'agente') {
     filtersDiv.style.display = 'none';
+    populateMonthFilter();
     return;
   }
 
@@ -4892,6 +4898,7 @@ async function initHistorialFilters() {
   }
 
   // Initial populate cascading dropdowns
+  populateMonthFilter();
   if (rol === 'admin') {
     populateCoordFilter();
   } else if (rol === 'coordinador') {
@@ -4923,15 +4930,30 @@ function populateSupFilter() {
   var centroVal = document.getElementById('hFilterCentro').value;
   var coordVal = document.getElementById('hFilterCoord').value;
   var supSel = document.getElementById('hFilterSup');
-  var sups = hFilterUsers.filter(function(u) {
-    if (u.rol !== 'supervisor') return false;
-    if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
-    if (coordVal !== 'all' && u.coordinador_id !== coordVal) return false;
-    if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
-    return true;
-  });
+  
+  var sups;
+  if (rol === 'coordinador') {
+    // For coordinador: find supervisors whose agents have this coordinador_id,
+    // OR supervisors who directly have coordinador_id = currentUser
+    var mySupIds = {};
+    hFilterUsers.forEach(function(u) {
+      if (u.coordinador_id === currentUser.id && u.supervisor_id) mySupIds[u.supervisor_id] = true;
+      if (u.coordinador_id === currentUser.id && u.rol === 'supervisor') mySupIds[u.id] = true;
+    });
+    sups = hFilterUsers.filter(function(u) {
+      return u.rol === 'supervisor' && mySupIds[u.id];
+    });
+  } else {
+    sups = hFilterUsers.filter(function(u) {
+      if (u.rol !== 'supervisor') return false;
+      if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
+      if (coordVal !== 'all' && u.coordinador_id !== coordVal) return false;
+      return true;
+    });
+  }
+  
   supSel.innerHTML = '<option value="all">Todos los supervisores</option>';
-  sups.forEach(function(u) {
+  sups.sort(function(a,b){return a.nombre.localeCompare(b.nombre)}).forEach(function(u) {
     supSel.innerHTML += '<option value="'+u.id+'">'+u.nombre+'</option>';
   });
   populateAgenteFilter();
@@ -4963,6 +4985,59 @@ function onHFilterCentroChange() { populateCoordFilter(); }
 function onHFilterCoordChange() { populateSupFilter(); }
 function onHFilterSupChange() { populateAgenteFilter(); }
 
+function populateMonthFilter() {
+  var sel = document.getElementById('hFilterMes');
+  if (!sel) return;
+  var months = {};
+  state.cotizaciones.forEach(function(c) {
+    var d = (c.createdAt || c.fecha || '').substring(0, 7);
+    if (d) months[d] = true;
+  });
+  var meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var sorted = Object.keys(months).sort().reverse();
+  sel.innerHTML = '<option value="all">Todos los meses</option>';
+  sorted.forEach(function(m) {
+    var parts = m.split('-');
+    var label = meses[parseInt(parts[1])-1] + ' ' + parts[0];
+    sel.innerHTML += '<option value="' + m + '">' + label + '</option>';
+  });
+  // Default to current month
+  var now = new Date();
+  var curMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  if (months[curMonth]) sel.value = curMonth;
+}
+
+function onHFilterMesChange() {
+  var mes = document.getElementById('hFilterMes').value;
+  var desde = document.getElementById('hFilterDesde');
+  var hasta = document.getElementById('hFilterHasta');
+  if (mes !== 'all') {
+    var y = parseInt(mes.split('-')[0]);
+    var m = parseInt(mes.split('-')[1]);
+    var lastDay = new Date(y, m, 0).getDate();
+    desde.value = mes + '-01';
+    hasta.value = mes + '-' + String(lastDay).padStart(2, '0');
+  } else {
+    desde.value = '';
+    hasta.value = '';
+  }
+  renderHistorial();
+}
+
+function limpiarFiltrosHistorial() {
+  document.getElementById('hFilterMes').value = 'all';
+  document.getElementById('hFilterDesde').value = '';
+  document.getElementById('hFilterHasta').value = '';
+  document.getElementById('hFilterSubEstatus').value = 'all';
+  document.getElementById('historialSearch').value = '';
+  var centro = document.getElementById('hFilterCentro'); if (centro) centro.value = 'all';
+  var coord = document.getElementById('hFilterCoord'); if (coord) coord.value = 'all';
+  var sup = document.getElementById('hFilterSup'); if (sup) sup.value = 'all';
+  var agente = document.getElementById('hFilterAgente'); if (agente) agente.value = 'all';
+  state.filterEstatus = 'all';
+  renderHistorial();
+}
+
 function getFilteredAgentIds() {
   var rol = currentUser.rol;
   if (rol === 'agente') return [currentUser.id];
@@ -4975,12 +5050,12 @@ function getFilteredAgentIds() {
   // If specific agent selected
   if (agenteVal !== 'all') return [agenteVal];
 
-  // If ALL filters are "all" - no filtering needed
+  // If ALL filters are "all" - admin shows everything
   if (centroVal === 'all' && coordVal === 'all' && supVal === 'all') {
     if (rol === 'admin') return null; // show everything
   }
 
-  // Filter users to get matching agent IDs
+  // Filter users to get matching IDs
   var ids = hFilterUsers.filter(function(u) {
     if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
     if (coordVal !== 'all' && u.coordinador_id !== coordVal) return false;
@@ -4990,9 +5065,12 @@ function getFilteredAgentIds() {
     return true;
   }).map(function(u) { return u.id; });
 
-  // Also include supervisors/coordinators who might have made cotizaciones themselves
+  // Include supervisors/coordinators who might have cotizaciones
   if (supVal !== 'all') ids.push(supVal);
   if (coordVal !== 'all') ids.push(coordVal);
+  
+  // Always include self
+  if (ids.indexOf(currentUser.id) === -1) ids.push(currentUser.id);
 
   return ids.length > 0 ? ids : null;
 }
