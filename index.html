@@ -942,8 +942,16 @@ body{padding-bottom:60px}
           <option value="all">Todos los agentes</option>
         </select>
       </div>
-      <div style="display:flex;justify-content:flex-end;margin-top:6px">
-        <button onclick="exportHistorialExcel()" class="btn btn-secondary" style="font-size:10px;padding:5px 12px">📥 Exportar Excel</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;flex-wrap:wrap;gap:6px">
+        <div id="historialSelectBar" style="display:none;gap:6px;align-items:center">
+          <button onclick="toggleSelectAll()" class="btn btn-secondary" style="font-size:10px;padding:5px 10px">☑️ Todos</button>
+          <span id="historialSelectCount" style="font-size:11px;font-weight:700;color:#8B5CF6">0 seleccionadas</span>
+          <button onclick="reasignarMasivo()" class="btn btn-primary" style="font-size:10px;padding:5px 12px;background:#8B5CF6">🔄 Reasignar selección</button>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="toggleSelectionMode()" id="btnSelectMode" class="btn btn-secondary" style="font-size:10px;padding:5px 12px;display:none">☐ Seleccionar</button>
+          <button onclick="exportHistorialExcel()" class="btn btn-secondary" style="font-size:10px;padding:5px 12px">📥 Exportar Excel</button>
+        </div>
       </div>
     </div>
     <div class="filter-row" id="filterRow"></div>
@@ -4862,6 +4870,8 @@ async function initHistorialFilters() {
   }
 
   filtersDiv.style.display = 'flex';
+  var btnSel = document.getElementById('btnSelectMode');
+  if (btnSel) btnSel.style.display = (rol === 'admin' || rol === 'coordinador') ? '' : 'none';
 
   // Load users
   try {
@@ -5159,7 +5169,9 @@ function renderHistorial() {
   }
 
   list.innerHTML = '<div class="historial-list">' + filtered.map(cot => `
-    <div class="historial-card" onclick="showDetalle('${cot.folio}')">
+    <div class="historial-card" style="display:flex;gap:8px;align-items:flex-start" onclick="${histSelectionMode ? 'toggleSelectCot(\''+cot.folio+'\')' : 'showDetalle(\''+cot.folio+'\')'}">
+      ${histSelectionMode ? '<div style="padding-top:4px;flex-shrink:0"><input type="checkbox" class="histCheckbox" data-folio="'+cot.folio+'" '+(histSelectedFolios[cot.folio]?'checked':'')+' onclick="event.stopPropagation();toggleSelectCot(\''+cot.folio+'\')" style="width:18px;height:18px;accent-color:#8B5CF6;cursor:pointer"></div>' : ''}
+      <div style="flex:1;min-width:0">
       <div class="historial-top">
         <span class="historial-folio">${cot.folio}</span>
         <span class="badge badge-${cot.estatus}">${{enviada:'Enviada',seguimiento:'Seguimiento',venta:'Venta Exitosa',perdida:'Perdida'}[cot.estatus]||cot.estatus}</span>
@@ -5176,12 +5188,153 @@ function renderHistorial() {
           return '<div style="font-size:10px;margin-top:3px;padding:4px 8px;background:#EFF6FF;border-radius:5px;border-left:3px solid #3B82F6;display:flex;gap:4px;align-items:center"><span style="color:#3B82F6;font-weight:600;white-space:nowrap">'+(tipoIcons[n.tipo]||'📝')+' '+dateStr+'</span><span style="color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+n.autor+': '+n.texto.substring(0,55)+(n.texto.length>55?'...':'')+'</span>'+(cot.notas.length>1?'<span style="color:var(--text-3);font-size:9px;white-space:nowrap">('+cot.notas.length+')</span>':'')+'</div>';
         })() : '<div style="font-size:9px;margin-top:3px;padding:3px 8px;background:#FEF2F2;border-radius:5px;border-left:3px solid #DC3545;color:#DC3545;font-weight:600">⚠️ Sin seguimiento registrado</div>'}
       </div>
+      </div>
     </div>
   `).join('') + '</div>';
 }
 
 function filterHistorial(est) {
   state.filterEstatus = est;
+  renderHistorial();
+}
+
+var histSelectionMode = false;
+var histSelectedFolios = {};
+
+function toggleSelectionMode() {
+  histSelectionMode = !histSelectionMode;
+  histSelectedFolios = {};
+  var btn = document.getElementById('btnSelectMode');
+  var bar = document.getElementById('historialSelectBar');
+  if (histSelectionMode) {
+    btn.innerHTML = '✅ Modo selección';
+    btn.style.background = '#8B5CF6';
+    btn.style.color = 'white';
+    bar.style.display = 'flex';
+  } else {
+    btn.innerHTML = '☐ Seleccionar';
+    btn.style.background = '';
+    btn.style.color = '';
+    bar.style.display = 'none';
+  }
+  updateSelectCount();
+  renderHistorial();
+}
+
+function toggleSelectCot(folio) {
+  if (histSelectedFolios[folio]) delete histSelectedFolios[folio];
+  else histSelectedFolios[folio] = true;
+  updateSelectCount();
+  // Update checkbox without full re-render
+  var cb = document.querySelector('.histCheckbox[data-folio="'+folio+'"]');
+  if (cb) cb.checked = !!histSelectedFolios[folio];
+}
+
+function toggleSelectAll() {
+  var cards = document.querySelectorAll('.histCheckbox');
+  var allSelected = cards.length > 0 && Object.keys(histSelectedFolios).length >= cards.length;
+  if (allSelected) {
+    histSelectedFolios = {};
+  } else {
+    cards.forEach(function(cb) { histSelectedFolios[cb.getAttribute('data-folio')] = true; });
+  }
+  cards.forEach(function(cb) { cb.checked = !!histSelectedFolios[cb.getAttribute('data-folio')]; });
+  updateSelectCount();
+}
+
+function updateSelectCount() {
+  var count = Object.keys(histSelectedFolios).length;
+  var el = document.getElementById('historialSelectCount');
+  if (el) el.textContent = count + ' seleccionada' + (count !== 1 ? 's' : '');
+}
+
+async function reasignarMasivo() {
+  var folios = Object.keys(histSelectedFolios);
+  if (folios.length === 0) { alert('Selecciona al menos una cotización'); return; }
+  if (!supabase || !currentUser) return;
+
+  // Load agents grouped by supervisor (same as individual reasignar)
+  var {data: allUsers} = await supabase.from('usuarios').select('id, nombre, attuid, rol, supervisor_id, coordinador_id, activo');
+  var activeUsers = (allUsers || []).filter(function(u) { return u.activo === true || u.activo === 'true'; });
+  var supMap = {};
+  activeUsers.filter(function(u) { return u.rol === 'supervisor'; }).forEach(function(u) { supMap[u.id] = u.nombre; });
+  var agents = activeUsers.filter(function(u) { return u.rol === 'agente'; });
+  if (currentUser.rol === 'coordinador') agents = agents.filter(function(u) { return u.coordinador_id === currentUser.id; });
+
+  var bySup = {};
+  agents.forEach(function(a) {
+    var supName = supMap[a.supervisor_id] || 'Sin supervisor';
+    if (!bySup[supName]) bySup[supName] = [];
+    bySup[supName].push(a);
+  });
+
+  var supOptions = '<option value="">Selecciona supervisor...</option>';
+  Object.keys(bySup).sort().forEach(function(s) {
+    supOptions += '<option value="' + s + '">' + s + ' (' + bySup[s].length + ' agentes)</option>';
+  });
+
+  window._reasignarBySup = bySup;
+  window._reasignarMasivoFolios = folios;
+  window._reasignarAgentsList = agents;
+
+  var overlay = document.createElement('div');
+  overlay.id = 'reasignarOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = '<div style="background:white;border-radius:16px;padding:24px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">' +
+    '<div style="font-size:16px;font-weight:800;margin-bottom:4px">🔄 Reasignación Masiva</div>' +
+    '<div style="font-size:12px;color:#8B5CF6;font-weight:700;margin-bottom:16px">' + folios.length + ' cotización' + (folios.length > 1 ? 'es' : '') + ' seleccionada' + (folios.length > 1 ? 's' : '') + '</div>' +
+    '<label style="font-size:11px;font-weight:600;color:var(--text-2);margin-bottom:4px;display:block">Supervisor:</label>' +
+    '<select id="reasignarSup" onchange="reasignarFilterAgents()" class="field" style="width:100%;margin-bottom:10px">' + supOptions + '</select>' +
+    '<label style="font-size:11px;font-weight:600;color:var(--text-2);margin-bottom:4px;display:block">Agente destino:</label>' +
+    '<select id="reasignarAgent" class="field" style="width:100%;margin-bottom:16px"><option value="">Primero selecciona supervisor</option></select>' +
+    '<div style="display:flex;gap:8px">' +
+    '<button onclick="document.getElementById(\'reasignarOverlay\').remove()" class="btn btn-secondary" style="flex:1">Cancelar</button>' +
+    '<button onclick="confirmarReasignarMasivo()" class="btn btn-primary" style="flex:1;background:#8B5CF6">✅ Reasignar ' + folios.length + '</button>' +
+    '</div></div>';
+  document.body.appendChild(overlay);
+}
+
+async function confirmarReasignarMasivo() {
+  var agentId = document.getElementById('reasignarAgent').value;
+  if (!agentId) { alert('Selecciona un agente'); return; }
+  var agent = window._reasignarAgentsList.find(function(a) { return a.id === agentId; });
+  if (!agent) return;
+  var folios = window._reasignarMasivoFolios || [];
+  if (!confirm('¿Reasignar ' + folios.length + ' cotización' + (folios.length > 1 ? 'es' : '') + ' a ' + agent.nombre + '?')) return;
+
+  var ok = 0, fail = 0;
+  for (var i = 0; i < folios.length; i++) {
+    try {
+      await supabase.from('cotizaciones').update({
+        agente_id: agent.id,
+        sub_estatus: 'reasignada',
+        updated_at: new Date().toISOString()
+      }).eq('folio', folios[i]);
+
+      var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', folios[i]).single();
+      if (cotRow) {
+        await supabase.from('cotizacion_notas').insert({
+          cotizacion_id: cotRow.id,
+          tipo: 'nota',
+          texto: 'Reasignación masiva a ' + agent.nombre + ' por ' + currentUser.nombre + ' (' + folios.length + ' cotizaciones)',
+          autor: currentUser.nombre,
+          rol_autor: currentUser.rol
+        });
+      }
+      ok++;
+    } catch(e) { fail++; }
+  }
+
+  document.getElementById('reasignarOverlay').remove();
+  histSelectedFolios = {};
+  histSelectionMode = false;
+  document.getElementById('btnSelectMode').innerHTML = '☐ Seleccionar';
+  document.getElementById('btnSelectMode').style.background = '';
+  document.getElementById('btnSelectMode').style.color = '';
+  document.getElementById('historialSelectBar').style.display = 'none';
+
+  alert('✅ ' + ok + ' cotizaciones reasignadas a ' + agent.nombre + (fail > 0 ? '\n⚠️ ' + fail + ' fallaron' : ''));
+  await loadCotizacionesFromSupabase();
   renderHistorial();
 }
 
