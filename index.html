@@ -2526,6 +2526,8 @@ async function loadCotizacionesFromSupabase() {
         tiene_ine: c.tiene_ine,
         interes_cliente: c.interes_cliente,
         barrera_cierre: c.barrera_cierre,
+        interes_otro: c.interes_otro,
+        barrera_otro: c.barrera_otro,
         adeudo_monto: c.adeudo_monto,
         adeudo_fecha_compromiso: c.adeudo_fecha_compromiso,
         planActual: c.plan_actual_id ? {id: c.plan_actual_id} : null,
@@ -5596,6 +5598,13 @@ function renderHistorialChart(filtered) {
 
   var dates = Object.keys(byDate).sort();
   if (dates.length === 0) { el.innerHTML = ''; return; }
+
+  // If single day or very few days, show supervisor breakdown instead
+  if (dates.length <= 2) {
+    renderHistorialChartBySuper(filtered, el);
+    return;
+  }
+
   if (dates.length > 31) dates = dates.slice(-31);
 
   var maxV = Math.max.apply(null, dates.map(function(d) { return byDate[d]; }));
@@ -5657,6 +5666,83 @@ function renderHistorialChart(filtered) {
     h += '</div>';
   });
   h += '</div></div></div>';
+  el.innerHTML = h;
+}
+
+function renderHistorialChartBySuper(filtered, el) {
+  // Group by supervisor
+  var bySup = {};
+  var bySupStatus = {};
+  var statusColors = {enviada:'#0057B8', seguimiento:'#E6A200', venta:'#10B981', perdida:'#DC3545'};
+  
+  filtered.forEach(function(c) {
+    var sup = c.supervisorNombre || 'Sin supervisor';
+    bySup[sup] = (bySup[sup] || 0) + 1;
+    if (!bySupStatus[sup]) bySupStatus[sup] = {enviada:0, seguimiento:0, venta:0, perdida:0};
+    if (bySupStatus[sup][c.estatus] !== undefined) bySupStatus[sup][c.estatus]++;
+  });
+
+  var sups = Object.keys(bySup).sort(function(a,b) { return bySup[b] - bySup[a]; });
+  var maxV = Math.max.apply(null, sups.map(function(s) { return bySup[s]; }));
+  var total = filtered.length;
+
+  // Also count by estatus totals
+  var totalByStatus = {enviada:0, seguimiento:0, venta:0, perdida:0};
+  filtered.forEach(function(c) { if (totalByStatus[c.estatus] !== undefined) totalByStatus[c.estatus]++; });
+
+  var h = '<div class="section" style="padding:14px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">';
+  h += '<div style="font-size:13px;font-weight:800">📊 Resumen del Día — ' + total + ' cotizaciones</div>';
+  h += '</div>';
+
+  // Status summary pills
+  h += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
+  h += '<span style="font-size:11px;padding:3px 10px;border-radius:12px;background:#0057B822;color:#0057B8;font-weight:700">Enviadas: ' + totalByStatus.enviada + '</span>';
+  h += '<span style="font-size:11px;padding:3px 10px;border-radius:12px;background:#E6A20022;color:#E6A200;font-weight:700">Seguimiento: ' + totalByStatus.seguimiento + '</span>';
+  h += '<span style="font-size:11px;padding:3px 10px;border-radius:12px;background:#10B98122;color:#10B981;font-weight:700">Ventas: ' + totalByStatus.venta + '</span>';
+  h += '<span style="font-size:11px;padding:3px 10px;border-radius:12px;background:#DC354522;color:#DC3545;font-weight:700">Perdidas: ' + totalByStatus.perdida + '</span>';
+  h += '</div>';
+
+  // Horizontal bars by supervisor
+  h += '<div style="font-size:11px;font-weight:700;color:var(--text-2);margin-bottom:8px">Por Supervisor:</div>';
+  sups.forEach(function(sup) {
+    var count = bySup[sup];
+    var pct = maxV > 0 ? Math.round(count / maxV * 100) : 0;
+    var st = bySupStatus[sup];
+    
+    // Stacked segments
+    var segments = '';
+    ['enviada','seguimiento','venta','perdida'].forEach(function(s) {
+      if (st[s] > 0 && count > 0) {
+        segments += '<div style="height:100%;width:' + (st[s]/count*100).toFixed(1) + '%;background:' + statusColors[s] + '" title="' + s + ': ' + st[s] + '"></div>';
+      }
+    });
+
+    h += '<div style="margin-bottom:8px">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">';
+    h += '<span style="font-size:11px;font-weight:600;color:var(--text-1)">' + sup + '</span>';
+    h += '<span style="font-size:12px;font-weight:900;color:var(--att-blue)">' + count + '</span>';
+    h += '</div>';
+    h += '<div style="height:14px;border-radius:7px;background:var(--border);overflow:hidden;display:flex">' + segments + '</div>';
+    // Mini breakdown
+    h += '<div style="display:flex;gap:8px;margin-top:2px">';
+    ['enviada','seguimiento','venta','perdida'].forEach(function(s) {
+      if (st[s] > 0) {
+        h += '<span style="font-size:8px;color:' + statusColors[s] + ';font-weight:600">' + {enviada:'Env',seguimiento:'Seg',venta:'Vta',perdida:'Per'}[s] + ': ' + st[s] + '</span>';
+      }
+    });
+    h += '</div></div>';
+  });
+
+  // Legend
+  h += '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">';
+  h += '<span style="font-size:9px;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#0057B8;display:inline-block"></span>Enviada</span>';
+  h += '<span style="font-size:9px;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#E6A200;display:inline-block"></span>Seguimiento</span>';
+  h += '<span style="font-size:9px;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#10B981;display:inline-block"></span>Venta</span>';
+  h += '<span style="font-size:9px;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#DC3545;display:inline-block"></span>Perdida</span>';
+  h += '</div>';
+
+  h += '</div>';
   el.innerHTML = h;
 }
 
@@ -5782,35 +5868,36 @@ function showDetalle(folio) {
       </div>
     </div>
     <div class="section" style="padding:14px">
-      <div class="section-title" style="margin-bottom:8px">🎯 Contexto del Prospecto</div>
+      <div class="section-title" style="margin-bottom:8px">🎯 Contexto del Prospecto <span style="font-size:9px;color:#DC3545;font-weight:700">(obligatorio)</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <div style="flex:1;min-width:140px">
           <label class="field-label">Interés del cliente</label>
-          <select class="field" id="cotInteres_${cot.folio}" style="font-size:11px">
-            <option value="">Sin especificar</option>
-            <option value="equipo_especifico" ${cot.interes_cliente==='equipo_especifico'?'selected':''}>Equipo específico</option>
-            <option value="precio_atractivo" ${cot.interes_cliente==='precio_atractivo'?'selected':''}>Precio atractivo</option>
-            <option value="mas_datos" ${cot.interes_cliente==='mas_datos'?'selected':''}>Más datos/GB</option>
-            <option value="cambio_compania" ${cot.interes_cliente==='cambio_compania'?'selected':''}>Cambio de compañía</option>
-            <option value="renovar_equipo" ${cot.interes_cliente==='renovar_equipo'?'selected':''}>Renovar equipo</option>
-            <option value="promocion" ${cot.interes_cliente==='promocion'?'selected':''}>Promoción/oferta</option>
-            <option value="otro_interes" ${cot.interes_cliente==='otro_interes'?'selected':''}>Otro</option>
+          <select class="field" id="cotInteres_${cot.folio}" onchange="onCotInteresChange('${cot.folio}')" style="font-size:11px">
+            <option value="">Selecciona...</option>
+            <option value="equipo_especial" ${cot.interes_cliente==='equipo_especial'?'selected':''}>Le interesa un equipo en especial</option>
+            <option value="pagar_menos" ${cot.interes_cliente==='pagar_menos'?'selected':''}>Pagar menos</option>
+            <option value="mas_gb" ${cot.interes_cliente==='mas_gb'?'selected':''}>Más GB en su plan</option>
+            <option value="equipo_sin_costo" ${cot.interes_cliente==='equipo_sin_costo'?'selected':''}>Equipo sin costo</option>
+            <option value="mejor_senal" ${cot.interes_cliente==='mejor_senal'?'selected':''}>Mejorar señal y velocidad</option>
+            <option value="proceso_distancia" ${cot.interes_cliente==='proceso_distancia'?'selected':''}>Proceso cómodo a distancia</option>
+            <option value="sin_titular" ${cot.interes_cliente==='sin_titular'?'selected':''}>Sin presencia del titular</option>
+            <option value="otro_interes" ${cot.interes_cliente==='otro_interes'?'selected':''}>Otra</option>
           </select>
+          <input type="text" class="field" id="cotInteresOtro_${cot.folio}" placeholder="Especifica el interés..." style="font-size:10px;margin-top:4px;display:${cot.interes_cliente==='otro_interes'?'':'none'}" value="${cot.interes_otro||''}">
         </div>
         <div style="flex:1;min-width:140px">
           <label class="field-label">Barrera de cierre</label>
-          <select class="field" id="cotBarrera_${cot.folio}" style="font-size:11px">
-            <option value="">Sin especificar</option>
-            <option value="precio_alto" ${cot.barrera_cierre==='precio_alto'?'selected':''}>Precio alto</option>
-            <option value="consultar_familia" ${cot.barrera_cierre==='consultar_familia'?'selected':''}>Quiere consultar</option>
-            <option value="sin_credito" ${cot.barrera_cierre==='sin_credito'?'selected':''}>No tiene crédito</option>
-            <option value="no_titular" ${cot.barrera_cierre==='no_titular'?'selected':''}>No es el titular</option>
-            <option value="comparar_opciones" ${cot.barrera_cierre==='comparar_opciones'?'selected':''}>Quiere comparar</option>
-            <option value="adeudo" ${cot.barrera_cierre==='adeudo'?'selected':''}>Tiene adeudo</option>
+          <select class="field" id="cotBarrera_${cot.folio}" onchange="onCotBarreraChange('${cot.folio}')" style="font-size:11px">
+            <option value="">Selecciona...</option>
+            <option value="sin_ine" ${cot.barrera_cierre==='sin_ine'?'selected':''}>No traía su INE a la mano</option>
+            <option value="comparar_equipos" ${cot.barrera_cierre==='comparar_equipos'?'selected':''}>Quiere comparar equipos</option>
+            <option value="usuario_pide_ine" ${cot.barrera_cierre==='usuario_pide_ine'?'selected':''}>Es usuario y pide INE del titular</option>
             <option value="desconfianza" ${cot.barrera_cierre==='desconfianza'?'selected':''}>Desconfianza</option>
-            <option value="sin_docs" ${cot.barrera_cierre==='sin_docs'?'selected':''}>Sin documentos</option>
-            <option value="otro_barrera" ${cot.barrera_cierre==='otro_barrera'?'selected':''}>Otro</option>
+            <option value="adeudo" ${cot.barrera_cierre==='adeudo'?'selected':''}>Adeudo por pagar</option>
+            <option value="aceleracion" ${cot.barrera_cierre==='aceleracion'?'selected':''}>Aceleración por pagar</option>
+            <option value="otro_barrera" ${cot.barrera_cierre==='otro_barrera'?'selected':''}>Otra</option>
           </select>
+          <input type="text" class="field" id="cotBarreraOtro_${cot.folio}" placeholder="Especifica la barrera..." style="font-size:10px;margin-top:4px;display:${cot.barrera_cierre==='otro_barrera'?'':'none'}" value="${cot.barrera_otro||''}">
         </div>
       </div>
       <button class="btn btn-primary" style="font-size:10px;padding:4px 12px;margin-top:6px" onclick="guardarContexto('${cot.folio}')">💾 Guardar contexto</button>
@@ -5955,6 +6042,14 @@ async function guardarEstatus(folio) {
       if (!adeudoMonto || parseFloat(adeudoMonto) <= 0) { alert('El monto del adeudo es obligatorio y debe ser mayor a $0.'); return; }
       if (!adeudoFechaCompromiso) { alert('La fecha de compromiso de pago es obligatoria.'); return; }
     }
+    // Contexto obligatorio
+    var cotInteres = document.getElementById('cotInteres_' + folio);
+    var cotBarrera = document.getElementById('cotBarrera_' + folio);
+    if (cotInteres && !cotInteres.value) { alert('⚠️ Selecciona el interés del cliente en "Contexto del Prospecto" antes de guardar.'); cotInteres.focus(); cotInteres.style.border='2px solid #DC3545'; setTimeout(function(){cotInteres.style.border=''},3000); return; }
+    if (cotBarrera && !cotBarrera.value) { alert('⚠️ Selecciona la barrera de cierre en "Contexto del Prospecto" antes de guardar.'); cotBarrera.focus(); cotBarrera.style.border='2px solid #DC3545'; setTimeout(function(){cotBarrera.style.border=''},3000); return; }
+    // Próximo contacto obligatorio para seguimiento
+    var proxContacto = document.getElementById('notaProxContacto_' + folio);
+    if (proxContacto && !proxContacto.value) { alert('⚠️ Programa la fecha del próximo contacto (⏰ Próx) en la sección de Notas.'); proxContacto.focus(); proxContacto.style.border='2px solid #DC3545'; setTimeout(function(){proxContacto.style.border=''},3000); return; }
   } else if (est === 'perdida') {
     subEstatus = document.getElementById('subPer_' + folio).value;
     if (!subEstatus) { alert('Selecciona el motivo de pérdida.'); return; }
@@ -5971,6 +6066,13 @@ async function guardarEstatus(folio) {
 
   // Update local
   var cot = state.cotizaciones.find(function(c) { return c.folio === folio; });
+  // Gather contexto values
+  var _interes = document.getElementById('cotInteres_' + folio) ? document.getElementById('cotInteres_' + folio).value : '';
+  var _barrera = document.getElementById('cotBarrera_' + folio) ? document.getElementById('cotBarrera_' + folio).value : '';
+  var _interesOtro = document.getElementById('cotInteresOtro_' + folio) ? document.getElementById('cotInteresOtro_' + folio).value.trim() : '';
+  var _barreraOtro = document.getElementById('cotBarreraOtro_' + folio) ? document.getElementById('cotBarreraOtro_' + folio).value.trim() : '';
+  var _proxContacto = document.getElementById('notaProxContacto_' + folio) ? document.getElementById('notaProxContacto_' + folio).value : '';
+  
   if (cot) {
     cot.estatus = est;
     cot.sub_estatus = subEstatus;
@@ -5979,6 +6081,11 @@ async function guardarEstatus(folio) {
     cot.tiene_ine = tieneIne;
     cot.adeudo_monto = adeudoMonto ? parseFloat(adeudoMonto) : null;
     cot.adeudo_fecha_compromiso = adeudoFechaCompromiso || null;
+    cot.interes_cliente = _interes;
+    cot.barrera_cierre = _barrera;
+    cot.interes_otro = _interesOtro;
+    cot.barrera_otro = _barreraOtro;
+    cot.proximo_contacto = _proxContacto;
     saveState();
   }
 
@@ -5993,6 +6100,11 @@ async function guardarEstatus(folio) {
         tiene_ine: tieneIne || null,
         adeudo_monto: adeudoMonto ? parseFloat(adeudoMonto) : null,
         adeudo_fecha_compromiso: adeudoFechaCompromiso || null,
+        interes_cliente: _interes || null,
+        barrera_cierre: _barrera || null,
+        interes_otro: _interesOtro || null,
+        barrera_otro: _barreraOtro || null,
+        proximo_contacto: _proxContacto || null,
         updated_at: new Date().toISOString(),
       }).eq('folio', folio);
       console.log('Estatus updated:', folio, est, subEstatus, folioAtt);
@@ -6003,14 +6115,38 @@ async function guardarEstatus(folio) {
   showDetalle(folio);
 }
 
+function onCotInteresChange(folio) {
+  var val = document.getElementById('cotInteres_' + folio).value;
+  var otro = document.getElementById('cotInteresOtro_' + folio);
+  if (otro) otro.style.display = val === 'otro_interes' ? '' : 'none';
+}
+function onCotBarreraChange(folio) {
+  var val = document.getElementById('cotBarrera_' + folio).value;
+  var otro = document.getElementById('cotBarreraOtro_' + folio);
+  if (otro) otro.style.display = val === 'otro_barrera' ? '' : 'none';
+}
+
 async function guardarContexto(folio) {
   var interes = document.getElementById('cotInteres_' + folio).value;
   var barrera = document.getElementById('cotBarrera_' + folio).value;
+  var interesOtro = document.getElementById('cotInteresOtro_' + folio) ? document.getElementById('cotInteresOtro_' + folio).value.trim() : '';
+  var barreraOtro = document.getElementById('cotBarreraOtro_' + folio) ? document.getElementById('cotBarreraOtro_' + folio).value.trim() : '';
+
+  if (!interes) { alert('⚠️ Selecciona el interés del cliente'); return; }
+  if (!barrera) { alert('⚠️ Selecciona la barrera de cierre'); return; }
+  if (interes === 'otro_interes' && !interesOtro) { alert('⚠️ Especifica el interés del cliente'); return; }
+  if (barrera === 'otro_barrera' && !barreraOtro) { alert('⚠️ Especifica la barrera de cierre'); return; }
+
   var cot = state.cotizaciones.find(function(c){return c.folio === folio});
-  if (cot) { cot.interes_cliente = interes; cot.barrera_cierre = barrera; saveState(); }
+  if (cot) { cot.interes_cliente = interes; cot.barrera_cierre = barrera; cot.interes_otro = interesOtro; cot.barrera_otro = barreraOtro; saveState(); }
   if (supabase) {
     try {
-      await supabase.from('cotizaciones').update({interes_cliente: interes || null, barrera_cierre: barrera || null}).eq('folio', folio);
+      await supabase.from('cotizaciones').update({
+        interes_cliente: interes || null,
+        barrera_cierre: barrera || null,
+        interes_otro: interesOtro || null,
+        barrera_otro: barreraOtro || null
+      }).eq('folio', folio);
     } catch(e) { console.error(e); }
   }
   alert('✅ Contexto guardado');
