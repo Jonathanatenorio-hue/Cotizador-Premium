@@ -5232,7 +5232,7 @@ function renderHistorial() {
       </div>
       <div class="historial-body">
         <span class="historial-client">${cot.cliente.nombre}</span>
-        <span class="historial-meta">${cot.cliente.telefono || ''} · ${cot.items.length} equipo(s) · ${cot.fecha}${cot.createdAt ? ' ' + new Date(cot.createdAt).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
+        <span class="historial-meta">${cot.cliente.telefono ? '<span onclick="event.stopPropagation();navigator.clipboard.writeText(\''+cot.cliente.telefono+'\');this.textContent=\'✅\';var _t=this;setTimeout(function(){_t.textContent=\'📋\'},800)" style="cursor:pointer;font-size:10px;margin-right:2px" title="Copiar teléfono">📋</span>' : ''}${cot.cliente.telefono || ''} · ${cot.items.length} equipo(s) · ${cot.fecha}${cot.createdAt ? ' ' + new Date(cot.createdAt).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
         <span class="historial-meta">Ejecutivo: ${cot.ejecutivo ? cot.ejecutivo.nombre : 'N/A'}${cot.supervisorNombre ? ' · Sup: ' + cot.supervisorNombre : ''}${cot.sub_estatus ? ' · ' + subEstatusLabel(cot.sub_estatus) : ''}${cot.folio_att ? ' · Folio ATT: ' + cot.folio_att : ''}${cot.sub_estatus==='aceleracion' && cot.fecha_fin_plazo ? ' · Plazo: ' + cot.fecha_fin_plazo + (new Date(cot.fecha_fin_plazo+'T00:00:00') <= new Date() ? ' 🚨 VENCIDO' : '') : ''}</span>
         ${cot.notas && cot.notas.length > 0 ? (function(){
           var n = cot.notas[0];
@@ -5641,7 +5641,7 @@ function showDetalle(folio) {
     <div class="detalle-top">
       <div class="detalle-info">
         <h3>${cot.cliente.nombre}</h3>
-        <p class="detalle-meta">${[cot.cliente.telefono, cot.cliente.email].filter(Boolean).join(' · ')}</p>
+        <p class="detalle-meta">${cot.cliente.telefono ? '<span onclick="navigator.clipboard.writeText(\''+cot.cliente.telefono+'\');this.textContent=\'✅\';var _t=this;setTimeout(function(){_t.textContent=\'📋\'},800)" style="cursor:pointer;font-size:11px;margin-right:2px" title="Copiar teléfono">📋</span>' : ''}${[cot.cliente.telefono, cot.cliente.email].filter(Boolean).join(' · ')}</p>
         <p class="detalle-meta">${cot.cliente.direccion || ''}</p>
         <p class="detalle-meta">Fecha: ${cot.fecha}${cot.createdAt ? ' ' + new Date(cot.createdAt).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : ''} · Válido hasta: ${cot.validoHasta}</p>
         <p class="detalle-meta">Ejecutivo: ${cot.ejecutivo.nombre} (${cot.ejecutivo.attuid})</p>
