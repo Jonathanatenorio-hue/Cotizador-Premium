@@ -950,7 +950,8 @@ body{padding-bottom:60px}
         <div id="historialSelectBar" style="display:none;gap:6px;align-items:center">
           <button onclick="toggleSelectAll()" class="btn btn-secondary" style="font-size:10px;padding:5px 10px">☑️ Todos</button>
           <span id="historialSelectCount" style="font-size:11px;font-weight:700;color:#8B5CF6">0 seleccionadas</span>
-          <button onclick="reasignarMasivo()" class="btn btn-primary" style="font-size:10px;padding:5px 12px;background:#8B5CF6">🔄 Reasignar selección</button>
+          <button onclick="reasignarMasivo()" class="btn btn-primary" style="font-size:10px;padding:5px 12px;background:#8B5CF6">🔄 Reasignar</button>
+          <button onclick="eliminarMasivo()" class="btn btn-primary" style="font-size:10px;padding:5px 12px;background:#DC3545">🗑️ Eliminar</button>
         </div>
         <div style="display:flex;gap:6px">
           <button onclick="toggleSelectionMode()" id="btnSelectMode" class="btn btn-secondary" style="font-size:10px;padding:5px 12px;display:none">☐ Seleccionar</button>
@@ -5387,6 +5388,40 @@ async function confirmarReasignarMasivo() {
   document.getElementById('historialSelectBar').style.display = 'none';
 
   alert('✅ ' + ok + ' cotizaciones reasignadas a ' + agent.nombre + (fail > 0 ? '\n⚠️ ' + fail + ' fallaron' : ''));
+  await loadCotizacionesFromSupabase();
+  renderHistorial();
+}
+
+async function eliminarMasivo() {
+  var folios = Object.keys(histSelectedFolios);
+  if (folios.length === 0) { alert('Selecciona al menos una cotización'); return; }
+  if (!supabase || !currentUser) return;
+  if (currentUser.rol !== 'admin' && currentUser.rol !== 'coordinador') { alert('Sin permisos para eliminar'); return; }
+
+  if (!confirm('⚠️ ¿Eliminar ' + folios.length + ' cotización' + (folios.length > 1 ? 'es' : '') + '?\n\nEsta acción NO se puede deshacer.')) return;
+  if (!confirm('🚨 CONFIRMA: ¿Estás seguro de eliminar ' + folios.length + ' cotización' + (folios.length > 1 ? 'es' : '') + ' permanentemente?')) return;
+
+  var ok = 0, fail = 0;
+  for (var i = 0; i < folios.length; i++) {
+    try {
+      var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', folios[i]).single();
+      if (cotRow) {
+        await supabase.from('cotizacion_notas').delete().eq('cotizacion_id', cotRow.id);
+        await supabase.from('cotizacion_items').delete().eq('cotizacion_id', cotRow.id);
+        await supabase.from('cotizaciones').delete().eq('id', cotRow.id);
+        ok++;
+      }
+    } catch(e) { fail++; console.error(e); }
+  }
+
+  histSelectedFolios = {};
+  histSelectionMode = false;
+  document.getElementById('btnSelectMode').innerHTML = '☐ Seleccionar';
+  document.getElementById('btnSelectMode').style.background = '';
+  document.getElementById('btnSelectMode').style.color = '';
+  document.getElementById('historialSelectBar').style.display = 'none';
+
+  alert('✅ ' + ok + ' cotización' + (ok > 1 ? 'es' : '') + ' eliminada' + (ok > 1 ? 's' : '') + (fail > 0 ? '\n⚠️ ' + fail + ' fallaron' : ''));
   await loadCotizacionesFromSupabase();
   renderHistorial();
 }
