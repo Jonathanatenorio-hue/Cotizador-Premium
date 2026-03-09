@@ -11996,7 +11996,7 @@ function calcFechaEfectiva(){
   el.innerHTML = '<div style="font-size:10px;color:#2E7D32;font-weight:600">FECHA EFECTIVA DE RENOVACIÓN</div><div style="font-size:22px;font-weight:900;color:#1B5E20">📅 ' + resultado + '</div><div style="font-size:10px;color:#388E3C;margin-top:4px">Esta es la fecha que debes poner en "Fecha de Finalización de Plazo"</div>';
 }
 
-function calcFechaEfectivaInline(folio){
+async function calcFechaEfectivaInline(folio){
   var diaCorte = parseInt(document.getElementById('feCorte_'+folio).value);
   var ultimaStr = document.getElementById('feUltima_'+folio).value;
   if(!ultimaStr){alert('Selecciona la fecha de última mensualidad');return;}
@@ -12028,7 +12028,7 @@ function calcFechaEfectivaInline(folio){
   var cot = state.cotizaciones.find(function(c){return c.folio===folio});
   if (cot) cot.fecha_efectiva = yyyy+'-'+mm+'-'+dd;
   if (supabase) {
-    try { supabase.from('cotizaciones').update({fecha_efectiva: yyyy+'-'+mm+'-'+dd}).eq('folio', folio); } catch(e){}
+    try { await supabase.from('cotizaciones').update({fecha_efectiva: yyyy+'-'+mm+'-'+dd}).eq('folio', folio); } catch(e){}
   }
   // Show result
   var el = document.getElementById('feRes_'+folio);
