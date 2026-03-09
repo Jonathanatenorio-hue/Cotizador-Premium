@@ -4887,14 +4887,14 @@ async function initHistorialFilters() {
   // Load centros
   var centroSel = document.getElementById('hFilterCentro');
   var coordSel = document.getElementById('hFilterCoord');
-  var supSel = document.getElementById('hFilterSup');
-  var agenteSel = document.getElementById('hFilterAgente');
+  var supWrap = document.getElementById('hFilterSupWrap');
+  var agenteWrap = document.getElementById('hFilterAgenteWrap');
 
   // Show/hide dropdowns based on role
   centroSel.style.display = (rol === 'admin') ? '' : 'none';
   coordSel.style.display = (rol === 'admin') ? '' : 'none';
-  supSel.style.display = (rol === 'admin' || rol === 'coordinador') ? '' : 'none';
-  agenteSel.style.display = (rol === 'admin' || rol === 'coordinador' || rol === 'supervisor') ? '' : 'none';
+  supWrap.style.display = (rol === 'admin' || rol === 'coordinador') ? '' : 'none';
+  agenteWrap.style.display = (rol === 'admin' || rol === 'coordinador' || rol === 'supervisor') ? '' : 'none';
 
   // Fill centros (admin only)
   if (rol === 'admin') {
