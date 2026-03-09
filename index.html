@@ -942,6 +942,7 @@ body{padding-bottom:60px}
       </div>
     </div>
     <div class="filter-row" id="filterRow"></div>
+    <div id="historialChart" style="margin-bottom:8px"></div>
     <div id="historialList"></div>
   </div>
 </div>
@@ -5072,6 +5073,8 @@ function renderHistorial() {
     state.filterEstatus === 'all' || c.estatus === state.filterEstatus
   );
 
+  renderHistorialChart(filtered);
+
   if (filtered.length === 0) {
     list.innerHTML = '<div class="empty-state">No hay cotizaciones con estos filtros.</div>';
     return;
@@ -5223,6 +5226,87 @@ function exportHistorialExcel() {
   fileName += '.xlsx';
   
   XLSX.writeFile(wb, fileName);
+}
+
+function renderHistorialChart(filtered) {
+  var el = document.getElementById('historialChart');
+  if (!el) return;
+  if (!filtered || filtered.length === 0) { el.innerHTML = ''; return; }
+
+  var byDate = {};
+  var byDateStatus = {};
+  filtered.forEach(function(c) {
+    var d = (c.createdAt || c.fecha || '').substring(0, 10);
+    if (!d) return;
+    byDate[d] = (byDate[d] || 0) + 1;
+    if (!byDateStatus[d]) byDateStatus[d] = {enviada:0, seguimiento:0, venta:0, perdida:0};
+    if (byDateStatus[d][c.estatus] !== undefined) byDateStatus[d][c.estatus]++;
+  });
+
+  var dates = Object.keys(byDate).sort();
+  if (dates.length === 0) { el.innerHTML = ''; return; }
+  if (dates.length > 31) dates = dates.slice(-31);
+
+  var maxV = Math.max.apply(null, dates.map(function(d) { return byDate[d]; }));
+  var chartMax = Math.max(maxV * 1.15, 5);
+  var total = dates.reduce(function(s, d) { return s + byDate[d]; }, 0);
+  var avg = dates.length > 0 ? Math.round(total / dates.length * 10) / 10 : 0;
+  var avgPct = chartMax > 0 ? (avg / chartMax * 100) : 0;
+  var statusColors = {enviada:'#0057B8', seguimiento:'#E6A200', venta:'#10B981', perdida:'#DC3545'};
+  var meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+  var h = '<div class="section" style="padding:14px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">';
+  h += '<div style="font-size:13px;font-weight:800">📊 Cotizaciones por Día</div>';
+  h += '<div style="display:flex;gap:12px;font-size:10px;color:var(--text-3)">';
+  h += '<span>Total: <b>' + total + '</b></span>';
+  h += '<span>Promedio: <b style="color:#F59E0B">' + avg + '</b>/día</span>';
+  h += '<span>Máximo: <b style="color:#10B981">' + maxV + '</b></span>';
+  h += '</div></div>';
+
+  h += '<div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap">';
+  h += '<span style="font-size:9px;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#0057B8;display:inline-block"></span>Enviada</span>';
+  h += '<span style="font-size:9px;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#E6A200;display:inline-block"></span>Seguimiento</span>';
+  h += '<span style="font-size:9px;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#10B981;display:inline-block"></span>Venta</span>';
+  h += '<span style="font-size:9px;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#DC3545;display:inline-block"></span>Perdida</span>';
+  h += '</div>';
+
+  h += '<div style="position:relative;height:180px;padding-bottom:28px">';
+  h += '<div style="position:absolute;left:0;right:0;bottom:calc(' + avgPct + '% * 140 / 100 + 28px);border-top:1.5px dashed #F59E0B;z-index:2;pointer-events:none">';
+  h += '<span style="position:absolute;right:0;top:-12px;font-size:8px;color:#F59E0B;font-weight:700;background:var(--bg-card);padding:0 3px">' + avg + '</span></div>';
+
+  h += '<div style="display:flex;align-items:flex-end;height:140px;gap:1px">';
+  dates.forEach(function(d) {
+    var dtotal = byDate[d];
+    var st = byDateStatus[d] || {};
+    var barPct = chartMax > 0 ? Math.round(dtotal / chartMax * 100) : 0;
+    var parts = ['enviada','seguimiento','venta','perdida'];
+    var segments = '';
+    parts.forEach(function(s) {
+      var count = st[s] || 0;
+      if (count > 0 && dtotal > 0) {
+        segments += '<div style="width:100%;height:' + (count / dtotal * 100).toFixed(1) + '%;background:' + statusColors[s] + '" title="' + s + ': ' + count + '"></div>';
+      }
+    });
+    h += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;height:100%;justify-content:flex-end">';
+    if (dtotal > 0) h += '<div style="font-size:7px;font-weight:700;color:var(--text-2);margin-bottom:1px">' + dtotal + '</div>';
+    else h += '<div style="height:10px"></div>';
+    h += '<div style="width:80%;max-width:28px;height:' + Math.max(barPct, 1) + '%;border-radius:3px 3px 0 0;overflow:hidden;display:flex;flex-direction:column-reverse;min-height:1px">' + segments + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  h += '<div style="display:flex;gap:1px;margin-top:3px;height:24px">';
+  dates.forEach(function(d, i) {
+    var dt = new Date(d + 'T12:00:00');
+    var showFull = (i % 3 === 0) || i === 0;
+    var label = showFull ? dt.getDate() + '/' + meses[dt.getMonth()] : dt.getDate();
+    h += '<div style="flex:1;text-align:center;min-width:0;overflow:visible;position:relative">';
+    h += '<div style="font-size:6px;color:var(--text-3);position:absolute;left:50%;transform:translateX(-50%) rotate(-50deg);transform-origin:top center;white-space:nowrap">' + label + '</div>';
+    h += '</div>';
+  });
+  h += '</div></div></div>';
+  el.innerHTML = h;
 }
 
 // ============================================================
