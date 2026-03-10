@@ -3828,6 +3828,16 @@ function formatDate(date) {
   return date.toLocaleDateString('es-MX', { day:'2-digit', month:'2-digit', year:'numeric' });
 }
 
+function toMexDateStr(isoStr) {
+  if (!isoStr) return '';
+  try {
+    var d = new Date(isoStr);
+    // Convert to Mexico City time
+    var mx = new Date(d.toLocaleString('en-US', {timeZone: 'America/Mexico_City'}));
+    return mx.getFullYear() + '-' + String(mx.getMonth()+1).padStart(2,'0') + '-' + String(mx.getDate()).padStart(2,'0');
+  } catch(e) { return isoStr.substring(0,10); }
+}
+
 var selectedTemplate = 'classic';
 function selectTemplate(tpl) {
   selectedTemplate = tpl;
@@ -5084,7 +5094,7 @@ function populateMonthFilter() {
   if (!sel) return;
   var months = {};
   state.cotizaciones.forEach(function(c) {
-    var d = (c.createdAt || c.fecha || '').substring(0, 7);
+    var d = (toMexDateStr(c.createdAt) || (c.fecha||'')).substring(0, 7);
     if (d) months[d] = true;
   });
   var meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -5225,7 +5235,7 @@ function renderHistorial() {
   var hHasta = document.getElementById('hFilterHasta') ? document.getElementById('hFilterHasta').value : '';
   if (hDesde || hHasta) {
     searchFiltered = searchFiltered.filter(function(c) {
-      var cDate = (c.createdAt || c.fecha || '').substring(0,10);
+      var cDate = toMexDateStr(c.createdAt) || (c.fecha||'').substring(0,10);
       if (!cDate) return true;
       if (hDesde && cDate < hDesde) return false;
       if (hHasta && cDate > hHasta) return false;
@@ -5481,7 +5491,7 @@ function exportHistorialExcel() {
   var hHasta = document.getElementById('hFilterHasta') ? document.getElementById('hFilterHasta').value : '';
   if (hDesde || hHasta) {
     filtered = filtered.filter(function(c) {
-      var cDate = (c.createdAt || c.fecha || '').substring(0,10);
+      var cDate = toMexDateStr(c.createdAt) || (c.fecha||'').substring(0,10);
       if (hDesde && cDate < hDesde) return false;
       if (hHasta && cDate > hHasta) return false;
       return true;
@@ -5589,7 +5599,7 @@ function renderHistorialChart(filtered) {
   var byDate = {};
   var byDateStatus = {};
   filtered.forEach(function(c) {
-    var d = (c.createdAt || c.fecha || '').substring(0, 10);
+    var d = toMexDateStr(c.createdAt) || (c.fecha || '').substring(0, 10);
     if (!d) return;
     byDate[d] = (byDate[d] || 0) + 1;
     if (!byDateStatus[d]) byDateStatus[d] = {enviada:0, seguimiento:0, venta:0, perdida:0};
