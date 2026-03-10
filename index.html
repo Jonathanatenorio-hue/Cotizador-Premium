@@ -685,6 +685,11 @@ body{padding-bottom:60px}
         <div class="card-title">Buzón Anónimo</div>
         <div class="card-desc">Preguntas, sugerencias y feedback</div>
       </div>
+      <div class="home-card clickable" id="cardPromos" style="display:none" onclick="openPromos()">
+        <div class="card-icon">🏷️</div>
+        <div class="card-title">Equipos en Promo</div>
+        <div class="card-desc">Catálogo de promociones vigentes</div>
+      </div>
     </div>
     <div id="homeAlerts" style="display:none;margin-bottom:10px;cursor:pointer" onclick="openAceleraciones()"></div>
     <div id="homeMotivMsg" style="display:none;border-radius:12px;padding:14px 18px;margin-bottom:10px;text-align:center;font-size:13px;font-weight:700;line-height:1.4"></div>
@@ -863,13 +868,14 @@ body{padding-bottom:60px}
         <button onclick="toggleAsesorIA()" class="btn btn-primary" style="font-size:11px;padding:6px 12px;background:linear-gradient(135deg,#8B5CF6,#6D28D9)">🤖 Asesor IA</button>
       </div>
       <div id="asesorIAPanel" style="display:none;margin-bottom:12px"></div>
-      <div class="search-row">
-        <input class="field" id="searchInput" placeholder="Buscar equipo (ej: iPhone 17, Samsung S25...)" oninput="searchDevices()">
-        <select class="field" id="searchFilter" onchange="searchDevices()">
+      <div class="search-row" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <input class="field" id="searchInput" placeholder="Buscar equipo (ej: iPhone 17, Samsung S25...)" oninput="searchDevices()" style="flex:1;min-width:150px">
+        <select class="field" id="searchFilter" onchange="searchDevices()" style="width:auto">
           <option value="all">Todas las ofertas</option>
           <option value="premium">AT&T Premium</option>
           <option value="titanio">AT&T Titanio</option>
         </select>
+        <button onclick="openEquiposIncluidos()" class="btn btn-primary" style="font-size:10px;padding:6px 12px;background:linear-gradient(135deg,#10B981,#059669);white-space:nowrap">🎁 Equipos incluidos</button>
       </div>
       <div id="deviceResults"></div>
     </div>
@@ -968,6 +974,26 @@ body{padding-bottom:60px}
     <div class="filter-row" id="filterRow"></div>
     <div id="historialChart" style="margin-bottom:8px"></div>
     <div id="historialList"></div>
+  </div>
+</div>
+
+<!-- ===== VIEW: EQUIPOS EN PROMO ===== -->
+<div class="view" id="viewPromos">
+  <div class="container">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:18px;font-weight:900">🏷️ Equipos en Promoción</div>
+        <div style="font-size:10px;color:var(--text-3)">Catálogo de equipos incluidos en planes — Solo Puebla</div>
+      </div>
+      <div id="promoUploadBtn" style="display:none">
+        <label class="btn btn-primary" style="cursor:pointer;font-size:11px;padding:6px 14px">
+          📁 Actualizar PDF
+          <input type="file" accept=".pdf" onchange="uploadPromoPDF(this)" style="display:none">
+        </label>
+      </div>
+    </div>
+    <div id="promoInfo" style="display:none;font-size:10px;color:var(--text-3);margin-bottom:8px"></div>
+    <div id="promoViewer" style="text-align:center;padding:20px;color:var(--text-3)">Cargando catálogo...</div>
   </div>
 </div>
 
@@ -2641,7 +2667,7 @@ function showView(name, title) {
 
   const titles = {
     home: '', config: 'Mi Perfil', cotizar: 'Nueva Cotización',
-    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Propósito', aiDashboard: 'Análisis IA', midia: 'Mi Día', buzonAnonimo: 'Buzón Anónimo',
+    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Propósito', aiDashboard: 'Análisis IA', midia: 'Mi Día', promos: 'Equipos en Promoción', buzonAnonimo: 'Buzón Anónimo',
   };
   headerTitle.textContent = title || titles[name] || '';
 
@@ -2753,6 +2779,31 @@ function updateHome() {
   var infCard = document.getElementById('cardInformes');
   if (infCard) {
     infCard.style.display = (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) ? '' : 'none';
+  }
+
+  // Show promos card for Puebla users (all roles)
+  var promoCard = document.getElementById('cardPromos');
+  if (promoCard) {
+    // Check if user belongs to Puebla (CC2 or JV) or is admin
+    var isPuebla = false;
+    if (currentUser && currentUser.rol === 'admin') isPuebla = true;
+    else if (currentUser && currentUser.centro_id) {
+      var userCentro = (adminCentros || []).find(function(c){return c.id === currentUser.centro_id});
+      if (userCentro) {
+        var cn = userCentro.nombre.toUpperCase();
+        isPuebla = cn.indexOf('ANTEQUERA')>=0 || cn.indexOf('CC2')>=0 || cn.indexOf('JUAREZ')>=0 || cn.indexOf('JV')>=0 || cn.indexOf('JUÁREZ')>=0;
+      }
+    }
+    // Fallback: check from hFilterUsers
+    if (!isPuebla && currentUser) {
+      var fu = (hFilterUsers||[]).find(function(u){return u.id===currentUser.id});
+      if (fu && fu.centros) {
+        var cn = fu.centros.nombre.toUpperCase();
+        isPuebla = cn.indexOf('ANTEQUERA')>=0 || cn.indexOf('CC2')>=0 || cn.indexOf('JUAREZ')>=0 || cn.indexOf('JV')>=0 || cn.indexOf('JUÁREZ')>=0;
+      }
+    }
+    if (currentUser && currentUser.rol === 'admin') isPuebla = true;
+    promoCard.style.display = isPuebla ? '' : 'none';
   }
 
   // Show aceleraciones card - always visible for all roles
@@ -11037,6 +11088,86 @@ function buildPlanIAContext(target, mes, rol) {
   return ctx;
 }
 
+// ── EQUIPOS EN PROMOCIÓN (PDF VIEWER) ──
+var PROMO_BUCKET = 'promo-catalogo';
+
+function openPromos() {
+  showView('promos', 'Equipos en Promoción');
+  // Show upload button for admin/coordinador
+  var uploadBtn = document.getElementById('promoUploadBtn');
+  if (uploadBtn) uploadBtn.style.display = (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador')) ? '' : 'none';
+  loadPromoPDF();
+}
+
+async function loadPromoPDF() {
+  var viewer = document.getElementById('promoViewer');
+  var info = document.getElementById('promoInfo');
+  viewer.innerHTML = '<div style="padding:20px;color:var(--text-3)">Cargando...</div>';
+  
+  if (!supabase) { viewer.innerHTML = '<div style="color:var(--text-3)">Sin conexión</div>'; return; }
+  
+  try {
+    // Check app_config for promo PDF info
+    var {data: config} = await supabase.from('app_config').select('value').eq('key', 'promo_pdf').maybeSingle();
+    
+    if (config && config.value) {
+      var pdfInfo = JSON.parse(config.value);
+      var {data: urlData} = supabase.storage.from(PROMO_BUCKET).getPublicUrl(pdfInfo.fileName);
+      
+      if (urlData && urlData.publicUrl) {
+        info.style.display = '';
+        info.innerHTML = '📄 Actualizado: ' + (pdfInfo.updatedAt || '') + ' por ' + (pdfInfo.updatedBy || '');
+        
+        viewer.innerHTML = '<iframe src="' + urlData.publicUrl + '#toolbar=1&navpanes=0" style="width:100%;height:calc(100vh - 200px);min-height:500px;border:1px solid var(--border);border-radius:8px"></iframe>';
+      } else {
+        viewer.innerHTML = '<div style="padding:30px;color:var(--text-3);text-align:center"><div style="font-size:36px;margin-bottom:8px">📄</div>No se pudo cargar el PDF</div>';
+      }
+    } else {
+      info.style.display = 'none';
+      viewer.innerHTML = '<div style="padding:30px;color:var(--text-3);text-align:center"><div style="font-size:36px;margin-bottom:8px">📄</div><div style="font-size:13px">No hay catálogo de promociones cargado</div>' + 
+        (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador') ? '<div style="font-size:11px;margin-top:6px">Sube un PDF con el botón "Actualizar PDF"</div>' : '<div style="font-size:11px;margin-top:6px">El coordinador aún no ha subido el catálogo</div>') + '</div>';
+    }
+  } catch(e) {
+    viewer.innerHTML = '<div style="color:#DC3545;padding:20px">Error: ' + e.message + '</div>';
+  }
+}
+
+async function uploadPromoPDF(input) {
+  var file = input.files[0];
+  if (!file) return;
+  if (file.type !== 'application/pdf') { alert('Solo archivos PDF'); return; }
+  if (file.size > 20 * 1024 * 1024) { alert('Máximo 20MB'); return; }
+  if (!supabase || !currentUser) return;
+  
+  var fileName = 'promo_puebla_' + Date.now() + '.pdf';
+  
+  try {
+    // Delete previous files
+    try {
+      var {data: files} = await supabase.storage.from(PROMO_BUCKET).list('', {limit: 50});
+      if (files && files.length > 0) {
+        var toDelete = files.map(function(f){return f.name});
+        await supabase.storage.from(PROMO_BUCKET).remove(toDelete);
+      }
+    } catch(e) {}
+    
+    // Upload new
+    var {error} = await supabase.storage.from(PROMO_BUCKET).upload(fileName, file, {contentType: 'application/pdf', upsert: true});
+    if (error) { alert('Error subiendo: ' + error.message); return; }
+    
+    // Save reference in app_config
+    var now = new Date();
+    var dateStr = now.toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'}) + ' ' + now.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
+    await supabase.from('app_config').upsert({
+      key: 'promo_pdf',
+      value: JSON.stringify({fileName: fileName, updatedAt: dateStr, updatedBy: currentUser.nombre})
+    }, {onConflict: 'key'});
+    
+    alert('✅ Catálogo de promociones actualizado');
+    loadPromoPDF();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
 // ── VER PROPÓSITOS (ADMIN) ──
 async function verPropositos() {
   if (!supabase) return;
@@ -11116,6 +11247,149 @@ async function verPropositos() {
   h += '</div>';
   overlay.innerHTML = h;
   document.body.appendChild(overlay);
+}
+
+// ── EQUIPOS INCLUIDOS ($0) ──
+function openEquiposIncluidos() {
+  if (!state.fileLoaded || !state.devices || !state.devices.length) {
+    alert('Carga la lista de precios primero');
+    return;
+  }
+  
+  // Build plan options
+  var planOptions = '';
+  ALL_PLANS.forEach(function(p) {
+    if (p.id === 'azul1') return; // Exclude Azul 1
+    planOptions += '<option value="'+p.id+'">'+p.name+' ('+p.gb+' · $'+p.price+'/mes)</option>';
+  });
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'incluidosOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:16px';
+  
+  overlay.innerHTML = '<div style="background:white;border-radius:16px;max-width:500px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:90vh;display:flex;flex-direction:column">' +
+    '<div style="padding:16px 16px 0;flex-shrink:0">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+    '<div style="font-size:16px;font-weight:900">🎁 Equipos Incluidos</div>' +
+    '<button onclick="document.getElementById(\'incluidosOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>' +
+    '</div>' +
+    '<div style="font-size:10px;color:var(--text-3);margin-bottom:10px">Equipos con precio $0 (incluidos en el plan). Solo vigentes y resurtibles.</div>' +
+    '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">' +
+    '<select class="field" id="inclPlan" onchange="renderEquiposIncluidos()" style="flex:1;font-size:11px;padding:6px">' + planOptions + '</select>' +
+    '<select class="field" id="inclPlazo" onchange="renderEquiposIncluidos()" style="width:auto;font-size:11px;padding:6px">' +
+    '<option value="24">24 meses</option><option value="30">30 meses</option><option value="36" selected>36 meses</option></select>' +
+    '</div></div>' +
+    '<div id="incluidosList" style="padding:0 16px 16px;overflow-y:auto;flex:1"></div>' +
+    '</div>';
+  
+  document.body.appendChild(overlay);
+  renderEquiposIncluidos();
+}
+
+function renderEquiposIncluidos() {
+  var planId = document.getElementById('inclPlan').value;
+  var plazo = parseInt(document.getElementById('inclPlazo').value);
+  var listEl = document.getElementById('incluidosList');
+  var plan = ALL_PLANS.find(function(p){return p.id===planId});
+  
+  // Filter: vigente, resurtible, price = 0
+  var incluidos = state.devices.filter(function(dev) {
+    if (!isVigente(dev)) return false;
+    // Resurtible check
+    var est = (dev.estatus || '').toUpperCase();
+    if (est.indexOf('NO RESURTIBLE') >= 0 || est.indexOf('LIMITADO') >= 0) return false;
+    if (est.indexOf('RESURTIBLE') < 0 && est.length > 0) return false;
+    // Price = 0 for this plan+plazo
+    var price = dev.pricing && dev.pricing[planId] ? dev.pricing[planId][plazo] : null;
+    return price === 0;
+  });
+  
+  // Sort by brand then name
+  incluidos.sort(function(a,b) {
+    var ma = (a.marca||'').localeCompare(b.marca||'');
+    return ma !== 0 ? ma : a.equipo.localeCompare(b.equipo);
+  });
+  
+  if (incluidos.length === 0) {
+    listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3)"><div style="font-size:32px;margin-bottom:8px">📱</div><div style="font-size:12px">No hay equipos incluidos ($0) para <b>' + (plan?plan.name:'') + '</b> a <b>' + plazo + ' meses</b></div><div style="font-size:10px;margin-top:4px;color:var(--text-3)">Prueba con un plan mayor o diferente plazo</div></div>';
+    return;
+  }
+  
+  var h = '<div style="font-size:11px;font-weight:700;color:#10B981;margin-bottom:8px">✅ ' + incluidos.length + ' equipo' + (incluidos.length>1?'s':'') + ' incluido' + (incluidos.length>1?'s':'') + ' en ' + (plan?plan.name:'') + ' a ' + plazo + 'm</div>';
+  
+  var currentBrand = '';
+  incluidos.forEach(function(dev) {
+    if (dev.marca !== currentBrand) {
+      currentBrand = dev.marca;
+      h += '<div style="font-size:10px;font-weight:800;color:var(--att-blue);margin:8px 0 4px;padding-bottom:2px;border-bottom:1px solid var(--border)">' + currentBrand + '</div>';
+    }
+    
+    var imgKey = deviceImgKey(dev.equipo);
+    var imgUrl = deviceImgCache[imgKey] || '';
+    
+    h += '<div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface-2);border-radius:8px;margin-bottom:4px;border-left:3px solid #10B981">';
+    // Image
+    h += '<div style="width:36px;height:36px;border-radius:6px;background:white;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">';
+    if (imgUrl) h += '<img src="'+imgUrl+'" style="width:100%;height:100%;object-fit:contain">';
+    else h += '<span style="font-size:16px">📱</span>';
+    h += '</div>';
+    // Info
+    h += '<div style="flex:1;min-width:0">';
+    h += '<div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + dev.equipo + '</div>';
+    h += '<div style="font-size:9px;color:var(--text-3)">Precio lista: $' + (dev.precioContado||0).toLocaleString('es-MX') + ' · ' + dev.oferta + '</div>';
+    h += '</div>';
+    // Add button
+    h += '<button onclick="addIncluidoToCart(\''+dev.id+'\',\''+planId+'\','+plazo+')" style="font-size:9px;padding:4px 10px;background:#10B981;color:white;border:none;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0">+ Agregar</button>';
+    h += '</div>';
+  });
+  
+  listEl.innerHTML = h;
+}
+
+function addIncluidoToCart(devId, planId, plazo) {
+  var dev = state.devices.find(function(d){return d.id===devId});
+  if (!dev) return;
+  var plan = ALL_PLANS.find(function(p){return p.id===planId});
+  if (!plan) return;
+  
+  // Check duplicate
+  var isDup = state.items.some(function(it) { return it.equipo === dev.equipo && it.planId === planId && it.plazo === plazo; });
+  if (isDup) { alert('⚠️ Este equipo ya está en la cotización con el mismo plan y plazo.'); return; }
+  
+  var itemImgKey = deviceImgKey(dev.equipo);
+  var itemImgUrl = deviceImgCache[itemImgKey] || null;
+  
+  state.items.push({
+    id: Date.now() + Math.random(),
+    equipo: dev.equipo,
+    marca: dev.marca || '',
+    precioLista: dev.precioContado,
+    precioPromo: 0,
+    planId: planId,
+    planNombre: plan.name,
+    planPrecio: plan.price,
+    plazo: plazo,
+    enganchePct: 0,
+    enganche: 0,
+    deviceImgUrl: itemImgUrl,
+  });
+  
+  if (itemImgUrl) {
+    var newIdx = state.items.length - 1;
+    (async function() {
+      try {
+        var resp = await fetch(itemImgUrl);
+        var blob = await resp.blob();
+        var reader = new FileReader();
+        reader.onload = function() { state.items[newIdx].imageData = reader.result; renderItems(); };
+        reader.readAsDataURL(blob);
+      } catch(e) {}
+    })();
+  }
+  
+  renderItems();
+  document.getElementById('incluidosOverlay').remove();
+  alert('✅ ' + dev.equipo + ' agregado a la cotización (incluido $0)');
 }
 
 // ── BUZÓN ANÓNIMO ──
