@@ -680,6 +680,11 @@ body{padding-bottom:60px}
         <div class="card-title">Informes</div>
         <div class="card-desc" id="informesDesc">Reporte diario de operación</div>
       </div>
+      <div class="home-card clickable" onclick="openBuzonAnonimo()">
+        <div class="card-icon">💬</div>
+        <div class="card-title">Buzón Anónimo</div>
+        <div class="card-desc">Preguntas, sugerencias y feedback</div>
+      </div>
     </div>
     <div id="homeAlerts" style="display:none;margin-bottom:10px;cursor:pointer" onclick="openAceleraciones()"></div>
     <div id="homeMotivMsg" style="display:none;border-radius:12px;padding:14px 18px;margin-bottom:10px;text-align:center;font-size:13px;font-weight:700;line-height:1.4"></div>
@@ -963,6 +968,41 @@ body{padding-bottom:60px}
     <div class="filter-row" id="filterRow"></div>
     <div id="historialChart" style="margin-bottom:8px"></div>
     <div id="historialList"></div>
+  </div>
+</div>
+
+<!-- ===== VIEW: BUZÓN ANÓNIMO ===== -->
+<div class="view" id="viewBuzonAnonimo">
+  <div class="container">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div>
+        <div style="font-size:18px;font-weight:900">💬 Buzón Anónimo</div>
+        <div style="font-size:10px;color:var(--text-3)">Pregunta, sugiere o comparte lo que quieras. Es anónimo para todos.</div>
+      </div>
+      <button onclick="toggleBuzonForm()" id="btnNuevaPregunta" class="btn btn-primary" style="font-size:11px;padding:6px 14px">✏️ Escribir</button>
+    </div>
+    <div id="buzonForm" style="display:none;margin-bottom:12px">
+      <div class="section" style="padding:14px;border:2px solid #8B5CF6">
+        <div style="font-size:12px;font-weight:700;color:#8B5CF6;margin-bottom:8px">Nueva publicación</div>
+        <select class="field" id="buzonTipo" style="font-size:11px;margin-bottom:6px">
+          <option value="pregunta">❓ Pregunta</option>
+          <option value="sugerencia">💡 Sugerencia</option>
+          <option value="problema">⚠️ Algo que no entiendo</option>
+          <option value="feedback">📝 Opinión / Feedback</option>
+        </select>
+        <textarea class="field" id="buzonTexto" placeholder="Escribe tu pregunta, sugerencia o comentario..." style="font-size:12px;min-height:70px;resize:vertical;margin-bottom:8px"></textarea>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button onclick="toggleBuzonForm()" class="btn btn-secondary" style="font-size:11px;padding:5px 14px">Cancelar</button>
+          <button onclick="enviarBuzon()" class="btn btn-primary" style="font-size:11px;padding:5px 14px;background:#8B5CF6">Enviar anónimamente</button>
+        </div>
+      </div>
+    </div>
+    <div id="buzonFiltros" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn btn-secondary buzonFiltroBtn" onclick="filtrarBuzon('todos')" style="font-size:10px;padding:4px 10px" id="buzonFiltro_todos">Todos</button>
+      <button class="btn btn-secondary buzonFiltroBtn" onclick="filtrarBuzon('sin_respuesta')" style="font-size:10px;padding:4px 10px" id="buzonFiltro_sin_respuesta">Sin respuesta</button>
+      <button class="btn btn-secondary buzonFiltroBtn" onclick="filtrarBuzon('respondidos')" style="font-size:10px;padding:4px 10px" id="buzonFiltro_respondidos">Respondidos</button>
+    </div>
+    <div id="buzonList"></div>
   </div>
 </div>
 
@@ -2600,7 +2640,7 @@ function showView(name, title) {
 
   const titles = {
     home: '', config: 'Mi Perfil', cotizar: 'Nueva Cotización',
-    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Propósito', aiDashboard: 'Análisis IA', midia: 'Mi Día',
+    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Propósito', aiDashboard: 'Análisis IA', midia: 'Mi Día', buzonAnonimo: 'Buzón Anónimo',
   };
   headerTitle.textContent = title || titles[name] || '';
 
@@ -10957,6 +10997,152 @@ function buildPlanIAContext(target, mes, rol) {
   });
   try { if(state&&state.cotizaciones&&state.cotizaciones.length){var cs={};state.cotizaciones.forEach(function(c){var s=c.estatus||'p';cs[s]=(cs[s]||0)+1});ctx+='\nCOTIZACIONES: '+Object.keys(cs).map(function(s){return s+':'+cs[s]}).join(', ')+'\n';} } catch(e){}
   return ctx;
+}
+
+// ── BUZÓN ANÓNIMO ──
+var buzonPosts = [];
+var buzonFilter = 'todos';
+
+function openBuzonAnonimo() {
+  showView('buzonAnonimo', 'Buzón Anónimo');
+  loadBuzonPosts();
+}
+
+async function loadBuzonPosts() {
+  if (!supabase) return;
+  try {
+    var {data} = await supabase.from('buzon_anonimo').select('*, buzon_respuestas(*)').order('created_at', {ascending: false});
+    buzonPosts = data || [];
+    renderBuzonPosts();
+  } catch(e) {
+    document.getElementById('buzonList').innerHTML = '<div style="color:var(--text-3);text-align:center;padding:20px">Error al cargar</div>';
+  }
+}
+
+function toggleBuzonForm() {
+  var f = document.getElementById('buzonForm');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+async function enviarBuzon() {
+  var tipo = document.getElementById('buzonTipo').value;
+  var texto = document.getElementById('buzonTexto').value.trim();
+  if (!texto) { alert('Escribe algo antes de enviar'); return; }
+  if (!supabase || !currentUser) return;
+
+  try {
+    await supabase.from('buzon_anonimo').insert({
+      tipo: tipo,
+      texto: texto,
+      autor_id: currentUser.id,
+      autor_nombre: currentUser.nombre,
+      autor_rol: currentUser.rol
+    });
+    document.getElementById('buzonTexto').value = '';
+    document.getElementById('buzonForm').style.display = 'none';
+    loadBuzonPosts();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+function filtrarBuzon(filtro) {
+  buzonFilter = filtro;
+  document.querySelectorAll('.buzonFiltroBtn').forEach(function(b) { b.style.background = ''; b.style.color = ''; });
+  var btn = document.getElementById('buzonFiltro_' + filtro);
+  if (btn) { btn.style.background = '#8B5CF6'; btn.style.color = 'white'; }
+  renderBuzonPosts();
+}
+
+function renderBuzonPosts() {
+  var el = document.getElementById('buzonList');
+  var isAdmin = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador');
+  var tipoIcons = {pregunta:'❓', sugerencia:'💡', problema:'⚠️', feedback:'📝'};
+  var tipoLabels = {pregunta:'Pregunta', sugerencia:'Sugerencia', problema:'Duda', feedback:'Feedback'};
+
+  var filtered = buzonPosts.filter(function(p) {
+    if (buzonFilter === 'sin_respuesta') return !p.buzon_respuestas || p.buzon_respuestas.length === 0;
+    if (buzonFilter === 'respondidos') return p.buzon_respuestas && p.buzon_respuestas.length > 0;
+    return true;
+  });
+
+  var sinResp = buzonPosts.filter(function(p){return !p.buzon_respuestas || p.buzon_respuestas.length===0}).length;
+  document.getElementById('buzonFiltro_sin_respuesta').textContent = 'Sin respuesta (' + sinResp + ')';
+
+  if (filtered.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3)"><div style="font-size:36px;margin-bottom:8px">💬</div><div style="font-size:13px">No hay publicaciones aún. ¡Sé el primero!</div></div>';
+    return;
+  }
+
+  var h = '';
+  filtered.forEach(function(p) {
+    var d = new Date(p.created_at);
+    var dateStr = d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) + ' ' + d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+    var respuestas = p.buzon_respuestas || [];
+    var tieneResp = respuestas.length > 0;
+    var borderColor = tieneResp ? '#10B981' : '#E6A200';
+
+    h += '<div class="section" style="padding:12px;margin-bottom:8px;border-left:4px solid '+borderColor+'">';
+    // Header
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+    h += '<div style="display:flex;gap:6px;align-items:center">';
+    h += '<span style="font-size:16px">'+tipoIcons[p.tipo]+'</span>';
+    h += '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:'+borderColor+'22;color:'+borderColor+';font-weight:700">'+tipoLabels[p.tipo]+'</span>';
+    // Only admin/coord sees who wrote it
+    if (isAdmin) h += '<span style="font-size:9px;color:var(--text-3);background:var(--surface-2);padding:1px 6px;border-radius:4px">👤 '+p.autor_nombre+' ('+p.autor_rol+')</span>';
+    h += '</div>';
+    h += '<span style="font-size:9px;color:var(--text-3)">'+dateStr+'</span>';
+    h += '</div>';
+    // Text
+    h += '<div style="font-size:12px;color:var(--text-1);line-height:1.5;margin-bottom:8px">'+p.texto+'</div>';
+
+    // Responses
+    if (respuestas.length > 0) {
+      respuestas.sort(function(a,b){return new Date(a.created_at)-new Date(b.created_at)});
+      respuestas.forEach(function(r) {
+        var rd = new Date(r.created_at);
+        var rDateStr = rd.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) + ' ' + rd.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+        h += '<div style="background:#F0FFF4;border-radius:8px;padding:8px 10px;margin-bottom:4px;border-left:3px solid #10B981">';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">';
+        h += '<span style="font-size:10px;font-weight:700;color:#10B981">✅ '+r.autor_nombre+' ('+r.autor_rol+')</span>';
+        h += '<span style="font-size:8px;color:var(--text-3)">'+rDateStr+'</span>';
+        h += '</div>';
+        h += '<div style="font-size:11px;color:var(--text-2);line-height:1.4">'+r.texto+'</div>';
+        h += '</div>';
+      });
+    } else {
+      h += '<div style="font-size:10px;color:#E6A200;font-weight:600">⏳ Pendiente de respuesta</div>';
+    }
+
+    // Reply button (admin/coord/supervisor)
+    if (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) {
+      h += '<div style="margin-top:6px;display:flex;gap:6px">';
+      h += '<input type="text" class="field" id="buzonResp_'+p.id+'" placeholder="Escribe tu respuesta..." style="flex:1;font-size:10px">';
+      h += '<button onclick="responderBuzon(\''+p.id+'\')" class="btn btn-primary" style="font-size:10px;padding:4px 12px;background:#10B981">Responder</button>';
+      h += '</div>';
+    }
+
+    h += '</div>';
+  });
+
+  el.innerHTML = h;
+}
+
+async function responderBuzon(postId) {
+  var input = document.getElementById('buzonResp_' + postId);
+  var texto = input ? input.value.trim() : '';
+  if (!texto) { alert('Escribe una respuesta'); return; }
+  if (!supabase || !currentUser) return;
+
+  try {
+    await supabase.from('buzon_respuestas').insert({
+      buzon_id: postId,
+      texto: texto,
+      autor_id: currentUser.id,
+      autor_nombre: currentUser.nombre,
+      autor_rol: currentUser.rol
+    });
+    input.value = '';
+    loadBuzonPosts();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 // ── MI DÍA — AGENDA INTELIGENTE ──
