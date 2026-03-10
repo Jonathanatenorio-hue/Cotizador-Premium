@@ -5754,36 +5754,50 @@ function renderHistorialChartBySuper(filtered, el) {
 
   h += '</div>';
   
-  // ── COMPARATIVO DIARIO POR SUPERVISOR ──
+
+  // ── COMPARATIVO ACUMULADO POR SUPERVISOR ──
   var hDesde = document.getElementById('hFilterDesde') ? document.getElementById('hFilterDesde').value : '';
   if (hDesde) {
-    var ayerDate = new Date(hDesde + 'T12:00:00');
-    ayerDate.setDate(ayerDate.getDate() - 1);
-    var ayerStr = ayerDate.getFullYear()+'-'+String(ayerDate.getMonth()+1).padStart(2,'0')+'-'+String(ayerDate.getDate()).padStart(2,'0');
+    // Find previous business day (skip Sun and Sat)
+    var prevDate = new Date(hDesde + 'T12:00:00');
+    do {
+      prevDate.setDate(prevDate.getDate() - 1);
+    } while (prevDate.getDay() === 0 || prevDate.getDay() === 6);
+    var prevStr = prevDate.getFullYear()+'-'+String(prevDate.getMonth()+1).padStart(2,'0')+'-'+String(prevDate.getDate()).padStart(2,'0');
     var diasSemana = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
     var hoyLabel = diasSemana[new Date(hDesde+'T12:00:00').getDay()] + ' ' + hDesde.substring(8,10) + '/' + hDesde.substring(5,7);
-    var ayerLabel = diasSemana[ayerDate.getDay()] + ' ' + ayerStr.substring(8,10) + '/' + ayerStr.substring(5,7);
+    var prevLabel = diasSemana[prevDate.getDay()] + ' ' + prevStr.substring(8,10) + '/' + prevStr.substring(5,7);
     
+    // Get ALL cotizaciones for role (not date-filtered) 
     var agIds = getFilteredAgentIds();
-    var allC = state.cotizaciones;
-    if (agIds) allC = allC.filter(function(c) { return agIds.indexOf(c.agente_id) !== -1; });
+    var allRoleCots = state.cotizaciones;
+    if (agIds) allRoleCots = allRoleCots.filter(function(c) { return agIds.indexOf(c.agente_id) !== -1; });
     
-    var ayerCots = allC.filter(function(c) {
+    // Accumulated totals: all cotizaciones created UP TO selected date (hoy)
+    var cotsUpToHoy = allRoleCots.filter(function(c) {
       var d = toMexDateStr(c.createdAt) || (c.fecha||'').substring(0,10);
-      return d === ayerStr;
+      return d <= hDesde;
+    });
+    // Accumulated totals: all cotizaciones created UP TO prev business day
+    var cotsUpToPrev = allRoleCots.filter(function(c) {
+      var d = toMexDateStr(c.createdAt) || (c.fecha||'').substring(0,10);
+      return d <= prevStr;
     });
     
+    // But estatus reflects CURRENT state, not historical. 
+    // So we compare current estatus distribution of all cots created up to each date.
+    
     var supSet = {};
-    filtered.forEach(function(c) { supSet[c.supervisorNombre || 'Sin sup'] = true; });
-    ayerCots.forEach(function(c) { supSet[c.supervisorNombre || 'Sin sup'] = true; });
+    cotsUpToHoy.forEach(function(c) { supSet[c.supervisorNombre || 'Sin sup'] = true; });
+    cotsUpToPrev.forEach(function(c) { supSet[c.supervisorNombre || 'Sin sup'] = true; });
     var supList = Object.keys(supSet).sort();
     var sts = ['enviada','seguimiento','venta','perdida'];
     var stL = {enviada:'Env',seguimiento:'Seg',venta:'Vta',perdida:'Per'};
     var stC = {enviada:'#0057B8',seguimiento:'#E6A200',venta:'#10B981',perdida:'#DC3545'};
     
     h += '<div class="section" style="padding:14px;margin-top:8px">';
-    h += '<div style="font-size:13px;font-weight:800;margin-bottom:4px">📈 Comparativo: ' + hoyLabel + ' vs ' + ayerLabel + '</div>';
-    h += '<div style="font-size:9px;color:var(--text-3);margin-bottom:8px">▲ verde = mejoró · ▼ rojo = bajó respecto al día anterior</div>';
+    h += '<div style="font-size:13px;font-weight:800;margin-bottom:4px">📈 Acumulado por Supervisor: ' + hoyLabel + ' vs ' + prevLabel + '</div>';
+    h += '<div style="font-size:9px;color:var(--text-3);margin-bottom:8px">Totales acumulados hasta cada día · ▲ mejora ▼ baja vs día hábil anterior</div>';
     
     h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px">';
     h += '<tr style="background:var(--surface-2)"><th style="text-align:left;padding:6px 8px;font-weight:800;border-bottom:2px solid var(--border)">Supervisor</th>';
@@ -5791,52 +5805,95 @@ function renderHistorialChartBySuper(filtered, el) {
       h += '<th style="text-align:center;padding:6px 3px;font-weight:700;color:'+stC[s]+';border-bottom:2px solid var(--border)">'+stL[s]+'</th>';
     });
     h += '<th style="text-align:center;padding:6px 4px;font-weight:800;border-bottom:2px solid var(--border)">Total</th>';
-    h += '<th style="text-align:center;padding:6px 4px;font-weight:700;border-bottom:2px solid var(--border)">Cambio</th></tr>';
+    h += '<th style="text-align:center;padding:6px 4px;font-weight:700;border-bottom:2px solid var(--border)">Δ</th></tr>';
     
-    var tH = {enviada:0,seguimiento:0,venta:0,perdida:0,total:0};
-    var tA = {enviada:0,seguimiento:0,venta:0,perdida:0,total:0};
+    var tH={enviada:0,seguimiento:0,venta:0,perdida:0,total:0};
+    var tP={enviada:0,seguimiento:0,venta:0,perdida:0,total:0};
     
     supList.forEach(function(sup, idx) {
-      var hD = {enviada:0,seguimiento:0,venta:0,perdida:0};
-      var aD = {enviada:0,seguimiento:0,venta:0,perdida:0};
-      filtered.forEach(function(c) { if ((c.supervisorNombre||'Sin sup')===sup && hD[c.estatus]!==undefined) hD[c.estatus]++; });
-      ayerCots.forEach(function(c) { if ((c.supervisorNombre||'Sin sup')===sup && aD[c.estatus]!==undefined) aD[c.estatus]++; });
-      var hT = hD.enviada+hD.seguimiento+hD.venta+hD.perdida;
-      var aT = aD.enviada+aD.seguimiento+aD.venta+aD.perdida;
-      var diff = hT - aT;
+      var hD={enviada:0,seguimiento:0,venta:0,perdida:0};
+      var pD={enviada:0,seguimiento:0,venta:0,perdida:0};
+      cotsUpToHoy.forEach(function(c){if((c.supervisorNombre||'Sin sup')===sup&&hD[c.estatus]!==undefined)hD[c.estatus]++});
+      cotsUpToPrev.forEach(function(c){if((c.supervisorNombre||'Sin sup')===sup&&pD[c.estatus]!==undefined)pD[c.estatus]++});
+      var hT=hD.enviada+hD.seguimiento+hD.venta+hD.perdida;
+      var pT=pD.enviada+pD.seguimiento+pD.venta+pD.perdida;
+      var diff=hT-pT;
       
-      var bg = idx%2===0 ? 'var(--bg-card)' : 'var(--surface-2)';
-      h += '<tr style="background:'+bg+'"><td style="padding:5px 8px;font-weight:700;border-bottom:1px solid var(--border);white-space:nowrap">'+sup+'</td>';
-      sts.forEach(function(s) {
-        var d = hD[s] - aD[s];
-        var arrow = d>0?'<div style="color:#10B981;font-size:7px">▲'+d+'</div>':d<0?'<div style="color:#DC3545;font-size:7px">▼'+Math.abs(d)+'</div>':'';
-        h += '<td style="text-align:center;padding:5px 3px;border-bottom:1px solid var(--border)"><div style="font-weight:700">'+hD[s]+'</div><div style="font-size:8px;color:var(--text-3)">'+aD[s]+'</div>'+arrow+'</td>';
-        tH[s]+=hD[s]; tA[s]+=aD[s];
+      var bg=idx%2===0?'var(--bg-card)':'var(--surface-2)';
+      h+='<tr style="background:'+bg+'"><td style="padding:5px 8px;font-weight:700;border-bottom:1px solid var(--border);white-space:nowrap">'+sup+'</td>';
+      sts.forEach(function(s){
+        var d=hD[s]-pD[s];
+        var arrow=d>0?'<div style="color:#10B981;font-size:7px">▲'+d+'</div>':d<0?'<div style="color:#DC3545;font-size:7px">▼'+Math.abs(d)+'</div>':'';
+        h+='<td style="text-align:center;padding:5px 3px;border-bottom:1px solid var(--border)"><div style="font-weight:700">'+hD[s]+'</div><div style="font-size:8px;color:var(--text-3)">'+pD[s]+'</div>'+arrow+'</td>';
+        tH[s]+=hD[s];tP[s]+=pD[s];
       });
-      var diffColor = diff>0?'#10B981':diff<0?'#DC3545':'var(--text-3)';
-      var diffIcon = diff>0?'🔼':diff<0?'🔽':'➖';
-      h += '<td style="text-align:center;padding:5px 3px;border-bottom:1px solid var(--border);font-weight:900;font-size:12px">'+hT+'<div style="font-size:8px;color:var(--text-3)">'+aT+'</div></td>';
-      h += '<td style="text-align:center;padding:5px 3px;border-bottom:1px solid var(--border);font-weight:700;color:'+diffColor+'">'+diffIcon+' '+(diff>0?'+':'')+diff+'</td>';
-      tH.total+=hT; tA.total+=aT;
-      h += '</tr>';
+      var dc=diff>0?'#10B981':diff<0?'#DC3545':'var(--text-3)';
+      var di=diff>0?'🔼':diff<0?'🔽':'➖';
+      h+='<td style="text-align:center;padding:5px 3px;border-bottom:1px solid var(--border);font-weight:900;font-size:12px">'+hT+'<div style="font-size:8px;color:var(--text-3)">'+pT+'</div></td>';
+      h+='<td style="text-align:center;padding:5px 3px;border-bottom:1px solid var(--border);font-weight:700;color:'+dc+'">'+di+(diff>0?' +':' ')+diff+'</td>';
+      tH.total+=hT;tP.total+=pT;
+      h+='</tr>';
     });
     
-    // Total row
-    var gD = tH.total-tA.total;
-    var gColor = gD>0?'#10B981':gD<0?'#DC3545':'var(--text-3)';
-    h += '<tr style="background:var(--att-blue)11"><td style="padding:6px 8px;font-weight:900;border-top:2px solid var(--att-blue)">TOTAL</td>';
-    sts.forEach(function(s) {
-      var d = tH[s]-tA[s];
-      var a = d>0?'<div style="color:#10B981;font-size:7px">▲'+d+'</div>':d<0?'<div style="color:#DC3545;font-size:7px">▼'+Math.abs(d)+'</div>':'';
-      h += '<td style="text-align:center;padding:6px 3px;border-top:2px solid var(--att-blue)"><div style="font-weight:900">'+tH[s]+'</div><div style="font-size:8px;color:var(--text-3)">'+tA[s]+'</div>'+a+'</td>';
+    var gD=tH.total-tP.total;
+    var gC=gD>0?'#10B981':gD<0?'#DC3545':'var(--text-3)';
+    h+='<tr style="background:var(--att-blue)11"><td style="padding:6px 8px;font-weight:900;border-top:2px solid var(--att-blue)">TOTAL</td>';
+    sts.forEach(function(s){
+      var d=tH[s]-tP[s];var a=d>0?'<div style="color:#10B981;font-size:7px">▲'+d+'</div>':d<0?'<div style="color:#DC3545;font-size:7px">▼'+Math.abs(d)+'</div>':'';
+      h+='<td style="text-align:center;padding:6px 3px;border-top:2px solid var(--att-blue)"><div style="font-weight:900">'+tH[s]+'</div><div style="font-size:8px;color:var(--text-3)">'+tP[s]+'</div>'+a+'</td>';
     });
-    h += '<td style="text-align:center;padding:6px 3px;font-weight:900;font-size:14px;border-top:2px solid var(--att-blue)">'+tH.total+'<div style="font-size:8px;color:var(--text-3)">'+tA.total+'</div></td>';
-    h += '<td style="text-align:center;padding:6px 3px;font-weight:900;color:'+gColor+';border-top:2px solid var(--att-blue)">'+(gD>0?'🔼 +':'🔽 ')+gD+'</td>';
-    h += '</tr></table></div></div>';
+    h+='<td style="text-align:center;padding:6px 3px;font-weight:900;font-size:14px;border-top:2px solid var(--att-blue)">'+tH.total+'<div style="font-size:8px;color:var(--text-3)">'+tP.total+'</div></td>';
+    h+='<td style="text-align:center;padding:6px 3px;font-weight:900;color:'+gC+';border-top:2px solid var(--att-blue)">'+(gD>0?'🔼 +':'🔽 ')+gD+'</td>';
+    h+='</tr></table></div></div>';
+    
+    // ── EMBUDO DE TIPIFICACIÓN: SEGUIMIENTO ──
+    var segCots = cotsUpToHoy.filter(function(c){return c.estatus==='seguimiento'});
+    if (segCots.length > 0) {
+      var segTips = {};
+      segCots.forEach(function(c){var t=c.sub_estatus||'sin_tipificar';segTips[t]=(segTips[t]||0)+1});
+      var segKeys = Object.keys(segTips).sort(function(a,b){return segTips[b]-segTips[a]});
+      var segMax = segTips[segKeys[0]] || 1;
+      
+      h += '<div class="section" style="padding:14px;margin-top:8px">';
+      h += '<div style="font-size:13px;font-weight:800;margin-bottom:8px;color:#E6A200">🔄 Embudo Seguimiento (' + segCots.length + ')</div>';
+      segKeys.forEach(function(k) {
+        var count = segTips[k];
+        var pct = Math.round(count/segMax*100);
+        var label = SUB_ESTATUS_LABELS[k] || (k==='sin_tipificar'?'Sin tipificación':k);
+        h += '<div style="margin-bottom:5px">';
+        h += '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px"><span style="font-weight:600">'+label+'</span><span style="font-weight:800">'+count+'</span></div>';
+        h += '<div style="height:10px;border-radius:5px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#F59E0B,#E6A200);border-radius:5px"></div></div>';
+        h += '</div>';
+      });
+      h += '</div>';
+    }
+    
+    // ── EMBUDO DE TIPIFICACIÓN: PERDIDA ──
+    var perCots = cotsUpToHoy.filter(function(c){return c.estatus==='perdida'});
+    if (perCots.length > 0) {
+      var perTips = {};
+      perCots.forEach(function(c){var t=c.sub_estatus||'sin_tipificar';perTips[t]=(perTips[t]||0)+1});
+      var perKeys = Object.keys(perTips).sort(function(a,b){return perTips[b]-perTips[a]});
+      var perMax = perTips[perKeys[0]] || 1;
+      
+      h += '<div class="section" style="padding:14px;margin-top:8px">';
+      h += '<div style="font-size:13px;font-weight:800;margin-bottom:8px;color:#DC3545">❌ Embudo Pérdida (' + perCots.length + ')</div>';
+      perKeys.forEach(function(k) {
+        var count = perTips[k];
+        var pct = Math.round(count/perMax*100);
+        var label = SUB_ESTATUS_LABELS[k] || (k==='sin_tipificar'?'Sin tipificación':k);
+        h += '<div style="margin-bottom:5px">';
+        h += '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px"><span style="font-weight:600">'+label+'</span><span style="font-weight:800">'+count+'</span></div>';
+        h += '<div style="height:10px;border-radius:5px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#EF4444,#DC3545);border-radius:5px"></div></div>';
+        h += '</div>';
+      });
+      h += '</div>';
+    }
   }
 
   el.innerHTML = h;
 }
+
 
 // ============================================================
 // DETALLE
