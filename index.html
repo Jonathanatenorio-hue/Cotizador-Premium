@@ -2600,7 +2600,7 @@ function showView(name, title) {
     document.getElementById('cfgAttuid').value = state.agente.attuid;
     document.getElementById('cfgWhatsapp').value = state.agente.whatsapp || '';
   }
-  if (name === 'historial') { initHistorialFilters(); renderHistorial(); }
+  if (name === 'historial') { if (!hFilterUsers.length) initHistorialFilters(); else renderHistorial(); }
   if (name === 'cotizar' && !title) {
     try {
       document.getElementById('cliNombre').value = '';
@@ -5753,6 +5753,88 @@ function renderHistorialChartBySuper(filtered, el) {
   h += '</div>';
 
   h += '</div>';
+  
+  // ── COMPARATIVO DIARIO POR SUPERVISOR ──
+  var hDesde = document.getElementById('hFilterDesde') ? document.getElementById('hFilterDesde').value : '';
+  if (hDesde) {
+    var ayerDate = new Date(hDesde + 'T12:00:00');
+    ayerDate.setDate(ayerDate.getDate() - 1);
+    var ayerStr = ayerDate.getFullYear()+'-'+String(ayerDate.getMonth()+1).padStart(2,'0')+'-'+String(ayerDate.getDate()).padStart(2,'0');
+    var diasSemana = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    var hoyLabel = diasSemana[new Date(hDesde+'T12:00:00').getDay()] + ' ' + hDesde.substring(8,10) + '/' + hDesde.substring(5,7);
+    var ayerLabel = diasSemana[ayerDate.getDay()] + ' ' + ayerStr.substring(8,10) + '/' + ayerStr.substring(5,7);
+    
+    var agIds = getFilteredAgentIds();
+    var allC = state.cotizaciones;
+    if (agIds) allC = allC.filter(function(c) { return agIds.indexOf(c.agente_id) !== -1; });
+    
+    var ayerCots = allC.filter(function(c) {
+      var d = toMexDateStr(c.createdAt) || (c.fecha||'').substring(0,10);
+      return d === ayerStr;
+    });
+    
+    var supSet = {};
+    filtered.forEach(function(c) { supSet[c.supervisorNombre || 'Sin sup'] = true; });
+    ayerCots.forEach(function(c) { supSet[c.supervisorNombre || 'Sin sup'] = true; });
+    var supList = Object.keys(supSet).sort();
+    var sts = ['enviada','seguimiento','venta','perdida'];
+    var stL = {enviada:'Env',seguimiento:'Seg',venta:'Vta',perdida:'Per'};
+    var stC = {enviada:'#0057B8',seguimiento:'#E6A200',venta:'#10B981',perdida:'#DC3545'};
+    
+    h += '<div class="section" style="padding:14px;margin-top:8px">';
+    h += '<div style="font-size:13px;font-weight:800;margin-bottom:4px">📈 Comparativo: ' + hoyLabel + ' vs ' + ayerLabel + '</div>';
+    h += '<div style="font-size:9px;color:var(--text-3);margin-bottom:8px">▲ verde = mejoró · ▼ rojo = bajó respecto al día anterior</div>';
+    
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px">';
+    h += '<tr style="background:var(--surface-2)"><th style="text-align:left;padding:6px 8px;font-weight:800;border-bottom:2px solid var(--border)">Supervisor</th>';
+    sts.forEach(function(s) {
+      h += '<th style="text-align:center;padding:6px 3px;font-weight:700;color:'+stC[s]+';border-bottom:2px solid var(--border)">'+stL[s]+'</th>';
+    });
+    h += '<th style="text-align:center;padding:6px 4px;font-weight:800;border-bottom:2px solid var(--border)">Total</th>';
+    h += '<th style="text-align:center;padding:6px 4px;font-weight:700;border-bottom:2px solid var(--border)">Cambio</th></tr>';
+    
+    var tH = {enviada:0,seguimiento:0,venta:0,perdida:0,total:0};
+    var tA = {enviada:0,seguimiento:0,venta:0,perdida:0,total:0};
+    
+    supList.forEach(function(sup, idx) {
+      var hD = {enviada:0,seguimiento:0,venta:0,perdida:0};
+      var aD = {enviada:0,seguimiento:0,venta:0,perdida:0};
+      filtered.forEach(function(c) { if ((c.supervisorNombre||'Sin sup')===sup && hD[c.estatus]!==undefined) hD[c.estatus]++; });
+      ayerCots.forEach(function(c) { if ((c.supervisorNombre||'Sin sup')===sup && aD[c.estatus]!==undefined) aD[c.estatus]++; });
+      var hT = hD.enviada+hD.seguimiento+hD.venta+hD.perdida;
+      var aT = aD.enviada+aD.seguimiento+aD.venta+aD.perdida;
+      var diff = hT - aT;
+      
+      var bg = idx%2===0 ? 'var(--bg-card)' : 'var(--surface-2)';
+      h += '<tr style="background:'+bg+'"><td style="padding:5px 8px;font-weight:700;border-bottom:1px solid var(--border);white-space:nowrap">'+sup+'</td>';
+      sts.forEach(function(s) {
+        var d = hD[s] - aD[s];
+        var arrow = d>0?'<div style="color:#10B981;font-size:7px">▲'+d+'</div>':d<0?'<div style="color:#DC3545;font-size:7px">▼'+Math.abs(d)+'</div>':'';
+        h += '<td style="text-align:center;padding:5px 3px;border-bottom:1px solid var(--border)"><div style="font-weight:700">'+hD[s]+'</div><div style="font-size:8px;color:var(--text-3)">'+aD[s]+'</div>'+arrow+'</td>';
+        tH[s]+=hD[s]; tA[s]+=aD[s];
+      });
+      var diffColor = diff>0?'#10B981':diff<0?'#DC3545':'var(--text-3)';
+      var diffIcon = diff>0?'🔼':diff<0?'🔽':'➖';
+      h += '<td style="text-align:center;padding:5px 3px;border-bottom:1px solid var(--border);font-weight:900;font-size:12px">'+hT+'<div style="font-size:8px;color:var(--text-3)">'+aT+'</div></td>';
+      h += '<td style="text-align:center;padding:5px 3px;border-bottom:1px solid var(--border);font-weight:700;color:'+diffColor+'">'+diffIcon+' '+(diff>0?'+':'')+diff+'</td>';
+      tH.total+=hT; tA.total+=aT;
+      h += '</tr>';
+    });
+    
+    // Total row
+    var gD = tH.total-tA.total;
+    var gColor = gD>0?'#10B981':gD<0?'#DC3545':'var(--text-3)';
+    h += '<tr style="background:var(--att-blue)11"><td style="padding:6px 8px;font-weight:900;border-top:2px solid var(--att-blue)">TOTAL</td>';
+    sts.forEach(function(s) {
+      var d = tH[s]-tA[s];
+      var a = d>0?'<div style="color:#10B981;font-size:7px">▲'+d+'</div>':d<0?'<div style="color:#DC3545;font-size:7px">▼'+Math.abs(d)+'</div>':'';
+      h += '<td style="text-align:center;padding:6px 3px;border-top:2px solid var(--att-blue)"><div style="font-weight:900">'+tH[s]+'</div><div style="font-size:8px;color:var(--text-3)">'+tA[s]+'</div>'+a+'</td>';
+    });
+    h += '<td style="text-align:center;padding:6px 3px;font-weight:900;font-size:14px;border-top:2px solid var(--att-blue)">'+tH.total+'<div style="font-size:8px;color:var(--text-3)">'+tA.total+'</div></td>';
+    h += '<td style="text-align:center;padding:6px 3px;font-weight:900;color:'+gColor+';border-top:2px solid var(--att-blue)">'+(gD>0?'🔼 +':'🔽 ')+gD+'</td>';
+    h += '</tr></table></div></div>';
+  }
+
   el.innerHTML = h;
 }
 
