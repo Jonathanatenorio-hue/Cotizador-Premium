@@ -1045,6 +1045,7 @@ body{padding-bottom:60px}
         </div>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openAnalisisIA()">🧠 Análisis IA</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openCompetencias()">📊 Competencias</button>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="verPropositos()">🔥 Ver Propósitos</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="showAddUserForm()">+ Nuevo Usuario</button>
@@ -10997,6 +10998,87 @@ function buildPlanIAContext(target, mes, rol) {
   });
   try { if(state&&state.cotizaciones&&state.cotizaciones.length){var cs={};state.cotizaciones.forEach(function(c){var s=c.estatus||'p';cs[s]=(cs[s]||0)+1});ctx+='\nCOTIZACIONES: '+Object.keys(cs).map(function(s){return s+':'+cs[s]}).join(', ')+'\n';} } catch(e){}
   return ctx;
+}
+
+// ── VER PROPÓSITOS (ADMIN) ──
+async function verPropositos() {
+  if (!supabase) return;
+  
+  // Load all propósitos
+  var {data: nortes} = await supabase.from('agent_norte').select('*');
+  nortes = nortes || [];
+  
+  // Load all users
+  var {data: users} = await supabase.from('usuarios').select('id, nombre, rol, supervisor_id, activo');
+  users = users || [];
+  var userMap = {};
+  users.forEach(function(u) { userMap[u.id] = u; });
+  
+  // Supervisors map
+  var supMap = {};
+  users.filter(function(u){return u.rol==='supervisor'}).forEach(function(u){ supMap[u.id]=u.nombre; });
+  
+  // Norte map by user_id
+  var norteMap = {};
+  nortes.forEach(function(n) { norteMap[n.user_id] = n; });
+  
+  // Build list: active agents/supervisors
+  var activeUsers = users.filter(function(u) { return (u.activo === true || u.activo === 'true') && (u.rol === 'agente' || u.rol === 'supervisor'); });
+  activeUsers.sort(function(a,b) { return a.nombre.localeCompare(b.nombre); });
+  
+  var conProposito = activeUsers.filter(function(u) { return norteMap[u.id]; });
+  var sinProposito = activeUsers.filter(function(u) { return !norteMap[u.id]; });
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'propositosOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:20px';
+  
+  var h = '<div style="background:white;border-radius:16px;padding:20px;max-width:600px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">';
+  h += '<div style="font-size:18px;font-weight:900">🔥 Propósitos del Equipo</div>';
+  h += '<button onclick="document.getElementById(\'propositosOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>';
+  h += '</div>';
+  
+  // KPIs
+  h += '<div style="display:flex;gap:8px;margin-bottom:14px">';
+  h += '<div style="flex:1;text-align:center;padding:8px;background:#E8F5E9;border-radius:8px"><div style="font-size:20px;font-weight:900;color:#10B981">'+conProposito.length+'</div><div style="font-size:9px;color:#2E7D32">Lo llenaron</div></div>';
+  h += '<div style="flex:1;text-align:center;padding:8px;background:#FEF2F2;border-radius:8px"><div style="font-size:20px;font-weight:900;color:#DC3545">'+sinProposito.length+'</div><div style="font-size:9px;color:#DC3545">No lo han llenado</div></div>';
+  h += '<div style="flex:1;text-align:center;padding:8px;background:var(--surface-2);border-radius:8px"><div style="font-size:20px;font-weight:900;color:var(--att-blue)">'+Math.round(conProposito.length/Math.max(activeUsers.length,1)*100)+'%</div><div style="font-size:9px;color:var(--text-3)">Cumplimiento</div></div>';
+  h += '</div>';
+  
+  // Sin propósito
+  if (sinProposito.length > 0) {
+    h += '<div style="font-size:12px;font-weight:800;color:#DC3545;margin-bottom:6px">⚠️ Sin propósito (' + sinProposito.length + ')</div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px">';
+    sinProposito.forEach(function(u) {
+      var sup = supMap[u.supervisor_id] || '';
+      h += '<span style="font-size:10px;padding:3px 8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;color:#DC3545">'+u.nombre+(sup?' · '+sup:'')+'</span>';
+    });
+    h += '</div>';
+  }
+  
+  // Con propósito
+  if (conProposito.length > 0) {
+    h += '<div style="font-size:12px;font-weight:800;color:#10B981;margin-bottom:6px">✅ Con propósito (' + conProposito.length + ')</div>';
+    conProposito.forEach(function(u) {
+      var n = norteMap[u.id];
+      var sup = supMap[u.supervisor_id] || '';
+      var updated = n.updated_at ? new Date(n.updated_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) : '';
+      h += '<div style="background:var(--surface-2);border-radius:8px;padding:10px;margin-bottom:6px;border-left:3px solid #10B981">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+      h += '<span style="font-size:11px;font-weight:700">'+u.nombre+'</span>';
+      h += '<span style="font-size:8px;color:var(--text-3)">'+(sup?'Sup: '+sup+' · ':'')+updated+'</span>';
+      h += '</div>';
+      if (n.meta_vida) h += '<div style="font-size:10px;margin-bottom:2px"><span style="color:var(--text-3)">🌟 Meta vida:</span> '+n.meta_vida+'</div>';
+      if (n.meta_ec) h += '<div style="font-size:10px;margin-bottom:2px"><span style="color:var(--text-3)">🎯 Meta EC:</span> '+n.meta_ec+'</div>';
+      if (n.motivacion) h += '<div style="font-size:10px"><span style="color:var(--text-3)">🔥 Motivación:</span> '+n.motivacion+'</div>';
+      h += '</div>';
+    });
+  }
+  
+  h += '</div>';
+  overlay.innerHTML = h;
+  document.body.appendChild(overlay);
 }
 
 // ── BUZÓN ANÓNIMO ──
