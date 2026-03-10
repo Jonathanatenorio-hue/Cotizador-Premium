@@ -913,6 +913,7 @@ body{padding-bottom:60px}
         <select class="field" id="hFilterSubEstatus" onchange="renderHistorial()" style="width:auto;min-width:140px;font-size:11px;padding:5px 8px">
           <option value="all">Todas las sub-tipificaciones</option>
           <option value="aceleracion">Aceleración pendiente</option>
+          <option value="en_negociacion">En negociación</option>
           <option value="espera_pago">En espera de pago</option>
           <option value="falta_biometrico">Falta biométrico</option>
           <option value="falta_ine">Falta INE</option>
@@ -2478,13 +2479,12 @@ async function loadCotizacionesFromSupabase() {
       var { data: agents } = await supabase.from('usuarios').select('id, nombre, attuid, whatsapp, supervisor_id').in('id', agentIds);
       (agents || []).forEach(function(a) { agentMap[a.id] = a; });
     }
-    // Load supervisor names
-    var supIds = [...new Set(Object.values(agentMap).map(function(a){return a.supervisor_id}).filter(Boolean))];
+    // Load supervisor names - get ALL supervisors to cover edge cases
     var supMap = {};
-    if (supIds.length > 0) {
-      var { data: sups } = await supabase.from('usuarios').select('id, nombre').in('id', supIds);
+    try {
+      var { data: sups } = await supabase.from('usuarios').select('id, nombre').eq('rol', 'supervisor');
       (sups || []).forEach(function(s) { supMap[s.id] = s.nombre; });
-    }
+    } catch(e) {}
 
     // Convert Supabase format to local format
     var cotizaciones = data.map(function(c) {
@@ -2501,7 +2501,15 @@ async function loadCotizacionesFromSupabase() {
           direccion: c.cliente_direccion,
         },
         ejecutivo: ag ? { nombre: ag.nombre, attuid: ag.attuid, whatsapp: ag.whatsapp || '' } : { ...state.agente },
-        supervisorNombre: ag && ag.supervisor_id ? (supMap[ag.supervisor_id] || '') : '',
+        supervisorNombre: (function() {
+          if (ag && ag.supervisor_id && supMap[ag.supervisor_id]) return supMap[ag.supervisor_id];
+          // Fallback: try to find supervisor from all loaded users
+          if (ag && ag.supervisor_id) {
+            var fallbackSup = (hFilterUsers||[]).find(function(u){return u.id===ag.supervisor_id});
+            if (fallbackSup) return fallbackSup.nombre;
+          }
+          return '';
+        })(),
         items: (c.cotizacion_items || []).map(function(it) {
           return {
             equipo: it.equipo,
@@ -2528,6 +2536,7 @@ async function loadCotizacionesFromSupabase() {
         barrera_cierre: c.barrera_cierre,
         interes_otro: c.interes_otro,
         barrera_otro: c.barrera_otro,
+        negociacion_motivo: c.negociacion_motivo,
         adeudo_monto: c.adeudo_monto,
         adeudo_fecha_compromiso: c.adeudo_fecha_compromiso,
         planActual: c.plan_actual_id ? {id: c.plan_actual_id} : null,
@@ -5189,6 +5198,7 @@ var SUB_ESTATUS_LABELS = {
   falta_ine: 'Falta INE',
   falta_contrato: 'Falta contrato firmado',
   aceleracion: 'Aceleración pendiente',
+  en_negociacion: 'En negociación',
   adeudo_pendiente: 'Adeudo por pagar',
   renovo_otro: 'Renovó en otro lado',
   no_responde: 'Ya no responde',
@@ -5934,8 +5944,14 @@ function showDetalle(folio) {
                 <option value="falta_ine" ${cot.sub_estatus==='falta_ine'?'selected':''}>Falta INE</option>
                 <option value="falta_contrato" ${cot.sub_estatus==='falta_contrato'?'selected':''}>Falta contrato firmado</option>
                 <option value="aceleracion" ${cot.sub_estatus==='aceleracion'?'selected':''}>Aceleración pendiente</option>
+                <option value="en_negociacion" ${cot.sub_estatus==='en_negociacion'?'selected':''}>🤝 En negociación</option>
                 <option value="adeudo_pendiente" ${cot.sub_estatus==='adeudo_pendiente'?'selected':''}>💰 Adeudo por pagar</option>
               </select>
+              <div id="subNegociacion_${cot.folio}" style="display:${cot.sub_estatus==='en_negociacion'?'block':'none'};margin-top:8px;background:#EFF6FF;padding:12px;border-radius:8px;border:1px solid #BFDBFE">
+                <div style="font-size:12px;font-weight:700;color:#1E40AF;margin-bottom:8px">🤝 Detalle de negociación</div>
+                <label style="font-size:9px;font-weight:700;color:var(--text-3)">¿Por qué está en negociación?</label>
+                <textarea class="field" id="negociacionMotivo_${cot.folio}" placeholder="Describe el estado de la negociación: qué pide el cliente, qué se le ofreció, qué falta para cerrar..." style="font-size:11px;padding:8px;min-height:60px;resize:vertical">${cot.negociacion_motivo||''}</textarea>
+              </div>
               <div id="subAdeudo_${cot.folio}" style="display:${cot.sub_estatus==='adeudo_pendiente'?'block':'none'};margin-top:8px;background:#FFF8E1;padding:12px;border-radius:8px;border:1px solid #FFE082">
                 <div style="font-size:12px;font-weight:700;color:#E65100;margin-bottom:8px">💰 Datos del adeudo</div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -6151,8 +6167,10 @@ function onSubSegChange(folio) {
   var val = document.getElementById('subSeg_' + folio).value;
   var acDiv = document.getElementById('subAceleracion_' + folio);
   var adDiv = document.getElementById('subAdeudo_' + folio);
+  var negDiv = document.getElementById('subNegociacion_' + folio);
   if (acDiv) acDiv.style.display = val === 'aceleracion' ? 'block' : 'none';
   if (adDiv) adDiv.style.display = val === 'adeudo_pendiente' ? 'block' : 'none';
+  if (negDiv) negDiv.style.display = val === 'en_negociacion' ? 'block' : 'none';
 }
 
 async function guardarEstatus(folio) {
@@ -6184,6 +6202,14 @@ async function guardarEstatus(folio) {
       tieneIne = document.getElementById('tieneIne_' + folio).value;
       if (!fechaFinPlazo) { alert('La fecha de finalización de plazo es obligatoria para aceleración.'); return; }
       if (!tieneIne) { alert('Selecciona el estatus de INE.'); return; }
+    }
+    if (subEstatus === 'en_negociacion') {
+      var negMotivo = document.getElementById('negociacionMotivo_' + folio);
+      if (!negMotivo || !negMotivo.value.trim()) {
+        alert('⚠️ Describe por qué está en negociación para tener claridad del lead.');
+        if (negMotivo) { negMotivo.focus(); negMotivo.style.border='2px solid #DC3545'; setTimeout(function(){negMotivo.style.border=''},3000); }
+        return;
+      }
     }
     if (subEstatus === 'adeudo_pendiente') {
       adeudoMonto = document.getElementById('adeudoMonto_' + folio).value;
@@ -6221,6 +6247,7 @@ async function guardarEstatus(folio) {
   var _interesOtro = document.getElementById('cotInteresOtro_' + folio) ? document.getElementById('cotInteresOtro_' + folio).value.trim() : '';
   var _barreraOtro = document.getElementById('cotBarreraOtro_' + folio) ? document.getElementById('cotBarreraOtro_' + folio).value.trim() : '';
   var _proxContacto = document.getElementById('notaProxContacto_' + folio) ? document.getElementById('notaProxContacto_' + folio).value : '';
+  var _negMotivo = document.getElementById('negociacionMotivo_' + folio) ? document.getElementById('negociacionMotivo_' + folio).value.trim() : '';
   
   if (cot) {
     cot.estatus = est;
@@ -6235,6 +6262,7 @@ async function guardarEstatus(folio) {
     cot.interes_otro = _interesOtro;
     cot.barrera_otro = _barreraOtro;
     cot.proximo_contacto = _proxContacto;
+    cot.negociacion_motivo = _negMotivo;
     saveState();
   }
 
@@ -6254,6 +6282,7 @@ async function guardarEstatus(folio) {
         interes_otro: _interesOtro || null,
         barrera_otro: _barreraOtro || null,
         proximo_contacto: _proxContacto || null,
+        negociacion_motivo: _negMotivo || null,
         updated_at: new Date().toISOString(),
       }).eq('folio', folio);
       console.log('Estatus updated:', folio, est, subEstatus, folioAtt);
