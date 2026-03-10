@@ -685,11 +685,6 @@ body{padding-bottom:60px}
         <div class="card-title">Buzón Anónimo</div>
         <div class="card-desc">Preguntas, sugerencias y feedback</div>
       </div>
-      <div class="home-card clickable" id="cardPromos" style="display:none" onclick="openPromos()">
-        <div class="card-icon">🏷️</div>
-        <div class="card-title">Equipos en Promo</div>
-        <div class="card-desc">Catálogo de promociones vigentes</div>
-      </div>
     </div>
     <div id="homeAlerts" style="display:none;margin-bottom:10px;cursor:pointer" onclick="openAceleraciones()"></div>
     <div id="homeMotivMsg" style="display:none;border-radius:12px;padding:14px 18px;margin-bottom:10px;text-align:center;font-size:13px;font-weight:700;line-height:1.4"></div>
@@ -974,26 +969,6 @@ body{padding-bottom:60px}
     <div class="filter-row" id="filterRow"></div>
     <div id="historialChart" style="margin-bottom:8px"></div>
     <div id="historialList"></div>
-  </div>
-</div>
-
-<!-- ===== VIEW: EQUIPOS EN PROMO ===== -->
-<div class="view" id="viewPromos">
-  <div class="container">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <div>
-        <div style="font-size:18px;font-weight:900">🏷️ Equipos en Promoción</div>
-        <div style="font-size:10px;color:var(--text-3)">Catálogo de equipos incluidos en planes — Solo Puebla</div>
-      </div>
-      <div id="promoUploadBtn" style="display:none">
-        <label class="btn btn-primary" style="cursor:pointer;font-size:11px;padding:6px 14px">
-          📁 Actualizar PDF
-          <input type="file" accept=".pdf" onchange="uploadPromoPDF(this)" style="display:none">
-        </label>
-      </div>
-    </div>
-    <div id="promoInfo" style="display:none;font-size:10px;color:var(--text-3);margin-bottom:8px"></div>
-    <div id="promoViewer" style="text-align:center;padding:20px;color:var(--text-3)">Cargando catálogo...</div>
   </div>
 </div>
 
@@ -1818,7 +1793,7 @@ setTimeout(function() { if (!supabase) { initSupabase(); } }, 3000);
 setTimeout(function() { if (!supabase) { initSupabase(); console.log('Final supabase status:', !!supabase); } }, 5000);
 
 // ── VERSION CHECK ──
-var APP_VERSION = '2026.03.04.2';
+var APP_VERSION = '2026.03.10.1';
 var _versionChecked = false;
 async function checkAppVersion() {
   if (_versionChecked || !supabase) return;
@@ -2667,7 +2642,7 @@ function showView(name, title) {
 
   const titles = {
     home: '', config: 'Mi Perfil', cotizar: 'Nueva Cotización',
-    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Propósito', aiDashboard: 'Análisis IA', midia: 'Mi Día', promos: 'Equipos en Promoción', buzonAnonimo: 'Buzón Anónimo',
+    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Propósito', aiDashboard: 'Análisis IA', midia: 'Mi Día', buzonAnonimo: 'Buzón Anónimo',
   };
   headerTitle.textContent = title || titles[name] || '';
 
@@ -2779,31 +2754,6 @@ function updateHome() {
   var infCard = document.getElementById('cardInformes');
   if (infCard) {
     infCard.style.display = (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) ? '' : 'none';
-  }
-
-  // Show promos card for Puebla users (all roles)
-  var promoCard = document.getElementById('cardPromos');
-  if (promoCard) {
-    // Check if user belongs to Puebla (CC2 or JV) or is admin
-    var isPuebla = false;
-    if (currentUser && currentUser.rol === 'admin') isPuebla = true;
-    else if (currentUser && currentUser.centro_id) {
-      var userCentro = (adminCentros || []).find(function(c){return c.id === currentUser.centro_id});
-      if (userCentro) {
-        var cn = userCentro.nombre.toUpperCase();
-        isPuebla = cn.indexOf('ANTEQUERA')>=0 || cn.indexOf('CC2')>=0 || cn.indexOf('JUAREZ')>=0 || cn.indexOf('JV')>=0 || cn.indexOf('JUÁREZ')>=0;
-      }
-    }
-    // Fallback: check from hFilterUsers
-    if (!isPuebla && currentUser) {
-      var fu = (hFilterUsers||[]).find(function(u){return u.id===currentUser.id});
-      if (fu && fu.centros) {
-        var cn = fu.centros.nombre.toUpperCase();
-        isPuebla = cn.indexOf('ANTEQUERA')>=0 || cn.indexOf('CC2')>=0 || cn.indexOf('JUAREZ')>=0 || cn.indexOf('JV')>=0 || cn.indexOf('JUÁREZ')>=0;
-      }
-    }
-    if (currentUser && currentUser.rol === 'admin') isPuebla = true;
-    promoCard.style.display = isPuebla ? '' : 'none';
   }
 
   // Show aceleraciones card - always visible for all roles
@@ -11087,87 +11037,6 @@ function buildPlanIAContext(target, mes, rol) {
   try { if(state&&state.cotizaciones&&state.cotizaciones.length){var cs={};state.cotizaciones.forEach(function(c){var s=c.estatus||'p';cs[s]=(cs[s]||0)+1});ctx+='\nCOTIZACIONES: '+Object.keys(cs).map(function(s){return s+':'+cs[s]}).join(', ')+'\n';} } catch(e){}
   return ctx;
 }
-
-// ── EQUIPOS EN PROMOCIÓN (PDF VIEWER) ──
-var PROMO_BUCKET = 'promo-catalogo';
-
-function openPromos() {
-  showView('promos', 'Equipos en Promoción');
-  // Show upload button for admin/coordinador
-  var uploadBtn = document.getElementById('promoUploadBtn');
-  if (uploadBtn) uploadBtn.style.display = (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador')) ? '' : 'none';
-  loadPromoPDF();
-}
-
-async function loadPromoPDF() {
-  var viewer = document.getElementById('promoViewer');
-  var info = document.getElementById('promoInfo');
-  viewer.innerHTML = '<div style="padding:20px;color:var(--text-3)">Cargando...</div>';
-  
-  if (!supabase) { viewer.innerHTML = '<div style="color:var(--text-3)">Sin conexión</div>'; return; }
-  
-  try {
-    // Check app_config for promo PDF info
-    var {data: config} = await supabase.from('app_config').select('value').eq('key', 'promo_pdf').maybeSingle();
-    
-    if (config && config.value) {
-      var pdfInfo = JSON.parse(config.value);
-      var {data: urlData} = supabase.storage.from(PROMO_BUCKET).getPublicUrl(pdfInfo.fileName);
-      
-      if (urlData && urlData.publicUrl) {
-        info.style.display = '';
-        info.innerHTML = '📄 Actualizado: ' + (pdfInfo.updatedAt || '') + ' por ' + (pdfInfo.updatedBy || '');
-        
-        viewer.innerHTML = '<iframe src="' + urlData.publicUrl + '#toolbar=1&navpanes=0" style="width:100%;height:calc(100vh - 200px);min-height:500px;border:1px solid var(--border);border-radius:8px"></iframe>';
-      } else {
-        viewer.innerHTML = '<div style="padding:30px;color:var(--text-3);text-align:center"><div style="font-size:36px;margin-bottom:8px">📄</div>No se pudo cargar el PDF</div>';
-      }
-    } else {
-      info.style.display = 'none';
-      viewer.innerHTML = '<div style="padding:30px;color:var(--text-3);text-align:center"><div style="font-size:36px;margin-bottom:8px">📄</div><div style="font-size:13px">No hay catálogo de promociones cargado</div>' + 
-        (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador') ? '<div style="font-size:11px;margin-top:6px">Sube un PDF con el botón "Actualizar PDF"</div>' : '<div style="font-size:11px;margin-top:6px">El coordinador aún no ha subido el catálogo</div>') + '</div>';
-    }
-  } catch(e) {
-    viewer.innerHTML = '<div style="color:#DC3545;padding:20px">Error: ' + e.message + '</div>';
-  }
-}
-
-async function uploadPromoPDF(input) {
-  var file = input.files[0];
-  if (!file) return;
-  if (file.type !== 'application/pdf') { alert('Solo archivos PDF'); return; }
-  if (file.size > 20 * 1024 * 1024) { alert('Máximo 20MB'); return; }
-  if (!supabase || !currentUser) return;
-  
-  var fileName = 'promo_puebla_' + Date.now() + '.pdf';
-  
-  try {
-    // Delete previous files
-    try {
-      var {data: files} = await supabase.storage.from(PROMO_BUCKET).list('', {limit: 50});
-      if (files && files.length > 0) {
-        var toDelete = files.map(function(f){return f.name});
-        await supabase.storage.from(PROMO_BUCKET).remove(toDelete);
-      }
-    } catch(e) {}
-    
-    // Upload new
-    var {error} = await supabase.storage.from(PROMO_BUCKET).upload(fileName, file, {contentType: 'application/pdf', upsert: true});
-    if (error) { alert('Error subiendo: ' + error.message); return; }
-    
-    // Save reference in app_config
-    var now = new Date();
-    var dateStr = now.toLocaleDateString('es-MX', {day:'2-digit', month:'short', year:'numeric'}) + ' ' + now.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'});
-    await supabase.from('app_config').upsert({
-      key: 'promo_pdf',
-      value: JSON.stringify({fileName: fileName, updatedAt: dateStr, updatedBy: currentUser.nombre})
-    }, {onConflict: 'key'});
-    
-    alert('✅ Catálogo de promociones actualizado');
-    loadPromoPDF();
-  } catch(e) { alert('Error: ' + e.message); }
-}
-
 // ── VER PROPÓSITOS (ADMIN) ──
 async function verPropositos() {
   if (!supabase) return;
