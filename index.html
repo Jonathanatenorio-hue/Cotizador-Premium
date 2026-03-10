@@ -5727,6 +5727,43 @@ function renderHistorialChart(filtered) {
     h += '</div>';
   });
   h += '</div></div></div>';
+  
+  // ── EMBUDOS para rango de fechas ──
+  var segFiltered = filtered.filter(function(c){return c.estatus==='seguimiento'});
+  if (segFiltered.length > 0) {
+    var segTips = {};
+    segFiltered.forEach(function(c){var t=c.sub_estatus||'sin_tipificar';segTips[t]=(segTips[t]||0)+1});
+    var segKeys = Object.keys(segTips).sort(function(a,b){return segTips[b]-segTips[a]});
+    var segMax = segTips[segKeys[0]] || 1;
+    h += '<div class="section" style="padding:14px;margin-top:8px">';
+    h += '<div style="font-size:13px;font-weight:800;margin-bottom:8px;color:#E6A200">🔄 Embudo Seguimiento (' + segFiltered.length + ')</div>';
+    segKeys.forEach(function(k) {
+      var count = segTips[k];
+      var pct = Math.round(count/segMax*100);
+      var label = SUB_ESTATUS_LABELS[k] || (k==='sin_tipificar'?'Sin tipificación':k);
+      h += '<div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px"><span style="font-weight:600">'+label+'</span><span style="font-weight:800">'+count+'</span></div>';
+      h += '<div style="height:10px;border-radius:5px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#F59E0B,#E6A200);border-radius:5px"></div></div></div>';
+    });
+    h += '</div>';
+  }
+  var perFiltered = filtered.filter(function(c){return c.estatus==='perdida'});
+  if (perFiltered.length > 0) {
+    var perTips = {};
+    perFiltered.forEach(function(c){var t=c.sub_estatus||'sin_tipificar';perTips[t]=(perTips[t]||0)+1});
+    var perKeys = Object.keys(perTips).sort(function(a,b){return perTips[b]-perTips[a]});
+    var perMax = perTips[perKeys[0]] || 1;
+    h += '<div class="section" style="padding:14px;margin-top:8px">';
+    h += '<div style="font-size:13px;font-weight:800;margin-bottom:8px;color:#DC3545">❌ Embudo Pérdida (' + perFiltered.length + ')</div>';
+    perKeys.forEach(function(k) {
+      var count = perTips[k];
+      var pct = Math.round(count/perMax*100);
+      var label = SUB_ESTATUS_LABELS[k] || (k==='sin_tipificar'?'Sin tipificación':k);
+      h += '<div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px"><span style="font-weight:600">'+label+'</span><span style="font-weight:800">'+count+'</span></div>';
+      h += '<div style="height:10px;border-radius:5px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#EF4444,#DC3545);border-radius:5px"></div></div></div>';
+    });
+    h += '</div>';
+  }
+
   el.innerHTML = h;
 }
 
@@ -5897,8 +5934,8 @@ function renderHistorialChartBySuper(filtered, el) {
     h+='<td style="text-align:center;padding:6px 3px;font-weight:900;color:'+gC+';border-top:2px solid var(--att-blue)">'+(gD>0?'🔼 +':'🔽 ')+gD+'</td>';
     h+='</tr></table></div></div>';
     
-    // ── EMBUDO DE TIPIFICACIÓN: SEGUIMIENTO ──
-    var segCots = cotsUpToHoy.filter(function(c){return c.estatus==='seguimiento'});
+    // ── EMBUDO DE TIPIFICACIÓN: SEGUIMIENTO (del día seleccionado) ──
+    var segCots = filtered.filter(function(c){return c.estatus==='seguimiento'});
     if (segCots.length > 0) {
       var segTips = {};
       segCots.forEach(function(c){var t=c.sub_estatus||'sin_tipificar';segTips[t]=(segTips[t]||0)+1});
@@ -5906,7 +5943,7 @@ function renderHistorialChartBySuper(filtered, el) {
       var segMax = segTips[segKeys[0]] || 1;
       
       h += '<div class="section" style="padding:14px;margin-top:8px">';
-      h += '<div style="font-size:13px;font-weight:800;margin-bottom:8px;color:#E6A200">🔄 Embudo Seguimiento (' + segCots.length + ')</div>';
+      h += '<div style="font-size:13px;font-weight:800;margin-bottom:8px;color:#E6A200">🔄 Embudo Seguimiento del día (' + segCots.length + ')</div>';
       segKeys.forEach(function(k) {
         var count = segTips[k];
         var pct = Math.round(count/segMax*100);
@@ -5919,8 +5956,8 @@ function renderHistorialChartBySuper(filtered, el) {
       h += '</div>';
     }
     
-    // ── EMBUDO DE TIPIFICACIÓN: PERDIDA ──
-    var perCots = cotsUpToHoy.filter(function(c){return c.estatus==='perdida'});
+    // ── EMBUDO DE TIPIFICACIÓN: PERDIDA (del día seleccionado) ──
+    var perCots = filtered.filter(function(c){return c.estatus==='perdida'});
     if (perCots.length > 0) {
       var perTips = {};
       perCots.forEach(function(c){var t=c.sub_estatus||'sin_tipificar';perTips[t]=(perTips[t]||0)+1});
@@ -5928,7 +5965,7 @@ function renderHistorialChartBySuper(filtered, el) {
       var perMax = perTips[perKeys[0]] || 1;
       
       h += '<div class="section" style="padding:14px;margin-top:8px">';
-      h += '<div style="font-size:13px;font-weight:800;margin-bottom:8px;color:#DC3545">❌ Embudo Pérdida (' + perCots.length + ')</div>';
+      h += '<div style="font-size:13px;font-weight:800;margin-bottom:8px;color:#DC3545">❌ Embudo Pérdida del día (' + perCots.length + ')</div>';
       perKeys.forEach(function(k) {
         var count = perTips[k];
         var pct = Math.round(count/perMax*100);
@@ -6120,7 +6157,7 @@ function showDetalle(folio) {
         <input type="text" class="field" id="notaTexto_${cot.folio}" placeholder="Escribe tu nota..." style="flex:1;font-size:11px;min-width:120px">
         <div style="display:flex;align-items:center;gap:3px">
           <label style="font-size:9px;color:var(--text-3);white-space:nowrap">⏰ Próx:</label>
-          <input type="date" class="field" id="notaProxContacto_${cot.folio}" style="font-size:10px;padding:4px 6px;width:auto" value="${cot.proximo_contacto||''}">
+          <input type="datetime-local" class="field" id="notaProxContacto_${cot.folio}" style="font-size:10px;padding:4px 6px;width:auto" value="${cot.proximo_contacto||''}">
         </div>
         <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="agregarNota('${cot.folio}')">Agregar</button>
       </div>
@@ -11278,17 +11315,19 @@ function renderMiDia() {
       item.prioridad = 'urgente'; item.razon = '💰 Adeudo vence hoy'; urgentes.push(item); return;
     }
     // Próximo contacto para hoy
-    if (c.proximo_contacto === hoyStr) {
-      item.prioridad = 'urgente'; item.razon = '⏰ Contacto programado hoy'; urgentes.push(item); return;
+    var proxDateStr = c.proximo_contacto ? c.proximo_contacto.substring(0,10) : '';
+    var proxTimeStr = c.proximo_contacto && c.proximo_contacto.length > 10 ? c.proximo_contacto.substring(11,16) : '';
+    if (proxDateStr === hoyStr) {
+      item.prioridad = 'urgente'; item.razon = '⏰ Contacto hoy' + (proxTimeStr ? ' a las ' + proxTimeStr : ''); urgentes.push(item); return;
     }
-    // Próximo contacto vencido (pasó y no se atendió)
-    if (c.proximo_contacto && c.proximo_contacto < hoyStr) {
-      item.prioridad = 'urgente'; item.razon = '⚠️ Contacto programado atrasado (' + c.proximo_contacto + ')'; urgentes.push(item); return;
+    // Próximo contacto vencido
+    if (proxDateStr && proxDateStr < hoyStr) {
+      item.prioridad = 'urgente'; item.razon = '⚠️ Contacto atrasado (' + proxDateStr + (proxTimeStr ? ' ' + proxTimeStr : '') + ')'; urgentes.push(item); return;
     }
 
     // 🟡 PROGRAMADAS - próximo contacto futuro (próximos 3 días)
-    if (c.proximo_contacto && c.proximo_contacto > hoyStr) {
-      var proxDate = new Date(c.proximo_contacto + 'T12:00:00');
+    if (proxDateStr && proxDateStr > hoyStr) {
+      var proxDate = new Date(proxDateStr + 'T12:00:00');
       var diasHasta = Math.floor((proxDate - hoy) / 86400000);
       if (diasHasta <= 3) {
         item.prioridad = 'programada'; item.razon = '📅 Contacto en ' + diasHasta + ' día' + (diasHasta>1?'s':''); programadas.push(item); return;
