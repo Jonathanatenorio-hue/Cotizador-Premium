@@ -1955,23 +1955,10 @@ async function processPriceListData(arrayBuf, fileName) {
       }
       console.log('Base cols detected:', JSON.stringify(bCols), 'startRow:', bStartRow);
       if (bStartRow >= 0 && bCols.equipo >= 0) {
-        // Detect plan columns - look for "24 Meses" header in rows before data
-        var bPlanCols = {};
-        for (var bpri = 0; bpri < bStartRow; bpri++) {
-          var bpr = bRows[bpri]; if (!bpr) continue;
-          for (var bpc = bCols.precio + 1; bpc < bpr.length; bpc++) {
-            var bpv = String(bpr[bpc] || '').trim();
-            if (bpv === '24' || bpv === '24 Meses' || bpv === '24 meses') {
-              // Found first 24m column - calculate plan index
-              var bFirstPlanCol = bCols.precio + 1;
-              var bPlanIdx = Math.floor((bpc - bFirstPlanCol) / 3);
-              if (bPlanIdx >= 0 && bPlanIdx < PLANS_PREMIUM.length) {
-                bPlanCols[PLANS_PREMIUM[bPlanIdx].id] = bpc;
-              }
-            }
-          }
-        }
-        console.log('Base plan cols:', JSON.stringify(bPlanCols));
+        // Plan columns: fixed layout, 3 cols per plan starting after precio contado
+        // Col 9,10,11=Azul1  12,13,14=Azul2  15,16,17=Azul3  18,19,20=Plata  21,22,23=Oro  24,25,26=Black  27,28,29=Platino  30,31,32=Diamante
+        var bPlanStart = bCols.precio + 1; // First plan column (24m of Azul 1)
+        console.log('Base plan start col:', bPlanStart);
         
         var addedBase = 0;
         for (var bi = bStartRow; bi < bRows.length; bi++) {
@@ -1984,19 +1971,31 @@ async function processPriceListData(arrayBuf, fileName) {
           if (!bPrecio || bPrecio <= 0) continue;
           var bMarca = bCols.marca >= 0 ? (brow[bCols.marca] || '') : '';
           var bEstatus = bCols.estatus >= 0 ? (brow[bCols.estatus] || '') : 'RESURTIBLE';
-          var bVigencia = bCols.vigencia >= 0 ? (brow[bCols.vigencia] || '') : '';
+          // Vigencia - check col 33 area
+          var bVigencia = '';
+          if (bCols.vigencia >= 0) bVigencia = brow[bCols.vigencia] || '';
+          else {
+            // Try to find vigencia in cols 33-36
+            for (var vc = 33; vc < Math.min((brow||[]).length, 38); vc++) {
+              var vv = String(brow[vc]||'');
+              if (vv.match(/\d{2}.*\d{4}/)) { bVigencia = vv; break; }
+            }
+          }
           
-          // Build pricing from actual columns or fallback to precio contado
+          // Build pricing from fixed column positions
           var bPricing = {};
-          var hasAnyPrice = false;
-          PLANS_PREMIUM.forEach(function(plan) {
+          PLANS_PREMIUM.forEach(function(plan, planIdx) {
             bPricing[plan.id] = {};
             [0,1,2].forEach(function(offset) {
               var plazo = [24,30,36][offset];
-              var col = bPlanCols[plan.id] ? bPlanCols[plan.id] + offset : -1;
-              var val = col >= 0 ? brow[col] : null;
-              if (typeof val === 'number' && val >= 0) { bPricing[plan.id][plazo] = val; hasAnyPrice = true; }
-              else bPricing[plan.id][plazo] = bPrecio; // Fallback to contado
+              var col = bPlanStart + (planIdx * 3) + offset;
+              var val = brow[col];
+              if (typeof val === 'number' && val >= 0) bPricing[plan.id][plazo] = val;
+              else if (typeof val === 'string' && val !== 'NA' && val !== 'N/A') {
+                var parsed = parseFloat(val.replace(/[$,]/g, ''));
+                bPricing[plan.id][plazo] = (!isNaN(parsed) && parsed >= 0) ? parsed : null;
+              }
+              else bPricing[plan.id][plazo] = null;
             });
           });
           
@@ -2005,7 +2004,7 @@ async function processPriceListData(arrayBuf, fileName) {
             precioContado:bPrecio, estatus:String(bEstatus), vigencia:String(bVigencia),
             fechaInicio:parseVigencia(bVigencia).inicio, fechaFin:parseVigencia(bVigencia).fin,
             fechaFinText:'', pricing:bPricing, plans:PLANS_PREMIUM, plazos:[24,30,36],
-            sinPromo: !hasAnyPrice
+            sinPromo: true
           });
           addedBase++;
         }
