@@ -1804,6 +1804,7 @@ async function loadCentralPriceList() {
 async function processPriceListData(arrayBuf, fileName) {
   try {
     var wb = XLSX.read(arrayBuf, { type:'array', cellDates:true });
+    window._debugWb = wb; // Cache for debug
     var devices = [];
 
     // === Parse Premium sheet ===
@@ -1934,6 +1935,9 @@ async function processPriceListData(arrayBuf, fileName) {
       console.log('Base sheet found: "'+baseSheetName+'" (promo sheet: "'+pSheetName+'")');
       var bSheet = wb.Sheets[baseSheetName];
       var bRows = XLSX.utils.sheet_to_json(bSheet, { header:1, defval:null });
+      console.log('Base sheet rows:', bRows.length);
+      // Log first 8 rows for debug
+      for (var dbg=0; dbg<Math.min(8,bRows.length); dbg++) console.log('Base Row '+dbg+':', JSON.stringify((bRows[dbg]||[]).slice(0,12)));
       var bCols = { equipo:-1, marca:-1, precio:-1, estatus:-1, vigencia:-1 };
       var bStartRow = -1;
       for (var bri = 0; bri < Math.min(bRows.length, 15); bri++) {
@@ -1948,6 +1952,7 @@ async function processPriceListData(arrayBuf, fileName) {
         }
         if (bCols.equipo >= 0 && bCols.precio >= 0) { bStartRow = bri + 1; break; }
       }
+      console.log('Base cols detected:', JSON.stringify(bCols), 'startRow:', bStartRow);
       if (bStartRow >= 0 && bCols.equipo >= 0) {
         var addedBase = 0;
         for (var bi = bStartRow; bi < bRows.length; bi++) {
@@ -2382,9 +2387,9 @@ function loadState() {
 
 function saveState() {
   try {
+    // Only save minimal data - cotizaciones load from Supabase
     localStorage.setItem('cotizador_att_state', JSON.stringify({
       agente: state.agente,
-      cotizaciones: state.cotizaciones,
     }));
   } catch(e) { console.error('Save error:', e); }
 }
