@@ -681,7 +681,9 @@ body{padding-bottom:60px}
         <div class="card-desc">Preguntas, sugerencias y feedback</div>
       </div>
     </div>
+    <div id="homeAnnouncement" style="display:none;margin-bottom:10px"></div>
     <div id="homeAlerts" style="display:none;margin-bottom:10px;cursor:pointer" onclick="openAceleraciones()"></div>
+    <div id="homeAnnouncements" style="display:none;margin-bottom:10px"></div>
     <div id="homeMotivMsg" style="display:none;border-radius:12px;padding:14px 18px;margin-bottom:10px;text-align:center;font-size:13px;font-weight:700;line-height:1.4"></div>
   </div>
 </div>
@@ -1042,6 +1044,8 @@ body{padding-bottom:60px}
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openAnalisisIA()">🧠 Análisis IA</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openCompetencias()">📊 Competencias</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="verPropositos()">🔥 Ver Propósitos</button>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="gestionarAvisos()">📢 Avisos</button>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="gestionarAvisos()">📢 Avisos</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="showAddUserForm()">+ Nuevo Usuario</button>
@@ -2630,6 +2634,8 @@ function goBack() {
 // HOME UPDATE
 // ============================================================
 function updateHome() {
+  loadAnnouncement();
+  loadAnnouncements();
   // Agent display
   const agentEl = document.getElementById('headerAgent');
   const configDesc = document.getElementById('configDesc');
@@ -3517,7 +3523,14 @@ function updateDeviceCalc(id) {
   const container = document.getElementById('calc_' + id);
 
   if (precioPromo === null || precioPromo === undefined || precioPromo === 'NA') {
-    container.innerHTML = '<div class="not-available">Este equipo no está disponible en el plan y plazo seleccionados.</div>';
+    // No promo price - offer to quote at full price (precio de contado)
+    const mensualFull = dev.precioContado / plazo + plan.price;
+    container.innerHTML = '<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:10px;margin-top:8px">' +
+      '<div style="font-size:10px;color:#E65100;font-weight:700;margin-bottom:4px">⚠️ Sin precio promocional en este plan/plazo</div>' +
+      '<div style="font-size:11px;color:var(--text-2);margin-bottom:6px">Se cotiza a precio de lista: <b>$' + dev.precioContado.toLocaleString('es-MX',{minimumFractionDigits:2}) + '</b></div>' +
+      '<div style="font-size:13px;font-weight:800;color:var(--att-blue);margin-bottom:6px">Mensual: $' + mensualFull.toLocaleString('es-MX',{minimumFractionDigits:2}) + '</div>' +
+      '<button class="btn btn-primary" style="font-size:11px;padding:6px 14px;background:#E65100" onclick="addItemFullPrice(\'' + id + '\',\'' + planId + '\',' + plazo + ')">Cotizar a precio lista</button>' +
+      '</div>';
     return;
   }
 
@@ -3564,6 +3577,44 @@ function updateDeviceCalc(id) {
 // ============================================================
 // ITEMS MANAGEMENT
 // ============================================================
+function addItemFullPrice(devId, planId, plazo) {
+  var dev = state.devices.find(function(d){return d.id===devId});
+  if (!dev) return;
+  var plan = ALL_PLANS.find(function(p){return p.id===planId});
+  if (!plan) return;
+
+  var isDup = state.items.some(function(it) { return it.equipo === dev.equipo && it.planId === planId && it.plazo === plazo; });
+  if (isDup) { alert('⚠️ Este equipo ya está en la cotización.'); return; }
+
+  var itemImgKey = deviceImgKey(dev.equipo);
+  var itemImgUrl = deviceImgCache[itemImgKey] || null;
+
+  state.items.push({
+    id: Date.now() + Math.random(),
+    equipo: dev.equipo,
+    marca: dev.marca || '',
+    precioLista: dev.precioContado,
+    precioPromo: dev.precioContado,
+    planId: planId,
+    planNombre: plan.name,
+    planPrecio: plan.price,
+    plazo: plazo,
+    enganchePct: 0,
+    enganche: 0,
+    deviceImgUrl: itemImgUrl,
+    sinPromo: true,
+  });
+
+  if (itemImgUrl) {
+    var newIdx = state.items.length - 1;
+    (async function() {
+      try { var r=await fetch(itemImgUrl); var b=await r.blob(); var rd=new FileReader(); rd.onload=function(){state.items[newIdx].imageData=rd.result;renderItems()}; rd.readAsDataURL(b); } catch(e){}
+    })();
+  }
+  renderItems();
+  alert('✅ ' + dev.equipo + ' agregado a precio lista ($' + dev.precioContado.toLocaleString('es-MX') + ')');
+}
+
 function addItemFromDevice(devId) {
   const dev = state.devices.find(d => d.id === devId);
   if (!dev) return;
@@ -3571,9 +3622,14 @@ function addItemFromDevice(devId) {
   const planId = document.getElementById('plan_' + devId).value;
   const plazo = parseInt(document.getElementById('plazo_' + devId).value);
   const plan = ALL_PLANS.find(p => p.id === planId);
-  const precioPromo = dev.pricing[planId]?.[plazo];
+  var precioPromo = dev.pricing[planId]?.[plazo];
 
-  if (precioPromo === null || precioPromo === undefined) return;
+  if (precioPromo === null || precioPromo === undefined || precioPromo === 'NA') {
+    // Show the calc panel which has the "Cotizar a precio lista" button
+    updateDeviceCalc(dev.id);
+    alert('⚠️ Este equipo no tiene precio promocional en este plan/plazo.\n\nPuedes cotizarlo a precio de lista usando el botón naranja que aparece en la tarjeta del equipo.');
+    return;
+  }
 
   // Check for exact duplicate (same device, plan, plazo)
   var isDuplicate = state.items.some(function(it) {
@@ -10978,6 +11034,94 @@ function buildPlanIAContext(target, mes, rol) {
   try { if(state&&state.cotizaciones&&state.cotizaciones.length){var cs={};state.cotizaciones.forEach(function(c){var s=c.estatus||'p';cs[s]=(cs[s]||0)+1});ctx+='\nCOTIZACIONES: '+Object.keys(cs).map(function(s){return s+':'+cs[s]}).join(', ')+'\n';} } catch(e){}
   return ctx;
 }
+// ── AVISOS / ANUNCIOS ──
+async function loadAnnouncements() {
+  if (!supabase) return;
+  var el = document.getElementById('homeAnnouncements');
+  if (!el) return;
+  try {
+    var {data} = await supabase.from('avisos').select('*').eq('activo', true).order('created_at', {ascending: false}).limit(5);
+    if (!data || data.length === 0) { el.style.display = 'none'; return; }
+    var typeStyles = {
+      mejora: {icon:'✅', bg:'linear-gradient(135deg,#ECFDF5,#D1FAE5)', border:'#10B981', color:'#065F46'},
+      aviso: {icon:'📢', bg:'linear-gradient(135deg,#EFF6FF,#DBEAFE)', border:'#3B82F6', color:'#1E40AF'},
+      urgente: {icon:'🚨', bg:'linear-gradient(135deg,#FEF2F2,#FECACA)', border:'#DC3545', color:'#991B1B'},
+      correccion: {icon:'🔧', bg:'linear-gradient(135deg,#FFFBEB,#FEF3C7)', border:'#F59E0B', color:'#92400E'}
+    };
+    var h = '';
+    data.forEach(function(a) {
+      var st = typeStyles[a.tipo] || typeStyles.aviso;
+      var d = new Date(a.created_at);
+      var dateStr = d.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+      h += '<div style="background:'+st.bg+';border-left:4px solid '+st.border+';border-radius:10px;padding:10px 14px;margin-bottom:6px">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">';
+      h += '<span style="font-size:12px;font-weight:800;color:'+st.color+'">'+st.icon+' '+a.titulo+'</span>';
+      h += '<span style="font-size:8px;color:var(--text-3)">'+dateStr+' · '+(a.autor||'')+'</span></div>';
+      h += '<div style="font-size:11px;color:'+st.color+'99;line-height:1.4">'+a.mensaje+'</div></div>';
+    });
+    el.innerHTML = h;
+    el.style.display = '';
+  } catch(e) { el.style.display = 'none'; }
+}
+
+async function gestionarAvisos() {
+  if (!supabase || !currentUser) return;
+  var {data: avisos} = await supabase.from('avisos').select('*').order('created_at', {ascending: false}).limit(20);
+  avisos = avisos || [];
+  var overlay = document.createElement('div');
+  overlay.id = 'avisosOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:16px';
+  var h = '<div style="background:white;border-radius:16px;padding:20px;max-width:500px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">';
+  h += '<div style="font-size:16px;font-weight:900">📢 Gestionar Avisos</div>';
+  h += '<button onclick="document.getElementById(\'avisosOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div>';
+  h += '<div style="background:var(--surface-2);border-radius:10px;padding:12px;margin-bottom:14px">';
+  h += '<div style="font-size:12px;font-weight:700;margin-bottom:8px">Nuevo aviso</div>';
+  h += '<div style="display:flex;gap:6px;margin-bottom:6px"><select class="field" id="avisoTipo" style="font-size:11px;width:auto">';
+  h += '<option value="mejora">✅ Mejora</option><option value="aviso">📢 Aviso</option><option value="urgente">🚨 Urgente</option><option value="correccion">🔧 Corrección</option></select>';
+  h += '<input type="text" class="field" id="avisoTitulo" placeholder="Título" style="flex:1;font-size:11px"></div>';
+  h += '<textarea class="field" id="avisoMensaje" placeholder="Mensaje..." style="font-size:11px;min-height:50px;resize:vertical;margin-bottom:6px"></textarea>';
+  h += '<button onclick="crearAviso()" class="btn btn-primary" style="font-size:11px;padding:5px 14px">Publicar</button></div>';
+  if (avisos.length > 0) {
+    h += '<div style="font-size:12px;font-weight:700;margin-bottom:6px">Avisos publicados</div>';
+    avisos.forEach(function(a) {
+      var d = new Date(a.created_at);
+      var dateStr = d.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+      h += '<div style="background:var(--surface-2);border-radius:8px;padding:8px 10px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">';
+      h += '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+a.titulo+'</div>';
+      h += '<div style="font-size:9px;color:var(--text-3)">'+dateStr+' · '+(a.activo?'<span style="color:#10B981">Activo</span>':'<span>Inactivo</span>')+'</div></div>';
+      h += '<div style="display:flex;gap:4px;flex-shrink:0">';
+      h += '<button onclick="toggleAviso(\''+a.id+'\','+(!a.activo)+')" style="font-size:9px;padding:3px 8px;background:'+(a.activo?'#FEF2F2':'#ECFDF5')+';color:'+(a.activo?'#DC3545':'#10B981')+';border:1px solid '+(a.activo?'#FECACA':'#A7F3D0')+';border-radius:5px;cursor:pointer">'+(a.activo?'Ocultar':'Mostrar')+'</button>';
+      h += '<button onclick="eliminarAviso(\''+a.id+'\')" style="font-size:9px;padding:3px 6px;background:#FEF2F2;color:#DC3545;border:1px solid #FECACA;border-radius:5px;cursor:pointer">🗑️</button>';
+      h += '</div></div>';
+    });
+  }
+  h += '</div>';
+  overlay.innerHTML = h;
+  document.body.appendChild(overlay);
+}
+
+async function crearAviso() {
+  var titulo = document.getElementById('avisoTitulo').value.trim();
+  var mensaje = document.getElementById('avisoMensaje').value.trim();
+  if (!titulo || !mensaje) { alert('Completa título y mensaje'); return; }
+  try {
+    await supabase.from('avisos').insert({tipo:document.getElementById('avisoTipo').value, titulo:titulo, mensaje:mensaje, autor:currentUser.nombre, activo:true});
+    document.getElementById('avisosOverlay').remove();
+    gestionarAvisos();
+    loadAnnouncements();
+  } catch(e) { alert('Error: '+e.message); }
+}
+
+async function toggleAviso(id, estado) {
+  try { await supabase.from('avisos').update({activo:estado}).eq('id',id); document.getElementById('avisosOverlay').remove(); gestionarAvisos(); loadAnnouncements(); } catch(e) { alert('Error: '+e.message); }
+}
+
+async function eliminarAviso(id) {
+  if (!confirm('¿Eliminar?')) return;
+  try { await supabase.from('avisos').delete().eq('id',id); document.getElementById('avisosOverlay').remove(); gestionarAvisos(); loadAnnouncements(); } catch(e) { alert('Error: '+e.message); }
+}
+
 // ── VER PROPÓSITOS (ADMIN) ──
 async function verPropositos() {
   if (!supabase) return;
@@ -11057,6 +11201,124 @@ async function verPropositos() {
   h += '</div>';
   overlay.innerHTML = h;
   document.body.appendChild(overlay);
+}
+
+// ── AVISOS / COMUNICADOS ──
+async function loadAnnouncement() {
+  if (!supabase) return;
+  try {
+    var {data} = await supabase.from('avisos').select('*').eq('activo', true).order('created_at', {ascending: false}).limit(1);
+    var el = document.getElementById('homeAnnouncement');
+    if (!el) return;
+    if (data && data.length > 0) {
+      var a = data[0];
+      var tipoColors = {info:'#0057B8',mejora:'#10B981',urgente:'#DC3545',correccion:'#E6A200'};
+      var tipoIcons = {info:'📢',mejora:'✅',urgente:'🚨',correccion:'🔧'};
+      var color = tipoColors[a.tipo] || '#0057B8';
+      var icon = tipoIcons[a.tipo] || '📢';
+      var dismissKey = 'aviso_dismiss_' + a.id;
+      if (localStorage.getItem(dismissKey)) { el.style.display = 'none'; return; }
+      el.style.display = '';
+      el.innerHTML = '<div style="background:'+color+'11;border:1px solid '+color+'44;border-radius:12px;padding:12px 14px;position:relative">' +
+        '<button onclick="dismissAviso(\''+a.id+'\')" style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:14px;cursor:pointer;color:var(--text-3)">✕</button>' +
+        '<div style="display:flex;gap:8px;align-items:flex-start">' +
+        '<span style="font-size:20px">'+icon+'</span>' +
+        '<div style="flex:1"><div style="font-size:13px;font-weight:800;color:'+color+';margin-bottom:3px">'+a.titulo+'</div>' +
+        '<div style="font-size:11px;color:var(--text-2);line-height:1.4">'+a.mensaje+'</div>' +
+        '<div style="font-size:9px;color:var(--text-3);margin-top:4px">'+a.autor+' · '+new Date(a.created_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short'})+'</div>' +
+        '</div></div></div>';
+    } else {
+      el.style.display = 'none';
+    }
+  } catch(e) {}
+}
+
+function dismissAviso(id) {
+  localStorage.setItem('aviso_dismiss_' + id, '1');
+  document.getElementById('homeAnnouncement').style.display = 'none';
+}
+
+async function gestionarAvisos() {
+  if (!supabase) return;
+  var {data: avisos} = await supabase.from('avisos').select('*').order('created_at', {ascending: false}).limit(10);
+  avisos = avisos || [];
+
+  var overlay = document.createElement('div');
+  overlay.id = 'avisosOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:16px';
+
+  var h = '<div style="background:white;border-radius:16px;padding:20px;max-width:500px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">';
+  h += '<div style="font-size:16px;font-weight:900">📢 Gestionar Avisos</div>';
+  h += '<button onclick="document.getElementById(\'avisosOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>';
+  h += '</div>';
+
+  // New aviso form
+  h += '<div style="background:var(--surface-2);border-radius:10px;padding:12px;margin-bottom:14px">';
+  h += '<div style="font-size:12px;font-weight:700;margin-bottom:8px">Nuevo aviso</div>';
+  h += '<select class="field" id="avisoTipo" style="font-size:11px;margin-bottom:6px">';
+  h += '<option value="info">📢 Informativo</option>';
+  h += '<option value="mejora">✅ Mejora implementada</option>';
+  h += '<option value="correccion">🔧 Corrección</option>';
+  h += '<option value="urgente">🚨 Urgente</option>';
+  h += '</select>';
+  h += '<input type="text" class="field" id="avisoTitulo" placeholder="Título del aviso" style="font-size:12px;margin-bottom:6px">';
+  h += '<textarea class="field" id="avisoMensaje" placeholder="Mensaje detallado..." style="font-size:11px;min-height:50px;resize:vertical;margin-bottom:6px"></textarea>';
+  h += '<button onclick="publicarAviso()" class="btn btn-primary" style="font-size:11px;padding:6px 16px;width:100%">Publicar aviso</button>';
+  h += '</div>';
+
+  // Existing avisos
+  if (avisos.length > 0) {
+    h += '<div style="font-size:12px;font-weight:700;margin-bottom:6px">Avisos anteriores:</div>';
+    avisos.forEach(function(a) {
+      var d = new Date(a.created_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:var(--surface-2);border-radius:6px;margin-bottom:4px;border-left:3px solid '+(a.activo?'#10B981':'var(--border)')+'">';
+      h += '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+a.titulo+'</div><div style="font-size:8px;color:var(--text-3)">'+d+' · '+(a.activo?'Activo':'Inactivo')+'</div></div>';
+      h += '<div style="display:flex;gap:4px;flex-shrink:0">';
+      if (a.activo) h += '<button onclick="toggleAviso(\''+a.id+'\',false)" style="font-size:8px;padding:2px 6px;background:#FEF2F2;color:#DC3545;border:1px solid #FECACA;border-radius:4px;cursor:pointer">Desactivar</button>';
+      else h += '<button onclick="toggleAviso(\''+a.id+'\',true)" style="font-size:8px;padding:2px 6px;background:#E8F5E9;color:#10B981;border:1px solid #A5D6A7;border-radius:4px;cursor:pointer">Activar</button>';
+      h += '<button onclick="deleteAviso(\''+a.id+'\')" style="font-size:8px;padding:2px 6px;background:#FEF2F2;color:#DC3545;border:1px solid #FECACA;border-radius:4px;cursor:pointer">🗑️</button>';
+      h += '</div></div>';
+    });
+  }
+
+  h += '</div>';
+  overlay.innerHTML = h;
+  document.body.appendChild(overlay);
+}
+
+async function publicarAviso() {
+  var tipo = document.getElementById('avisoTipo').value;
+  var titulo = document.getElementById('avisoTitulo').value.trim();
+  var mensaje = document.getElementById('avisoMensaje').value.trim();
+  if (!titulo || !mensaje) { alert('Escribe título y mensaje'); return; }
+
+  try {
+    // Deactivate previous
+    await supabase.from('avisos').update({activo: false}).eq('activo', true);
+    // Insert new
+    await supabase.from('avisos').insert({tipo: tipo, titulo: titulo, mensaje: mensaje, autor: currentUser.nombre, activo: true});
+    document.getElementById('avisosOverlay').remove();
+    alert('✅ Aviso publicado. Todos lo verán al abrir la app.');
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function toggleAviso(id, activo) {
+  try {
+    if (activo) await supabase.from('avisos').update({activo: false}).eq('activo', true);
+    await supabase.from('avisos').update({activo: activo}).eq('id', id);
+    document.getElementById('avisosOverlay').remove();
+    gestionarAvisos();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function deleteAviso(id) {
+  if (!confirm('¿Eliminar este aviso?')) return;
+  try {
+    await supabase.from('avisos').delete().eq('id', id);
+    document.getElementById('avisosOverlay').remove();
+    gestionarAvisos();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 // ── EQUIPOS INCLUIDOS ($0) ──
