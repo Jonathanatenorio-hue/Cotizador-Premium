@@ -975,7 +975,7 @@ body{padding-bottom:60px}
         <div style="font-size:18px;font-weight:900">💬 Buzón Anónimo</div>
         <div style="font-size:10px;color:var(--text-3)">Pregunta, sugiere o comparte lo que quieras. Es anónimo para todos.</div>
       </div>
-      <button onclick="toggleBuzonForm()" id="btnNuevaPregunta" class="btn btn-primary" style="font-size:11px;padding:6px 14px">✏️ Escribir</button>
+      <button onclick="toggleBuzonAnonimoForm()" id="btnNuevaPregunta" class="btn btn-primary" style="font-size:11px;padding:6px 14px">✏️ Escribir</button>
     </div>
     <div id="buzonForm" style="display:none;margin-bottom:12px">
       <div class="section" style="padding:14px;border:2px solid #8B5CF6">
@@ -988,7 +988,7 @@ body{padding-bottom:60px}
         </select>
         <textarea class="field" id="buzonTexto" placeholder="Escribe tu pregunta, sugerencia o comentario..." style="font-size:12px;min-height:70px;resize:vertical;margin-bottom:8px"></textarea>
         <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button onclick="toggleBuzonForm()" class="btn btn-secondary" style="font-size:11px;padding:5px 14px">Cancelar</button>
+          <button onclick="toggleBuzonAnonimoForm()" class="btn btn-secondary" style="font-size:11px;padding:5px 14px">Cancelar</button>
           <button onclick="enviarBuzon()" class="btn btn-primary" style="font-size:11px;padding:5px 14px;background:#8B5CF6">Enviar anónimamente</button>
         </div>
       </div>
@@ -11222,7 +11222,7 @@ async function loadBuzonPosts() {
   }
 }
 
-function toggleBuzonForm() {
+function toggleBuzonAnonimoForm() {
   var f = document.getElementById('buzonForm');
   f.style.display = f.style.display === 'none' ? '' : 'none';
 }
