@@ -640,12 +640,7 @@ body{padding-bottom:60px}
         <div class="card-desc" id="dashboardDesc">Métricas y conversión</div>
       </div>
 
-      <div class="home-card clickable" id="cardRecuperacion" style="display:none" onclick="openRecuperacion()">
-        <div class="card-icon">🔄</div>
-        <div class="card-title">Recuperación</div>
-        <div class="card-desc" id="recupDesc">Cotizaciones por reasignar</div>
-      </div>
-
+      <!-- recuperacion removed -->
       <div class="home-card clickable" id="cardAceleraciones" style="display:none" onclick="openAceleraciones()">
         <div class="card-icon">📋</div>
         <div class="card-title">Mis Pendientes</div>
@@ -1259,51 +1254,6 @@ body{padding-bottom:60px}
   </div>
 </div>
 
-<!-- ===== VIEW: RECUPERACIÓN ===== -->
-<div class="view" id="viewRecuperacion">
-  <div class="container">
-    <div class="section" style="padding:14px;margin-bottom:8px">
-      <div class="section-title">🔄 Recuperación de Leads</div>
-      <p style="font-size:12px;color:var(--text-3);margin:4px 0 10px">Cotizaciones recuperables: perdidas, sin seguimiento y de ex-agentes.</p>
-      <!-- Tabs -->
-      <div style="display:flex;gap:4px;margin-bottom:10px">
-        <button class="btn" id="recTabRecup" onclick="recTab('recuperables')" style="flex:1;font-size:11px;padding:6px;border-radius:8px;background:var(--att-blue);color:white;border:none">📋 Recuperables</button>
-        <button class="btn" id="recTabExag" onclick="recTab('exagentes')" style="flex:1;font-size:11px;padding:6px;border-radius:8px;background:transparent;color:var(--text-2);border:1px solid var(--border)">👤 Ex-agentes</button>
-      </div>
-      <!-- Filters -->
-      <div id="recFilters" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-        <select class="field" id="recFilterEstatus" onchange="recPopulateTipificacion();renderRecuperacion()" style="width:auto;font-size:11px;padding:5px 8px">
-          <option value="all">Todos los estatus</option>
-          <option value="perdida">Perdidas</option>
-          <option value="enviada">Enviadas sin seguimiento</option>
-          <option value="seguimiento">En seguimiento estancadas</option>
-        </select>
-        <select class="field" id="recFilterTipificacion" onchange="renderRecuperacion()" style="width:auto;font-size:11px;padding:5px 8px">
-          <option value="all">Todas las tipificaciones</option>
-        </select>
-        <select class="field" id="recFilterCentro" onchange="recFilterCentroChange();renderRecuperacion()" style="width:auto;font-size:11px;padding:5px 8px">
-          <option value="all">Todos los centros</option>
-        </select>
-        <select class="field" id="recFilterAgente" onchange="renderRecuperacion()" style="width:auto;font-size:11px;padding:5px 8px">
-          <option value="all">Todos los agentes</option>
-        </select>
-      </div>
-      <!-- Reasignar bar -->
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;background:var(--bg-main);border-radius:8px;border:1px solid var(--border)">
-        <span style="font-size:11px;font-weight:600">Reasignar a:</span>
-        <select class="field" id="recupAgente" style="width:auto;min-width:180px;font-size:11px;padding:5px 8px"></select>
-        <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="reasignarSeleccionadas()">✅ Reasignar</button>
-        <button class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="seleccionarTodasRecup()">☑️ Todas</button>
-        <button class="btn" id="btnEliminarRecup" style="display:none;font-size:11px;padding:5px 12px;background:#DC3545;color:white;border:none;border-radius:8px" onclick="eliminarSeleccionadasRecup()">🗑️ Eliminar</button>
-        <span id="recSelCount" style="font-size:10px;color:var(--text-3)"></span>
-      </div>
-      <!-- KPIs -->
-      <div id="recKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:6px;margin-bottom:10px"></div>
-      <!-- List -->
-      <div id="recupList"></div>
-    </div>
-  </div>
-</div>
 
 <!-- ===== VIEW: ACELERACIONES ===== -->
 <div class="view" id="viewAceleraciones">
@@ -2166,7 +2116,6 @@ async function refreshData() {
     updateHome();
     // If on specific views, refresh them too
     if (state.currentView === 'historial') { initHistorialFilters(); renderHistorial(); }
-    if (state.currentView === 'recuperacion') { await openRecuperacion(); }
     if (state.currentView === 'dashboard') { openDashboard(); }
   } catch(e) { console.error('Refresh error:', e); }
   btn.disabled = false;
@@ -2740,14 +2689,6 @@ function updateHome() {
     dashCard.style.display = '';
   } else {
     dashCard.style.display = 'none';
-  }
-
-  // Show recuperacion card for admin/coordinator — always visible
-  var recupCard = document.getElementById('cardRecuperacion');
-  recupCard.style.display = 'none';
-  if (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) {
-    recupCard.style.display = '';
-    document.getElementById('recupDesc').textContent = 'Leads recuperables y reasignación';
   }
 
   // Show informes card for admin/coordinador/supervisor
@@ -8951,7 +8892,7 @@ async function darDeBaja(userId) {
   var cotsCount = await moverCotsARecuperacion(userId);
   var msg = '¿Dar de baja a este usuario?';
   if (cotsCount > 0) {
-    msg += '\n\n' + cotsCount + ' cotización(es) (no ventas) pasarán a Recuperación para reasignarlas.';
+    msg += '\n\n' + cotsCount + ' cotización(es) (no ventas) puedes reasignarlas desde Historial.';
   }
   if (!confirm(msg)) return;
   try {
@@ -8959,7 +8900,7 @@ async function darDeBaja(userId) {
     await loadAdminData();
     renderAdminUsers();
     if (cotsCount > 0) {
-      alert('Usuario dado de baja. Ve a Recuperación para reasignar sus ' + cotsCount + ' cotización(es).');
+      alert('Usuario dado de baja. Ve a Historial para reasignar sus ' + cotsCount + ' cotización(es).');
     }
   } catch(e) { console.error(e); }
 }
@@ -9016,7 +8957,7 @@ async function eliminarUsuario(userId, nombre) {
   var cotsCount = await moverCotsARecuperacion(userId);
   var msg = '⚠️ ¿ELIMINAR permanentemente a ' + nombre + '?\n\nEsto NO se puede deshacer.';
   if (cotsCount > 0) {
-    msg += '\n\n' + cotsCount + ' cotización(es) pasarán a Recuperación.';
+    msg += '\n\n' + cotsCount + ' cotización(es) puedes reasignarlas desde Historial.';
     msg += '\nPrimero debes reasignarlas antes de eliminar.';
     alert(msg);
     return;
@@ -9030,7 +8971,7 @@ async function eliminarUsuario(userId, nombre) {
     renderAdminUsers();
     alert('Usuario eliminado.');
   } catch(e) {
-    alert('No se pudo eliminar. Primero da de baja al usuario y reasigna sus cotizaciones desde Recuperación.');
+    alert('No se pudo eliminar. Primero da de baja al usuario y reasigna sus cotizaciones desde Historial.');
     console.error(e);
   }
 }
