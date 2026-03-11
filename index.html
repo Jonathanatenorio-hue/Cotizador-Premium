@@ -1922,14 +1922,16 @@ async function processPriceListData(arrayBuf, fileName) {
     var baseSheetName = null;
     for (var bsi = 0; bsi < sheetKeys.length; bsi++) {
       var bsn = sheetKeys[bsi].toLowerCase().trim();
-      if (bsn.indexOf('premium') >= 0 && bsn.indexOf('promocion') < 0 && bsn.indexOf('(2)') < 0 && bsn.indexOf('combo') < 0 && bsn.indexOf('titanio') < 0) {
+      // Must have "premium", must NOT have "promocion", must NOT be the promo sheet
+      if (bsn.indexOf('premium') >= 0 && bsn.indexOf('promocion') < 0 && bsn.indexOf('(2)') < 0 && bsn.indexOf('combo') < 0 && bsn.indexOf('titanio') < 0 && sheetKeys[bsi] !== pSheetName) {
         baseSheetName = sheetKeys[bsi]; break;
       }
     }
     var existingNames = {};
     devices.forEach(function(d) { existingNames[d.equipo.toLowerCase().trim()] = true; });
     
-    if (baseSheetName && baseSheetName !== pSheetName) {
+    if (baseSheetName) {
+      console.log('Base sheet found: "'+baseSheetName+'" (promo sheet: "'+pSheetName+'")');
       var bSheet = wb.Sheets[baseSheetName];
       var bRows = XLSX.utils.sheet_to_json(bSheet, { header:1, defval:null });
       var bCols = { equipo:-1, marca:-1, precio:-1, estatus:-1, vigencia:-1 };
@@ -1974,6 +1976,8 @@ async function processPriceListData(arrayBuf, fileName) {
         }
         console.log('Base sheet "'+baseSheetName+'": added '+addedBase+' non-promo devices');
       }
+    } else {
+      console.log('No separate base Premium sheet found. Sheets:', sheetKeys.join(', '), '| Promo sheet:', pSheetName);
     }
 
     state.devices = devices;
