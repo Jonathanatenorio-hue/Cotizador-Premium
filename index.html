@@ -1045,7 +1045,6 @@ body{padding-bottom:60px}
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openCompetencias()">📊 Competencias</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="verPropositos()">🔥 Ver Propósitos</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="gestionarAvisos()">📢 Avisos</button>
-        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="gestionarAvisos()">📢 Avisos</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="showAddUserForm()">+ Nuevo Usuario</button>
@@ -1916,6 +1915,64 @@ async function processPriceListData(arrayBuf, fileName) {
           var vigencia = tCols.vigencia >= 0 ? (r[tCols.vigencia] || '') : '';
           devices.push({ id:'t'+i, sheet:'Titanio', oferta:'AT\u0026T Titanio', equipo:equipo.trim(), marca:String(marca), precioContado:pc||0, estatus:String(estatus), vigencia:String(vigencia), fechaInicio:parseVigencia(vigencia).inicio, fechaFin:parseVigencia(vigencia).fin, fechaFinText:'', pricing:{titanio:{24:promo24}}, plans:PLANS_TITANIO, plazos:[24] });
         }
+      }
+    }
+
+    // === Parse AT&T Premium BASE sheet (non-promo devices) ===
+    var baseSheetName = null;
+    for (var bsi = 0; bsi < sheetKeys.length; bsi++) {
+      var bsn = sheetKeys[bsi].toLowerCase().trim();
+      if (bsn.indexOf('premium') >= 0 && bsn.indexOf('promocion') < 0 && bsn.indexOf('(2)') < 0 && bsn.indexOf('combo') < 0 && bsn.indexOf('titanio') < 0) {
+        baseSheetName = sheetKeys[bsi]; break;
+      }
+    }
+    var existingNames = {};
+    devices.forEach(function(d) { existingNames[d.equipo.toLowerCase().trim()] = true; });
+    
+    if (baseSheetName && baseSheetName !== pSheetName) {
+      var bSheet = wb.Sheets[baseSheetName];
+      var bRows = XLSX.utils.sheet_to_json(bSheet, { header:1, defval:null });
+      var bCols = { equipo:-1, marca:-1, precio:-1, estatus:-1, vigencia:-1 };
+      var bStartRow = -1;
+      for (var bri = 0; bri < Math.min(bRows.length, 15); bri++) {
+        var br = bRows[bri]; if (!br) continue;
+        for (var bci = 0; bci < br.length; bci++) {
+          var bc = String(br[bci] || '').toLowerCase().trim();
+          if (bc.includes('equipo')) bCols.equipo = bci;
+          if (bc.includes('marca')) bCols.marca = bci;
+          if (bc.includes('precio') && bc.includes('contado')) bCols.precio = bci;
+          if (bc.includes('estatus') && bCols.estatus < 0) bCols.estatus = bci;
+          if (bc === 'vigencia') bCols.vigencia = bci;
+        }
+        if (bCols.equipo >= 0 && bCols.precio >= 0) { bStartRow = bri + 1; break; }
+      }
+      if (bStartRow >= 0 && bCols.equipo >= 0) {
+        var addedBase = 0;
+        for (var bi = bStartRow; bi < bRows.length; bi++) {
+          var brow = bRows[bi]; if (!brow) continue;
+          var bEquipo = brow[bCols.equipo];
+          if (!bEquipo || typeof bEquipo !== 'string' || bEquipo.trim() === '') continue;
+          bEquipo = bEquipo.trim();
+          if (existingNames[bEquipo.toLowerCase().trim()]) continue;
+          var bPrecio = bCols.precio >= 0 ? (typeof brow[bCols.precio] === 'number' ? brow[bCols.precio] : parseFloat(String(brow[bCols.precio] || '').replace(/[$,]/g, ''))) : 0;
+          if (!bPrecio || bPrecio <= 0) continue;
+          var bMarca = bCols.marca >= 0 ? (brow[bCols.marca] || '') : '';
+          var bEstatus = bCols.estatus >= 0 ? (brow[bCols.estatus] || '') : '';
+          var bVigencia = bCols.vigencia >= 0 ? (brow[bCols.vigencia] || '') : '';
+          var bPricing = {};
+          PLANS_PREMIUM.forEach(function(plan) {
+            bPricing[plan.id] = {};
+            [24,30,36].forEach(function(plazo) { bPricing[plan.id][plazo] = bPrecio; });
+          });
+          devices.push({
+            id:'b'+bi, sheet:'Base', oferta:'AT\u0026T Premium', equipo:bEquipo, marca:String(bMarca),
+            precioContado:bPrecio, estatus:String(bEstatus), vigencia:String(bVigencia),
+            fechaInicio:parseVigencia(bVigencia).inicio, fechaFin:parseVigencia(bVigencia).fin,
+            fechaFinText:'', pricing:bPricing, plans:PLANS_PREMIUM, plazos:[24,30,36], sinPromo:true
+          });
+          addedBase++;
+        }
+        console.log('Base sheet "'+baseSheetName+'": added '+addedBase+' non-promo devices');
       }
     }
 
@@ -3427,8 +3484,11 @@ function searchDevices() {
   if (term.length < 2) { container.innerHTML = ''; return; }
 
   const vigentes = state.devices.filter(isVigente);
+  var termClean = term.replace(/\s+/g, '');
   const filtered = vigentes.filter(d => {
-    const matchTerm = d.equipo.toLowerCase().includes(term) || d.marca.toLowerCase().includes(term);
+    var nameClean = d.equipo.toLowerCase().replace(/\s+/g, '');
+    var brandClean = d.marca.toLowerCase().replace(/\s+/g, '');
+    const matchTerm = d.equipo.toLowerCase().includes(term) || d.marca.toLowerCase().includes(term) || nameClean.includes(termClean) || brandClean.includes(termClean);
     const matchFilter = filter === 'all' ||
       (filter === 'premium' && d.oferta.includes('Premium')) ||
       (filter === 'titanio' && d.oferta.includes('Titanio'));
@@ -3498,6 +3558,7 @@ function renderDeviceCard(dev) {
         </div>
         <div id="calc_${dev.id}"></div>
         <div class="device-vigencia"><strong>Vigencia:</strong> ${dev.vigencia}</div>
+        ${dev.sinPromo ? '<div style="font-size:9px;color:#E65100;font-weight:700;background:#FFF3E0;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:2px">⚠️ Sin promoción — Precio de lista</div>' : ''}
       </div>
     </div>
   `;
