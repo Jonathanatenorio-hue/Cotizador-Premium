@@ -1944,8 +1944,9 @@ async function processPriceListData(arrayBuf, fileName) {
         var br = bRows[bri]; if (!br) continue;
         for (var bci = 0; bci < br.length; bci++) {
           var bc = String(br[bci] || '').toLowerCase().trim();
-          if (bc.includes('equipo')) bCols.equipo = bci;
-          if (bc.includes('marca')) bCols.marca = bci;
+          if (bc.includes('modelo') && bCols.equipo < 0) bCols.equipo = bci;
+          if (bc.includes('equipo') && bCols.equipo < 0) bCols.equipo = bci;
+          if (bc.includes('marca') && bCols.marca < 0) bCols.marca = bci;
           if (bc.includes('precio') && bc.includes('contado')) bCols.precio = bci;
           if (bc.includes('estatus') && bCols.estatus < 0) bCols.estatus = bci;
           if (bc === 'vigencia') bCols.vigencia = bci;
@@ -1954,6 +1955,24 @@ async function processPriceListData(arrayBuf, fileName) {
       }
       console.log('Base cols detected:', JSON.stringify(bCols), 'startRow:', bStartRow);
       if (bStartRow >= 0 && bCols.equipo >= 0) {
+        // Detect plan columns - look for "24 Meses" header in rows before data
+        var bPlanCols = {};
+        for (var bpri = 0; bpri < bStartRow; bpri++) {
+          var bpr = bRows[bpri]; if (!bpr) continue;
+          for (var bpc = bCols.precio + 1; bpc < bpr.length; bpc++) {
+            var bpv = String(bpr[bpc] || '').trim();
+            if (bpv === '24' || bpv === '24 Meses' || bpv === '24 meses') {
+              // Found first 24m column - calculate plan index
+              var bFirstPlanCol = bCols.precio + 1;
+              var bPlanIdx = Math.floor((bpc - bFirstPlanCol) / 3);
+              if (bPlanIdx >= 0 && bPlanIdx < PLANS_PREMIUM.length) {
+                bPlanCols[PLANS_PREMIUM[bPlanIdx].id] = bpc;
+              }
+            }
+          }
+        }
+        console.log('Base plan cols:', JSON.stringify(bPlanCols));
+        
         var addedBase = 0;
         for (var bi = bStartRow; bi < bRows.length; bi++) {
           var brow = bRows[bi]; if (!brow) continue;
@@ -1964,18 +1983,29 @@ async function processPriceListData(arrayBuf, fileName) {
           var bPrecio = bCols.precio >= 0 ? (typeof brow[bCols.precio] === 'number' ? brow[bCols.precio] : parseFloat(String(brow[bCols.precio] || '').replace(/[$,]/g, ''))) : 0;
           if (!bPrecio || bPrecio <= 0) continue;
           var bMarca = bCols.marca >= 0 ? (brow[bCols.marca] || '') : '';
-          var bEstatus = bCols.estatus >= 0 ? (brow[bCols.estatus] || '') : '';
+          var bEstatus = bCols.estatus >= 0 ? (brow[bCols.estatus] || '') : 'RESURTIBLE';
           var bVigencia = bCols.vigencia >= 0 ? (brow[bCols.vigencia] || '') : '';
+          
+          // Build pricing from actual columns or fallback to precio contado
           var bPricing = {};
+          var hasAnyPrice = false;
           PLANS_PREMIUM.forEach(function(plan) {
             bPricing[plan.id] = {};
-            [24,30,36].forEach(function(plazo) { bPricing[plan.id][plazo] = bPrecio; });
+            [0,1,2].forEach(function(offset) {
+              var plazo = [24,30,36][offset];
+              var col = bPlanCols[plan.id] ? bPlanCols[plan.id] + offset : -1;
+              var val = col >= 0 ? brow[col] : null;
+              if (typeof val === 'number' && val >= 0) { bPricing[plan.id][plazo] = val; hasAnyPrice = true; }
+              else bPricing[plan.id][plazo] = bPrecio; // Fallback to contado
+            });
           });
+          
           devices.push({
             id:'b'+bi, sheet:'Base', oferta:'AT\u0026T Premium', equipo:bEquipo, marca:String(bMarca),
             precioContado:bPrecio, estatus:String(bEstatus), vigencia:String(bVigencia),
             fechaInicio:parseVigencia(bVigencia).inicio, fechaFin:parseVigencia(bVigencia).fin,
-            fechaFinText:'', pricing:bPricing, plans:PLANS_PREMIUM, plazos:[24,30,36], sinPromo:true
+            fechaFinText:'', pricing:bPricing, plans:PLANS_PREMIUM, plazos:[24,30,36],
+            sinPromo: !hasAnyPrice
           });
           addedBase++;
         }
