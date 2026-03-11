@@ -2483,7 +2483,7 @@ async function syncCotizacionToSupabase(cotizacion, isEdit) {
     // Insert items
     var items = cotizacion.items.map(function(it) {
       var base = it.precioPromo - (it.enganche || 0);
-      var mensual = base / it.plazo + it.planPrecio;
+      var mensual = calcMensualTotal(it);
       return {
         cotizacion_id: cotData.id,
         equipo: it.equipo,
@@ -2497,6 +2497,10 @@ async function syncCotizacionToSupabase(cotizacion, isEdit) {
         plan_nombre: it.planNombre,
         plan_precio: it.planPrecio,
         mensual: Math.round(mensual * 100) / 100,
+        adicional_control: it.adicionales && it.adicionales.control ? true : false,
+        adicional_seguro: it.adicionales && it.adicionales.seguro ? true : false,
+        adicional_bateria: it.adicionales && it.adicionales.bateria ? true : false,
+        adicional_pantalla: it.adicionales && it.adicionales.pantalla ? true : false,
       };
     });
 
@@ -2613,6 +2617,7 @@ async function loadCotizacionesFromSupabase() {
             planNombre: it.plan_nombre,
             planPrecio: parseFloat(it.plan_precio),
             imageData: null,
+            adicionales: {control: it.adicional_control || false, seguro: it.adicional_seguro || false, bateria: it.adicional_bateria || false, pantalla: it.adicional_pantalla || false},
           };
         }),
         estatus: c.estatus,
@@ -3876,7 +3881,9 @@ function calcMensualTotal(item) {
   var seg = getSeguro(item.precioLista||0);
   var segCosto = (item.adicionales && item.adicionales.seguro && seg) ? seg.costo : 0;
   var ctrlCosto = (item.adicionales && item.adicionales.control) ? 50 : 0;
-  return mensualBase + segCosto + ctrlCosto;
+  var batCosto = (item.adicionales && item.adicionales.bateria) ? 99 : 0;
+  var pantCosto = (item.adicionales && item.adicionales.pantalla) ? 99 : 0;
+  return mensualBase + segCosto + ctrlCosto + batCosto + pantCosto;
 }
 
 function renderItems() {
@@ -3899,8 +3906,11 @@ function renderItems() {
     const seguro = getSeguro(item.precioLista);
     const seguroCosto = (item.adicionales && item.adicionales.seguro && seguro) ? seguro.costo : 0;
     const controlCosto = (item.adicionales && item.adicionales.control) ? 50 : 0;
+    const bateriaCosto = (item.adicionales && item.adicionales.bateria) ? 99 : 0;
+    const pantallaCosto = (item.adicionales && item.adicionales.pantalla) ? 99 : 0;
     const mensualBase = base / item.plazo + item.planPrecio;
-    const mensual = mensualBase + seguroCosto + controlCosto;
+    const mensual = mensualBase + seguroCosto + controlCosto + bateriaCosto + pantallaCosto;
+    const totalAdicionales = seguroCosto + controlCosto + bateriaCosto + pantallaCosto;
 
     html += `
       <div class="item-card">
@@ -3934,26 +3944,33 @@ function renderItems() {
             <span class="detail-label">Enganche %</span>
             <input class="field" type="number" min="0" max="100" value="${item.enganchePct}"
               style="width:55px;padding:4px 6px;font-size:13px;text-align:center"
-              oninput="updateEnganche(${idx}, this.value, 'pct')"
               onchange="updateEnganche(${idx}, this.value, 'pct')">
           </div>
           <div class="item-detail">
             <span class="detail-label">Enganche $</span>
             <input class="field" type="number" min="0" value="${item.enganche}"
               style="width:80px;padding:4px 6px;font-size:13px;text-align:center"
-              oninput="updateEnganche(${idx}, this.value, 'pesos')"
               onchange="updateEnganche(${idx}, this.value, 'pesos')">
           </div>
           <div class="item-detail" style="grid-column:1/-1">
-            <span class="detail-label">Adicionales</span>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;padding:4px 8px;border-radius:6px;background:${item.adicionales&&item.adicionales.control?'#E0F2FE':'var(--surface-2)'};border:1px solid ${item.adicionales&&item.adicionales.control?'#0284C7':'var(--border)'}">
-                <input type="checkbox" ${item.adicionales&&item.adicionales.control?'checked':''} onchange="toggleAdicional(${idx},'control')" style="accent-color:#0284C7">
-                <span style="font-weight:600;color:${item.adicionales&&item.adicionales.control?'#0284C7':'var(--text-2)'}">Add Control $50/mes</span>
+            <span class="detail-label">Adicionales <span style="font-size:8px;color:#8B5CF6;font-weight:700">💰 ¡Comisionables!</span></span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:10px;padding:3px 7px;border-radius:6px;background:${item.adicionales&&item.adicionales.control?'#E0F2FE':'var(--surface-2)'};border:1px solid ${item.adicionales&&item.adicionales.control?'#0284C7':'var(--border)'}">
+                <input type="checkbox" ${item.adicionales&&item.adicionales.control?'checked':''} onchange="toggleAdicional(${idx},'control')" style="accent-color:#0284C7;width:14px;height:14px">
+                <span style="font-weight:600;color:${item.adicionales&&item.adicionales.control?'#0284C7':'var(--text-3)'}">Add Control $50</span>
               </label>
-              ${seguro ? '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;padding:4px 8px;border-radius:6px;background:'+(item.adicionales&&item.adicionales.seguro?'#FEF3C7':'var(--surface-2)')+';border:1px solid '+(item.adicionales&&item.adicionales.seguro?'#D97706':'var(--border)')+'"><input type="checkbox" '+(item.adicionales&&item.adicionales.seguro?'checked':'')+' onchange="toggleAdicional('+idx+',\'seguro\')" style="accent-color:#D97706"><span style="font-weight:600;color:'+(item.adicionales&&item.adicionales.seguro?'#D97706':'var(--text-2)')+'">Seguro $'+seguro.costo+'/mes</span></label>' : ''}
+              ${seguro ? '<label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:10px;padding:3px 7px;border-radius:6px;background:'+(item.adicionales&&item.adicionales.seguro?'#FEF3C7':'var(--surface-2)')+';border:1px solid '+(item.adicionales&&item.adicionales.seguro?'#D97706':'var(--border)')+'"><input type="checkbox" '+(item.adicionales&&item.adicionales.seguro?'checked':'')+' onchange="toggleAdicional('+idx+',\'seguro\')" style="accent-color:#D97706;width:14px;height:14px"><span style="font-weight:600;color:'+(item.adicionales&&item.adicionales.seguro?'#D97706':'var(--text-3)')+'">Seguro $'+seguro.costo+'</span></label>' : ''}
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:10px;padding:3px 7px;border-radius:6px;background:${item.adicionales&&item.adicionales.bateria?'#ECFDF5':'var(--surface-2)'};border:1px solid ${item.adicionales&&item.adicionales.bateria?'#10B981':'var(--border)'}">
+                <input type="checkbox" ${item.adicionales&&item.adicionales.bateria?'checked':''} onchange="toggleAdicional(${idx},'bateria')" style="accent-color:#10B981;width:14px;height:14px">
+                <span style="font-weight:600;color:${item.adicionales&&item.adicionales.bateria?'#10B981':'var(--text-3)'}">Batería $99</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:10px;padding:3px 7px;border-radius:6px;background:${item.adicionales&&item.adicionales.pantalla?'#FAF5FF':'var(--surface-2)'};border:1px solid ${item.adicionales&&item.adicionales.pantalla?'#8B5CF6':'var(--border)'}">
+                <input type="checkbox" ${item.adicionales&&item.adicionales.pantalla?'checked':''} onchange="toggleAdicional(${idx},'pantalla')" style="accent-color:#8B5CF6;width:14px;height:14px">
+                <span style="font-weight:600;color:${item.adicionales&&item.adicionales.pantalla?'#8B5CF6':'var(--text-3)'}">Pantalla $99</span>
+              </label>
             </div>
             ${item.adicionales&&item.adicionales.seguro&&seguro ? '<div style="margin-top:4px;font-size:9px;padding:4px 8px;background:#FEF3C7;border-radius:4px;color:#92400E">🛡️ Deducible robo: $'+seguro.robo.toLocaleString('es-MX')+' · Deducible daño: $'+seguro.dano.toLocaleString('es-MX')+'</div>' : ''}
+            ${!(item.adicionales&&(item.adicionales.control||item.adicionales.seguro||item.adicionales.bateria||item.adicionales.pantalla)) ? '<div style="margin-top:4px;font-size:9px;padding:4px 8px;background:#FFF7ED;border-radius:4px;color:#C2410C;border:1px dashed #FB923C">💡 <b>No olvides ofertar adicionales</b> — Son comisionables y protegen al cliente</div>' : ''}
           </div>
           <div class="item-detail" style="grid-column:1/-1">
             <span class="detail-label">Imagen del equipo</span>
@@ -3972,7 +3989,7 @@ function renderItems() {
             <span class="detail-label">Equipo + Plan /mes${seguroCosto || controlCosto ? ' + Adicionales' : ''}</span>
             <div style="text-align:right">
               <strong style="font-size:16px;color:var(--att-blue)">$${mensual.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>
-              ${seguroCosto || controlCosto ? '<div style="font-size:8px;color:var(--text-3)">Equipo+Plan: $'+(mensualBase).toLocaleString('es-MX',{minimumFractionDigits:2})+(seguroCosto?' + Seguro: $'+seguroCosto:'')+(controlCosto?' + Control: $'+controlCosto:'')+'</div>' : ''}
+              ${seguroCosto || controlCosto || bateriaCosto || pantallaCosto ? '<div style="font-size:8px;color:var(--text-3)">Equipo+Plan: $'+(mensualBase).toLocaleString('es-MX',{minimumFractionDigits:2})+(controlCosto?' + Control: $50':'')+(seguroCosto?' + Seguro: $'+seguroCosto:'')+(bateriaCosto?' + Batería: $99':'')+(pantallaCosto?' + Pantalla: $99':'')+'</div>' : ''}
             </div>
           </div>
         </div>
@@ -4515,7 +4532,7 @@ function buildAndDownloadPDF(cot) {
   var tD = cot.items.map(function(it) {
     var ah = it.precioLista - it.precioPromo;
     var base = it.precioPromo - it.enganche;
-    var ep = base / it.plazo + it.planPrecio;
+    var ep = calcMensualTotal(it);
     var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
     return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), String(it.plazo), it.enganchePct+'%', f(it.enganche), it.planNombre, f(ep)];
   });
@@ -4546,6 +4563,55 @@ function buildAndDownloadPDF(cot) {
     theme: 'grid',
   });
   y = doc.lastAutoTable.finalY + 4;
+
+  // ═══════ ADICIONALES (Seguro + Control) ═══════
+  var itemsConAdicionales = cot.items.filter(function(it){return it.adicionales && (it.adicionales.seguro || it.adicionales.control || it.adicionales.bateria || it.adicionales.pantalla)});
+  if (itemsConAdicionales.length > 0) {
+    doc.setFontSize(10);
+    doc.setFont('helvetica','bold');
+    doc.setTextColor(...DARK);
+    doc.text('Servicios adicionales incluidos', mg, y + 3);
+    y += 7;
+    itemsConAdicionales.forEach(function(it) {
+      var seg = getSeguro(it.precioLista);
+      doc.setFontSize(8);
+      doc.setFont('helvetica','bold');
+      doc.setTextColor(...DARK);
+      doc.text(it.equipo + ':', mg + 2, y);
+      y += 4;
+      doc.setFont('helvetica','normal');
+      if (it.adicionales.control) {
+        doc.setFont('helvetica','bold'); doc.text('• Add Control — $50.00/mes', mg + 4, y);
+        doc.setFont('helvetica','normal'); y += 3;
+        doc.setFontSize(7); doc.setTextColor(80,80,80);
+        doc.text('  Controla el consumo de tus GB y asegura tu mensualidad. "Más control, cero cargos extra"', mg + 6, y);
+        doc.setTextColor(...DARK); doc.setFontSize(8); y += 4;
+      }
+      if (it.adicionales.seguro && seg) {
+        doc.setFont('helvetica','bold'); doc.text('• Seguro de equipo — $' + seg.costo + '.00/mes', mg + 4, y);
+        doc.setFont('helvetica','normal'); y += 3;
+        doc.setFontSize(7); doc.setTextColor(80,80,80);
+        doc.text('  Protección total contra robo o daño. "Tu equipo protegido, tu tranquilidad garantizada"', mg + 6, y); y += 3;
+        doc.text('  Deducible por robo: $' + seg.robo.toLocaleString('es-MX') + ' | Deducible por daño: $' + seg.dano.toLocaleString('es-MX'), mg + 6, y);
+        doc.setTextColor(...DARK); doc.setFontSize(8); y += 4;
+      }
+      if (it.adicionales.bateria) {
+        doc.setFont('helvetica','bold'); doc.text('• Seguro de batería — $99.00/mes', mg + 4, y);
+        doc.setFont('helvetica','normal'); y += 3;
+        doc.setFontSize(7); doc.setTextColor(80,80,80);
+        doc.text('  El desgaste de batería es inevitable. "Que la batería no limite tu día"', mg + 6, y);
+        doc.setTextColor(...DARK); doc.setFontSize(8); y += 4;
+      }
+      if (it.adicionales.pantalla) {
+        doc.setFont('helvetica','bold'); doc.text('• Seguro de pantalla — $99.00/mes', mg + 4, y);
+        doc.setFont('helvetica','normal'); y += 3;
+        doc.setFontSize(7); doc.setTextColor(80,80,80);
+        doc.text('  "Si tu pantalla se rompe, tu seguro responde"', mg + 6, y);
+        doc.setTextColor(...DARK); doc.setFontSize(8); y += 4;
+      }
+    });
+    y += 2;
+  }
 
   // ═══════ AHORRO TABLE PER EQUIPMENT ═══════
   var ahorroItems = cot.items.filter(function(it){return (it.precioLista - it.precioPromo) > 0});
@@ -4684,7 +4750,7 @@ function buildAndDownloadPDF(cot) {
     cot.items.forEach(function(it, idx) {
       if (y > H - 22) { doc.addPage(); y = 16; }
       var base = it.precioPromo - (it.enganche||0);
-      var ep = base / it.plazo + it.planPrecio;
+      var ep = calcMensualTotal(it);
       var btnW = cW;
       var btnH = 8;
       // Green rounded pill
@@ -4863,7 +4929,7 @@ function buildAndDownloadPDF_v2(cot) {
   var tD = cot.items.map(function(it) {
     var ah = it.precioLista - it.precioPromo;
     var base = it.precioPromo - it.enganche;
-    var ep = base / it.plazo + it.planPrecio;
+    var ep = calcMensualTotal(it);
     var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
     return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), String(it.plazo), it.enganchePct+'%', f(it.enganche), it.planNombre, f(ep)];
   });
@@ -4897,6 +4963,55 @@ function buildAndDownloadPDF_v2(cot) {
     },
   });
   y = doc.lastAutoTable.finalY + 4;
+
+  // ═══════ ADICIONALES (Seguro + Control) — Template 2 ═══════
+  var itemsConAd2 = cot.items.filter(function(it){return it.adicionales && (it.adicionales.seguro || it.adicionales.control || it.adicionales.bateria || it.adicionales.pantalla)});
+  if (itemsConAd2.length > 0) {
+    doc.setFontSize(10);
+    doc.setFont('helvetica','bold');
+    doc.setTextColor(...DARK);
+    doc.text('Servicios adicionales incluidos', mg, y + 3);
+    y += 7;
+    itemsConAd2.forEach(function(it) {
+      var seg = getSeguro(it.precioLista);
+      doc.setFontSize(8);
+      doc.setFont('helvetica','bold');
+      doc.setTextColor(...DARK);
+      doc.text(it.equipo + ':', mg + 2, y);
+      y += 4;
+      doc.setFont('helvetica','normal');
+      if (it.adicionales.control) {
+        doc.setFont('helvetica','bold'); doc.text('• Add Control — $50.00/mes', mg + 4, y);
+        doc.setFont('helvetica','normal'); y += 3;
+        doc.setFontSize(7); doc.setTextColor(80,80,80);
+        doc.text('  Controla el consumo de tus GB y asegura tu mensualidad. "Más control, cero cargos extra"', mg + 6, y);
+        doc.setTextColor(...DARK); doc.setFontSize(8); y += 4;
+      }
+      if (it.adicionales.seguro && seg) {
+        doc.setFont('helvetica','bold'); doc.text('• Seguro de equipo — $' + seg.costo + '.00/mes', mg + 4, y);
+        doc.setFont('helvetica','normal'); y += 3;
+        doc.setFontSize(7); doc.setTextColor(80,80,80);
+        doc.text('  Protección total contra robo o daño. "Tu equipo protegido, tu tranquilidad garantizada"', mg + 6, y); y += 3;
+        doc.text('  Deducible por robo: $' + seg.robo.toLocaleString('es-MX') + ' | Deducible por daño: $' + seg.dano.toLocaleString('es-MX'), mg + 6, y);
+        doc.setTextColor(...DARK); doc.setFontSize(8); y += 4;
+      }
+      if (it.adicionales.bateria) {
+        doc.setFont('helvetica','bold'); doc.text('• Seguro de batería — $99.00/mes', mg + 4, y);
+        doc.setFont('helvetica','normal'); y += 3;
+        doc.setFontSize(7); doc.setTextColor(80,80,80);
+        doc.text('  El desgaste de batería es inevitable. "Que la batería no limite tu día"', mg + 6, y);
+        doc.setTextColor(...DARK); doc.setFontSize(8); y += 4;
+      }
+      if (it.adicionales.pantalla) {
+        doc.setFont('helvetica','bold'); doc.text('• Seguro de pantalla — $99.00/mes', mg + 4, y);
+        doc.setFont('helvetica','normal'); y += 3;
+        doc.setFontSize(7); doc.setTextColor(80,80,80);
+        doc.text('  "Si tu pantalla se rompe, tu seguro responde"', mg + 6, y);
+        doc.setTextColor(...DARK); doc.setFontSize(8); y += 4;
+      }
+    });
+    y += 2;
+  }
 
   // ═══════ AHORRO TABLE PER EQUIPMENT ═══════
   var ahorroItems2 = cot.items.filter(function(it){return (it.precioLista - it.precioPromo) > 0});
@@ -5040,7 +5155,7 @@ function buildAndDownloadPDF_v2(cot) {
     cot.items.forEach(function(it, idx) {
       if (y > H - 22) { doc.addPage(); y = 16; }
       var base = it.precioPromo - (it.enganche||0);
-      var ep = base / it.plazo + it.planPrecio;
+      var ep = calcMensualTotal(it);
       var btnW = cW;
       var btnH = 8;
       doc.setFillColor(0,159,219);
