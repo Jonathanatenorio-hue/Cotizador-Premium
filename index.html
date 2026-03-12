@@ -11741,8 +11741,9 @@ function renderEquiposIncluidos() {
   var listEl = document.getElementById('incluidosList');
   var plan = ALL_PLANS.find(function(p){return p.id===planId});
   
-  // Filter: vigente, resurtible, price = 0
+  // Filter: only promo sheet, vigente, resurtible, price = 0
   var incluidos = state.devices.filter(function(dev) {
+    if (dev.sheet === 'Base') return false;
     if (!isVigente(dev)) return false;
     // Resurtible check
     var est = (dev.estatus || '').toUpperCase();
