@@ -11919,7 +11919,7 @@ async function subirPromocion(input) {
     if (allowed.indexOf(file.type) < 0) { alert('Formato no permitido: ' + file.name + '. Solo PDF, JPG, PNG o WEBP'); continue; }
     if (file.size > 25 * 1024 * 1024) { alert('Archivo muy grande: ' + file.name + ' (máx 25MB)'); continue; }
     
-    var fileName = Date.now() + '_' + file.name.replace(/\s+/g, '_');
+    var fileName = Date.now() + '_' + file.name.replace(/\s+/g, '_').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9._-]/g, '_');
     try {
       var {error} = await supabase.storage.from(PROMO_BUCKET).upload(fileName, file, {contentType: file.type, upsert: false});
       if (error) { alert('Error subiendo ' + file.name + ': ' + error.message); continue; }
