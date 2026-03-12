@@ -4552,7 +4552,7 @@ function buildAndDownloadPDF(cot) {
       0:{cellWidth:c0},
       1:{halign:'right',cellWidth:c1},
       2:{halign:'right',cellWidth:c2},
-      3:{halign:'right',cellWidth:c3},
+      3:{halign:'right',cellWidth:c3,fontStyle:'bold',textColor:[16,185,129],fillColor:[236,253,245]},
       4:{halign:'center',cellWidth:c4},
       5:{halign:'center',cellWidth:c5},
       6:{halign:'right',cellWidth:c6},
@@ -4625,8 +4625,8 @@ function buildAndDownloadPDF(cot) {
         5:{halign:'center',cellWidth:cW*0.16, fontStyle:'bold'},
       },
       didParseCell: function(data) {
-        if (data.section === 'body' && data.column.index === 4) { data.cell.styles.textColor = [16,185,129]; }
-        if (data.section === 'body' && data.column.index === 5) { data.cell.styles.textColor = [16,185,129]; }
+        if (data.section === 'body' && data.column.index === 4) { data.cell.styles.textColor = [16,185,129]; data.cell.styles.fillColor = [236,253,245]; data.cell.styles.fontStyle = 'bold'; data.cell.styles.fontSize = 8; }
+        if (data.section === 'body' && data.column.index === 5) { data.cell.styles.textColor = [16,185,129]; data.cell.styles.fillColor = [236,253,245]; data.cell.styles.fontStyle = 'bold'; data.cell.styles.fontSize = 8; }
       },
       theme: 'grid',
     });
@@ -4957,7 +4957,7 @@ function buildAndDownloadPDF_v2(cot) {
     headStyles: { fillColor:D2, textColor:WH, fontStyle:'bold', fontSize:6, halign:'center', cellPadding:2.5 },
     columnStyles: {
       0:{cellWidth:c0}, 1:{halign:'right',cellWidth:c1}, 2:{halign:'right',cellWidth:c2},
-      3:{halign:'right',cellWidth:c3}, 4:{halign:'center',cellWidth:c4}, 5:{halign:'center',cellWidth:c5},
+      3:{halign:'right',cellWidth:c3,fontStyle:'bold',textColor:[16,185,129],fillColor:[236,253,245]}, 4:{halign:'center',cellWidth:c4}, 5:{halign:'center',cellWidth:c5},
       6:{halign:'right',cellWidth:c6}, 7:{halign:'center',cellWidth:c7}, 8:{halign:'right',cellWidth:c8},
     },
     alternateRowStyles: { fillColor: G1 },
@@ -5037,7 +5037,7 @@ function buildAndDownloadPDF_v2(cot) {
         5:{halign:'center',cellWidth:cW*0.16, fontStyle:'bold'},
       },
       didParseCell: function(data) {
-        if (data.section === 'body' && (data.column.index === 4 || data.column.index === 5)) { data.cell.styles.textColor = [16,185,129]; }
+        if (data.section === 'body' && (data.column.index === 4 || data.column.index === 5)) { data.cell.styles.textColor = [16,185,129]; data.cell.styles.fillColor = [236,253,245]; data.cell.styles.fontStyle = 'bold'; data.cell.styles.fontSize = 8; }
       },
       theme: 'grid',
     });
@@ -6392,7 +6392,7 @@ function showDetalle(folio) {
               <input class="field" id="folioAtt_${cot.folio}" placeholder="Folio de la plataforma AT&T" value="${cot.folio_att||''}" style="width:100%">
             </div>
           </div>
-          <button class="btn btn-primary" style="width:auto;font-size:12px" onclick="guardarEstatus('${cot.folio}')">💾 Guardar Estatus</button>
+          <button class="btn btn-primary" style="display:none" onclick="guardarEstatus('${cot.folio}')">💾 Guardar Estatus</button>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
           <button class="btn btn-secondary" onclick="editCotizacion('${cot.folio}')">✏️ Editar</button>
@@ -6434,7 +6434,6 @@ function showDetalle(folio) {
           <input type="text" class="field" id="cotBarreraOtro_${cot.folio}" placeholder="Especifica la barrera..." style="font-size:10px;margin-top:4px;display:${cot.barrera_cierre==='otro_barrera'?'':'none'}" value="${cot.barrera_otro||''}">
         </div>
       </div>
-      <button class="btn btn-primary" style="font-size:10px;padding:4px 12px;margin-top:6px" onclick="guardarContexto('${cot.folio}')">💾 Guardar contexto</button>
     </div>
     <div class="section" style="padding:14px">
       <div class="section-title" style="margin-bottom:8px">📝 Notas de Seguimiento</div>
@@ -6450,8 +6449,11 @@ function showDetalle(folio) {
           <label style="font-size:9px;color:var(--text-3);white-space:nowrap">⏰ Próx:</label>
           <input type="datetime-local" class="field" id="notaProxContacto_${cot.folio}" style="font-size:10px;padding:4px 6px;width:auto" value="${cot.proximo_contacto||''}">
         </div>
-        <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="agregarNota('${cot.folio}')">Agregar</button>
+        <button class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="agregarNota('${cot.folio}')">+ Nota</button>
       </div>
+    </div>
+    <div style="padding:0 14px 14px">
+      <button class="btn btn-primary" style="width:100%;font-size:14px;padding:12px;background:linear-gradient(135deg,#0057B8,#009FDB);border-radius:10px;font-weight:800" onclick="guardarTodo('${cot.folio}')">💾 Guardar Todo</button>
     </div>
     <div class="section">
       <div class="section-title">Equipos cotizados</div>
@@ -6542,7 +6544,60 @@ function onSubSegChange(folio) {
   if (negDiv) negDiv.style.display = val === 'en_negociacion' ? 'block' : 'none';
 }
 
-async function guardarEstatus(folio) {
+async function guardarTodo(folio) {
+  var cot = state.cotizaciones.find(function(c){return c.folio===folio});
+  if (!cot) return;
+
+  var est = document.getElementById('detalleEstatus_' + folio);
+  if (!est || !est.value) { alert('⚠️ Selecciona un estatus'); return; }
+  var estVal = est.value;
+
+  if (estVal === 'seguimiento') {
+    var subSeg = document.getElementById('subSeg_' + folio);
+    if (!subSeg || !subSeg.value) { alert('⚠️ Selecciona el motivo de seguimiento'); subSeg && subSeg.focus(); return; }
+  }
+  if (estVal === 'perdida') {
+    var subPer = document.getElementById('subPer_' + folio);
+    if (!subPer || !subPer.value) { alert('⚠️ Selecciona el motivo de pérdida'); subPer && subPer.focus(); return; }
+  }
+  if (estVal === 'venta') {
+    var folioAtt = document.getElementById('folioAtt_' + folio);
+    if (!folioAtt || !folioAtt.value.trim()) { alert('⚠️ El folio AT&T es obligatorio'); folioAtt && folioAtt.focus(); return; }
+  }
+
+  var cotInteres = document.getElementById('cotInteres_' + folio);
+  var cotBarrera = document.getElementById('cotBarrera_' + folio);
+  if (cotInteres && !cotInteres.value) { alert('⚠️ Selecciona el interés del cliente'); cotInteres.focus(); cotInteres.style.border='2px solid #DC3545'; setTimeout(function(){cotInteres.style.border=''},3000); return; }
+  if (cotBarrera && !cotBarrera.value) { alert('⚠️ Selecciona la barrera de cierre'); cotBarrera.focus(); cotBarrera.style.border='2px solid #DC3545'; setTimeout(function(){cotBarrera.style.border=''},3000); return; }
+  if (cotInteres && cotInteres.value === 'otro_interes') {
+    var oi = document.getElementById('cotInteresOtro_' + folio);
+    if (!oi || !oi.value.trim()) { alert('⚠️ Especifica el interés del cliente'); oi && oi.focus(); return; }
+  }
+  if (cotBarrera && cotBarrera.value === 'otro_barrera') {
+    var ob = document.getElementById('cotBarreraOtro_' + folio);
+    if (!ob || !ob.value.trim()) { alert('⚠️ Especifica la barrera de cierre'); ob && ob.focus(); return; }
+  }
+
+  var notaTexto = document.getElementById('notaTexto_' + folio);
+  if (!notaTexto || !notaTexto.value.trim()) {
+    alert('⚠️ Escribe una nota de seguimiento antes de guardar.\n\nDescribe qué acción realizaste o el estado actual del lead.');
+    if (notaTexto) { notaTexto.focus(); notaTexto.style.border='2px solid #DC3545'; setTimeout(function(){notaTexto.style.border=''},3000); }
+    return;
+  }
+
+  if (estVal === 'seguimiento') {
+    var proxContacto = document.getElementById('notaProxContacto_' + folio);
+    if (!proxContacto || !proxContacto.value) { alert('⚠️ Programa la fecha y hora del próximo contacto'); proxContacto && proxContacto.focus(); return; }
+  }
+
+  // All valid — save nota, then estatus+contexto
+  await agregarNota(folio);
+  await guardarEstatus(folio, true);
+  alert('✅ Todo guardado correctamente');
+  showDetalle(folio);
+}
+
+async function guardarEstatus(folio, silent) {
   var est = document.getElementById('detalleEstatus_' + folio).value;
   var subEstatus = '';
   var folioAtt = '';
@@ -6658,8 +6713,10 @@ async function guardarEstatus(folio) {
     } catch(e) { console.error(e); }
   }
 
-  alert('Estatus actualizado: ' + {enviada:'Enviada', seguimiento:'Seguimiento', venta:'Venta Exitosa', perdida:'Perdida'}[est]);
-  showDetalle(folio);
+  if (!silent) {
+    alert('Estatus actualizado: ' + {enviada:'Enviada', seguimiento:'Seguimiento', venta:'Venta Exitosa', perdida:'Perdida'}[est]);
+    showDetalle(folio);
+  }
 }
 
 function onCotInteresChange(folio) {
