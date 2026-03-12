@@ -4779,6 +4779,7 @@ function buildAndDownloadPDF(cot) {
 
   // ═══════ CATÁLOGO DE ADICIONALES (siempre al final) ═══════
   // Check if need new page
+  y += 10;
   if (y > H - 60) { doc.addPage(); y = 15; }
   doc.setFontSize(9);
   doc.setFont('helvetica','bold');
@@ -5202,6 +5203,7 @@ function buildAndDownloadPDF_v2(cot) {
   doc.text('Hasta: ' + cot.validoHasta, W-mg-24, H-7.5, {align:'center'});
 
   // ═══════ CATÁLOGO DE ADICIONALES — Template 2 (siempre al final) ═══════
+  y += 10;
   if (y > H - 60) { doc.addPage(); y = 15; }
   doc.setFontSize(9);
   doc.setFont('helvetica','bold');
