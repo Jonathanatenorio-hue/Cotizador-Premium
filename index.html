@@ -3953,7 +3953,7 @@ function renderItems() {
               onchange="updateEnganche(${idx}, this.value, 'pesos')">
           </div>
           <div class="item-detail" style="grid-column:1/-1">
-            <span class="detail-label">Adicionales <span style="font-size:8px;color:#8B5CF6;font-weight:700">💰 ¡Comisionables!</span></span>
+            <span class="detail-label">Adicionales <span style="font-size:8px;color:#D97706;font-weight:700">💰 Seguro = comisión</span></span>
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
               <label style="display:flex;align-items:center;gap:3px;cursor:pointer;font-size:10px;padding:3px 7px;border-radius:6px;background:${item.adicionales&&item.adicionales.control?'#E0F2FE':'var(--surface-2)'};border:1px solid ${item.adicionales&&item.adicionales.control?'#0284C7':'var(--border)'}">
                 <input type="checkbox" ${item.adicionales&&item.adicionales.control?'checked':''} onchange="toggleAdicional(${idx},'control')" style="accent-color:#0284C7;width:14px;height:14px">
@@ -3970,7 +3970,7 @@ function renderItems() {
               </label>
             </div>
             ${item.adicionales&&item.adicionales.seguro&&seguro ? '<div style="margin-top:4px;font-size:9px;padding:4px 8px;background:#FEF3C7;border-radius:4px;color:#92400E">🛡️ Deducible robo: $'+seguro.robo.toLocaleString('es-MX')+' · Deducible daño: $'+seguro.dano.toLocaleString('es-MX')+'</div>' : ''}
-            ${!(item.adicionales&&(item.adicionales.control||item.adicionales.seguro||item.adicionales.bateria||item.adicionales.pantalla)) ? '<div style="margin-top:4px;font-size:9px;padding:4px 8px;background:#FFF7ED;border-radius:4px;color:#C2410C;border:1px dashed #FB923C">💡 <b>No olvides ofertar adicionales</b> — Son comisionables y protegen al cliente</div>' : ''}
+            ${!(item.adicionales&&(item.adicionales.control||item.adicionales.seguro||item.adicionales.bateria||item.adicionales.pantalla)) ? '<div style="margin-top:4px;font-size:9px;padding:4px 8px;background:#FFF7ED;border-radius:4px;color:#C2410C;border:1px dashed #FB923C">💡 <b>No olvides ofertar el seguro de equipo</b> — Es comisionable y protege al cliente. Los demás adicionales también suman valor</div>' : ''}
           </div>
           <div class="item-detail" style="grid-column:1/-1">
             <span class="detail-label">Imagen del equipo</span>
