@@ -609,6 +609,20 @@ body{padding-bottom:60px}
         </div>
       </div>
 
+      <div class="home-card" id="cardInventario" style="display:none">
+        <div class="card-icon">📦</div>
+        <div class="card-title">Inventario</div>
+        <div id="inventarioStatus">
+          <div class="card-desc">Sin inventario cargado</div>
+        </div>
+        <div id="inventarioUploadZone" style="display:none">
+          <div class="upload-zone" onclick="document.getElementById('fileInputInventario').click()" style="padding:6px;margin-top:4px">
+            <div style="font-size:10px;color:var(--text-3)">📁 Subir Excel de inventario</div>
+            <input type="file" id="fileInputInventario" accept=".xlsx,.xls,.csv" onchange="handleInventarioUpload(this)" style="display:none">
+          </div>
+        </div>
+      </div>
+
       <div class="home-card disabled" id="cardCotizar" onclick="showView('cotizar')">
         <div class="card-icon">📝</div>
         <div class="card-title">Nueva Cotización</div>
@@ -2827,6 +2841,27 @@ function updateHome() {
     infCard.style.display = (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) ? '' : 'none';
   }
 
+  // Show inventario card for Puebla users only
+  var invCard = document.getElementById('cardInventario');
+  if (invCard && currentUser) {
+    var showInv = false;
+    if (currentUser.rol === 'admin') showInv = true;
+    else {
+      var fu = (hFilterUsers||[]).find(function(u){return u.id===currentUser.id});
+      if (fu && fu.centros) {
+        var cn = (fu.centros.nombre||'').toUpperCase();
+        showInv = cn.indexOf('ANTEQUERA')>=0 || cn.indexOf('CC2')>=0 || cn.indexOf('JUAREZ')>=0 || cn.indexOf('JV')>=0 || cn.indexOf('JUÁREZ')>=0;
+      }
+    }
+    invCard.style.display = showInv ? '' : 'none';
+    if (showInv) {
+      var canUploadInv = currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor';
+      var invUpZone = document.getElementById('inventarioUploadZone');
+      if (invUpZone) invUpZone.style.display = canUploadInv ? '' : 'none';
+      loadInventarioFromStorage();
+    }
+  }
+
   // Show aceleraciones card - always visible for all roles
   var acelCard = document.getElementById('cardAceleraciones');
   var acelCount = state.cotizaciones.filter(function(c) {
@@ -3626,6 +3661,7 @@ function renderDeviceCard(dev) {
         <div id="calc_${dev.id}"></div>
         <div class="device-vigencia"><strong>Vigencia:</strong> ${dev.vigencia}</div>
         ${dev.sinPromo ? '<div style="font-size:9px;color:#E65100;font-weight:700;background:#FFF3E0;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:2px">⚠️ Sin promoción — Precio de lista</div>' : ''}
+        ${renderStockIndicator(dev.equipo)}
       </div>
     </div>
   `;
@@ -11842,6 +11878,164 @@ function addIncluidoToCart(devId, planId, plazo) {
   alert('✅ ' + dev.equipo + ' agregado a la cotización (incluido $0)');
 }
 
+// ── INVENTARIO (Stock por Hub) ──
+var INVENTARIO_BUCKET = 'inventario';
+var INVENTARIO_FILE = 'inventario_vigente.xlsx';
+var inventarioData = []; // [{nombre, almacen, existencia}]
+var inventarioLoaded = false;
+var inventarioDate = '';
+
+async function loadInventarioFromStorage() {
+  if (!supabase || inventarioLoaded) {
+    updateInventarioStatus();
+    return;
+  }
+  try {
+    var {data: files} = await supabase.storage.from(INVENTARIO_BUCKET).list('', {limit: 5});
+    if (!files || !files.find(function(f){return f.name === INVENTARIO_FILE})) {
+      updateInventarioStatus();
+      return;
+    }
+    var {data: blob, error} = await supabase.storage.from(INVENTARIO_BUCKET).download(INVENTARIO_FILE);
+    if (error || !blob) { updateInventarioStatus(); return; }
+    var arrayBuf = await blob.arrayBuffer();
+    parseInventarioData(arrayBuf);
+    
+    // Get upload date
+    var found = files.find(function(f){return f.name === INVENTARIO_FILE});
+    if (found && found.updated_at) inventarioDate = new Date(found.updated_at).toLocaleDateString('es-MX', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
+    
+    updateInventarioStatus();
+  } catch(e) { console.error('Inventario load error:', e); }
+}
+
+function parseInventarioData(arrayBuf) {
+  try {
+    var wb = XLSX.read(arrayBuf, {type:'array'});
+    var sheetName = wb.SheetNames[0];
+    var sheet = wb.Sheets[sheetName];
+    var rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:null});
+    
+    // Find columns
+    var cols = {nombre:-1, almacen:-1, existencia:-1};
+    var startRow = -1;
+    for (var ri = 0; ri < Math.min(rows.length, 10); ri++) {
+      var row = rows[ri]; if (!row) continue;
+      for (var ci = 0; ci < row.length; ci++) {
+        var c = String(row[ci]||'').toLowerCase().trim();
+        if (c === 'nombre' || c.indexOf('nombre') >= 0 && c.indexOf('completo') < 0) cols.nombre = ci;
+        if (c === 'almacén' || c === 'almacen' || c === 'hub') cols.almacen = ci;
+        if (c === 'existencia' || c === 'stock' || c === 'cantidad') cols.existencia = ci;
+      }
+      if (cols.nombre >= 0 && cols.existencia >= 0) { startRow = ri + 1; break; }
+    }
+    
+    console.log('Inventario cols:', JSON.stringify(cols), 'startRow:', startRow);
+    if (startRow < 0 || cols.nombre < 0) { console.log('Inventario: columns not found'); return; }
+    
+    inventarioData = [];
+    for (var i = startRow; i < rows.length; i++) {
+      var r = rows[i]; if (!r) continue;
+      var nombre = r[cols.nombre];
+      if (!nombre || typeof nombre !== 'string' || nombre.trim() === '') continue;
+      var almacen = cols.almacen >= 0 ? String(r[cols.almacen]||'').trim() : 'General';
+      var existencia = typeof r[cols.existencia] === 'number' ? r[cols.existencia] : parseInt(String(r[cols.existencia]||'0').replace(/[^0-9-]/g,'')) || 0;
+      if (existencia <= 0) continue; // Skip zero stock
+      inventarioData.push({nombre: nombre.trim(), almacen: almacen, existencia: existencia});
+    }
+    inventarioLoaded = true;
+    console.log('Inventario loaded:', inventarioData.length, 'items with stock');
+  } catch(e) { console.error('Inventario parse error:', e); }
+}
+
+function updateInventarioStatus() {
+  var el = document.getElementById('inventarioStatus');
+  if (!el) return;
+  if (inventarioLoaded && inventarioData.length > 0) {
+    var hubs = {};
+    inventarioData.forEach(function(d) { hubs[d.almacen] = true; });
+    el.innerHTML = '<div class="card-desc" style="color:#10B981;font-weight:600">✅ ' + inventarioData.length + ' equipos en stock</div><div class="card-desc" style="font-size:9px">' + Object.keys(hubs).length + ' hubs · ' + (inventarioDate||'') + '</div>';
+  } else {
+    el.innerHTML = '<div class="card-desc">Sin inventario cargado</div>';
+  }
+}
+
+async function handleInventarioUpload(input) {
+  var file = input.files[0];
+  if (!file) return;
+  if (!supabase || !currentUser) return;
+  
+  try {
+    // Upload to storage
+    var {error} = await supabase.storage.from(INVENTARIO_BUCKET).upload(INVENTARIO_FILE, file, {upsert: true, contentType: file.type || 'application/octet-stream'});
+    if (error) { alert('Error subiendo: ' + error.message); return; }
+    
+    // Parse locally
+    var arrayBuf = await file.arrayBuffer();
+    parseInventarioData(arrayBuf);
+    inventarioDate = new Date().toLocaleDateString('es-MX', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
+    updateInventarioStatus();
+    
+    alert('✅ Inventario actualizado: ' + inventarioData.length + ' equipos con stock');
+  } catch(e) { alert('Error: ' + e.message); }
+  input.value = '';
+}
+
+// Matching: normalize name for comparison
+function normalizeDeviceName(name) {
+  return (name||'').toUpperCase()
+    .replace(/\s*AT&?T\s*/g, ' ')
+    .replace(/\s*(NEGRO|BLANCO|AZUL|ROJO|VERDE|MORADO|ROSA|GRIS|TITANIO|NATURAL|LAVANDA|PLATA|DORADO|CREMA|NARANJA|CORAL|MIDNIGHT|STARLIGHT|PURPLE|BLACK|WHITE|BLUE|GREEN|RED|GRAY|SILVER|GOLD|PINK|TEAL)\s*/gi, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
+function findStockForDevice(deviceName) {
+  if (!inventarioLoaded || inventarioData.length === 0) return null;
+  
+  var normDev = normalizeDeviceName(deviceName);
+  var matches = [];
+  
+  inventarioData.forEach(function(inv) {
+    var normInv = normalizeDeviceName(inv.nombre);
+    // Exact match
+    if (normInv === normDev) { matches.push(inv); return; }
+    // One contains the other
+    if (normInv.indexOf(normDev) >= 0 || normDev.indexOf(normInv) >= 0) { matches.push(inv); return; }
+    // Token-based: all words from device name must be in inventory name
+    var devTokens = normDev.split(' ').filter(function(t){return t.length > 1});
+    var invTokens = normInv.split(' ');
+    var allMatch = devTokens.every(function(dt) {
+      return invTokens.some(function(it) { return it.indexOf(dt) >= 0 || dt.indexOf(it) >= 0; });
+    });
+    if (allMatch && devTokens.length >= 2) matches.push(inv);
+  });
+  
+  if (matches.length === 0) return null;
+  
+  // Group by hub
+  var byHub = {};
+  var total = 0;
+  matches.forEach(function(m) {
+    if (!byHub[m.almacen]) byHub[m.almacen] = 0;
+    byHub[m.almacen] += m.existencia;
+    total += m.existencia;
+  });
+  
+  return {total: total, byHub: byHub};
+}
+
+function renderStockIndicator(deviceName) {
+  if (!inventarioLoaded) return '';
+  var stock = findStockForDevice(deviceName);
+  if (!stock) return '<div style="font-size:9px;color:#DC3545;font-weight:700;background:#FEF2F2;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:2px">❌ Sin existencia en inventario</div>';
+  
+  var hubsHtml = Object.keys(stock.byHub).map(function(hub) {
+    return '<span style="background:white;padding:1px 5px;border-radius:3px;border:1px solid #D1FAE5">' + hub + ': <b>' + stock.byHub[hub] + '</b></span>';
+  }).join(' ');
+  
+  return '<div style="font-size:9px;color:#10B981;font-weight:700;background:#ECFDF5;padding:3px 8px;border-radius:4px;margin-top:2px;border:1px solid #A7F3D0">📦 ' + stock.total + ' en stock — ' + hubsHtml + '</div>';
+}
+
 // ── PROMOCIONES ──
 var PROMO_BUCKET = 'promociones';
 
@@ -12054,8 +12248,9 @@ function renderBuzonPosts() {
       h += '<div style="font-size:10px;color:#E6A200;font-weight:600">⏳ Pendiente de respuesta</div>';
     }
 
-    // Reply + delete buttons (admin/coord/supervisor)
-    if (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) {
+    // Reply: admin/coord/sup can reply to all, agents only to their own posts
+    var canReply = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor' || p.autor_id === currentUser.id);
+    if (canReply) {
       h += '<div style="margin-top:6px;display:flex;gap:6px;align-items:center">';
       h += '<input type="text" class="field" id="buzonResp_'+p.id+'" placeholder="Escribe tu respuesta..." style="flex:1;font-size:10px">';
       h += '<button onclick="responderBuzon(\''+p.id+'\')" class="btn btn-primary" style="font-size:10px;padding:4px 12px;background:#10B981">Responder</button>';
