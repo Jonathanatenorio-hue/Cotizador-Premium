@@ -11966,9 +11966,11 @@ async function handleInventarioUpload(input) {
   if (!supabase || !currentUser) return;
   
   try {
-    // Upload to storage
-    var {error} = await supabase.storage.from(INVENTARIO_BUCKET).upload(INVENTARIO_FILE, file, {upsert: true, contentType: file.type || 'application/octet-stream'});
-    if (error) { alert('Error subiendo: ' + error.message); return; }
+    // Delete existing first, then upload fresh
+    try { await supabase.storage.from(INVENTARIO_BUCKET).remove([INVENTARIO_FILE]); } catch(e) {}
+    
+    var {data, error} = await supabase.storage.from(INVENTARIO_BUCKET).upload(INVENTARIO_FILE, file, {contentType: file.type || 'application/octet-stream'});
+    if (error) { alert('Error subiendo: ' + error.message); console.error('Upload error:', error); return; }
     
     // Parse locally
     var arrayBuf = await file.arrayBuffer();
@@ -11976,8 +11978,12 @@ async function handleInventarioUpload(input) {
     inventarioDate = new Date().toLocaleDateString('es-MX', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
     updateInventarioStatus();
     
-    alert('✅ Inventario actualizado: ' + inventarioData.length + ' equipos con stock');
-  } catch(e) { alert('Error: ' + e.message); }
+    if (inventarioData.length > 0) {
+      alert('✅ Inventario actualizado: ' + inventarioData.length + ' equipos con stock');
+    } else {
+      alert('⚠️ Archivo subido pero no se detectaron equipos con stock.\n\nVerifica que el Excel tenga columnas: "nombre", "almacén" y "existencia".\n\nRevisa la consola (F12) para más detalles.');
+    }
+  } catch(e) { alert('Error: ' + e.message); console.error('Inventario error:', e); }
   input.value = '';
 }
 
