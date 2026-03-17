@@ -11991,8 +11991,18 @@ async function handleInventarioUpload(input) {
 function normalizeDeviceName(name) {
   return (name||'').toUpperCase()
     .replace(/\s*AT&?T\s*/g, ' ')
-    .replace(/\s*(NEGRO|BLANCO|AZUL|ROJO|VERDE|MORADO|ROSA|GRIS|TITANIO|NATURAL|LAVANDA|PLATA|DORADO|CREMA|NARANJA|CORAL|MIDNIGHT|STARLIGHT|PURPLE|BLACK|WHITE|BLUE|GREEN|RED|GRAY|SILVER|GOLD|PINK|TEAL)\s*/gi, ' ')
+    .replace(/\s*(NEGRO|BLANCO|AZUL|ROJO|VERDE|MORADO|ROSA|GRIS|TITANIO|NATURAL|LAVANDA|PLATA|DORADO|CREMA|NARANJA|CORAL|MIDNIGHT|STARLIGHT|PURPLE|BLACK|WHITE|BLUE|GREEN|RED|GRAY|SILVER|GOLD|PINK|TEAL|DESERT|ULTRAMARINE|OBSIDIAN|SAND|TUNDRA)\s*/gi, ' ')
     .replace(/\s+/g, ' ').trim();
+}
+
+var COLORES_DEVICE = ['NEGRO','BLANCO','AZUL','ROJO','VERDE','MORADO','ROSA','GRIS','TITANIO','NATURAL','LAVANDA','PLATA','DORADO','CREMA','NARANJA','CORAL','MIDNIGHT','STARLIGHT','PURPLE','BLACK','WHITE','BLUE','GREEN','RED','GRAY','SILVER','GOLD','PINK','TEAL','DESERT','ULTRAMARINE','OBSIDIAN','SAND','TUNDRA'];
+
+function extractColor(name) {
+  var upper = (name||'').toUpperCase();
+  for (var i = 0; i < COLORES_DEVICE.length; i++) {
+    if (upper.indexOf(COLORES_DEVICE[i]) >= 0) return COLORES_DEVICE[i].charAt(0) + COLORES_DEVICE[i].slice(1).toLowerCase();
+  }
+  return 'Sin color';
 }
 
 function findStockForDevice(deviceName) {
@@ -12003,11 +12013,8 @@ function findStockForDevice(deviceName) {
   
   inventarioData.forEach(function(inv) {
     var normInv = normalizeDeviceName(inv.nombre);
-    // Exact match
     if (normInv === normDev) { matches.push(inv); return; }
-    // One contains the other
     if (normInv.indexOf(normDev) >= 0 || normDev.indexOf(normInv) >= 0) { matches.push(inv); return; }
-    // Token-based: all words from device name must be in inventory name
     var devTokens = normDev.split(' ').filter(function(t){return t.length > 1});
     var invTokens = normInv.split(' ');
     var allMatch = devTokens.every(function(dt) {
@@ -12018,12 +12025,15 @@ function findStockForDevice(deviceName) {
   
   if (matches.length === 0) return null;
   
-  // Group by hub
+  // Group by hub → color
   var byHub = {};
   var total = 0;
   matches.forEach(function(m) {
-    if (!byHub[m.almacen]) byHub[m.almacen] = 0;
-    byHub[m.almacen] += m.existencia;
+    var color = extractColor(m.nombre);
+    if (!byHub[m.almacen]) byHub[m.almacen] = {total: 0, colors: {}};
+    byHub[m.almacen].total += m.existencia;
+    if (!byHub[m.almacen].colors[color]) byHub[m.almacen].colors[color] = 0;
+    byHub[m.almacen].colors[color] += m.existencia;
     total += m.existencia;
   });
   
@@ -12035,11 +12045,17 @@ function renderStockIndicator(deviceName) {
   var stock = findStockForDevice(deviceName);
   if (!stock) return '<div style="font-size:9px;color:#DC3545;font-weight:700;background:#FEF2F2;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:2px">❌ Sin existencia en inventario</div>';
   
-  var hubsHtml = Object.keys(stock.byHub).map(function(hub) {
-    return '<span style="background:white;padding:1px 5px;border-radius:3px;border:1px solid #D1FAE5">' + hub + ': <b>' + stock.byHub[hub] + '</b></span>';
-  }).join(' ');
-  
-  return '<div style="font-size:9px;color:#10B981;font-weight:700;background:#ECFDF5;padding:3px 8px;border-radius:4px;margin-top:2px;border:1px solid #A7F3D0">📦 ' + stock.total + ' en stock — ' + hubsHtml + '</div>';
+  var h = '<div style="font-size:9px;background:#ECFDF5;padding:4px 8px;border-radius:4px;margin-top:2px;border:1px solid #A7F3D0">';
+  h += '<div style="font-weight:700;color:#10B981;margin-bottom:3px">📦 ' + stock.total + ' en stock</div>';
+  Object.keys(stock.byHub).forEach(function(hub) {
+    var hubData = stock.byHub[hub];
+    var colorPills = Object.keys(hubData.colors).map(function(color) {
+      return '<span style="background:white;padding:0 4px;border-radius:2px;border:1px solid #D1FAE5">' + color + ': <b>' + hubData.colors[color] + '</b></span>';
+    }).join(' ');
+    h += '<div style="margin-bottom:2px"><span style="font-weight:700;color:#065F46">' + hub + ' (' + hubData.total + '):</span> ' + colorPills + '</div>';
+  });
+  h += '</div>';
+  return h;
 }
 
 // ── PROMOCIONES ──
@@ -12244,7 +12260,19 @@ function renderBuzonPosts() {
         var rDateStr = rd.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) + ' ' + rd.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
         h += '<div style="background:#F0FFF4;border-radius:8px;padding:8px 10px;margin-bottom:4px;border-left:3px solid #10B981">';
         h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">';
-        h += '<span style="font-size:10px;font-weight:700;color:#10B981">✅ '+r.autor_nombre+' ('+r.autor_rol+')</span>';
+        var isRespFromAgent = r.autor_rol === 'agente';
+        var respAuthorLabel = '';
+        if (isAdmin) {
+          // Admin sees everyone's name
+          respAuthorLabel = '✅ ' + r.autor_nombre + ' (' + r.autor_rol + ')';
+        } else if (isRespFromAgent) {
+          // Agent responses show as anonymous to non-admins
+          respAuthorLabel = '💬 Respuesta anónima';
+        } else {
+          // Supervisor/coord responses show name to everyone
+          respAuthorLabel = '✅ ' + r.autor_nombre + ' (' + r.autor_rol + ')';
+        }
+        h += '<span style="font-size:10px;font-weight:700;color:#10B981">' + respAuthorLabel + '</span>';
         h += '<span style="font-size:8px;color:var(--text-3)">'+rDateStr+'</span>';
         h += '</div>';
         h += '<div style="font-size:11px;color:var(--text-2);line-height:1.4">'+r.texto+'</div>';
