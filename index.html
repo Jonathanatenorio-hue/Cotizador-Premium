@@ -1967,7 +1967,7 @@ async function processPriceListData(arrayBuf, fileName) {
       }
     }
     var existingNames = {};
-    devices.forEach(function(d) { existingNames[d.equipo.toLowerCase().trim()] = true; });
+    devices.filter(isVigente).forEach(function(d) { existingNames[d.equipo.toLowerCase().trim()] = true; });
     
     if (baseSheetName) {
       console.log('Base sheet found: "'+baseSheetName+'" (promo sheet: "'+pSheetName+'")');
