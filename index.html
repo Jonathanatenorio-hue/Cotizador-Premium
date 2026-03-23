@@ -2859,10 +2859,29 @@ function updateHome() {
     var showInv = false;
     if (currentUser.rol === 'admin') showInv = true;
     else {
+      // Check from hFilterUsers
       var fu = (hFilterUsers||[]).find(function(u){return u.id===currentUser.id});
       if (fu && fu.centros) {
         var cn = (fu.centros.nombre||'').toUpperCase();
-        showInv = cn.indexOf('ANTEQUERA')>=0 || cn.indexOf('CC2')>=0 || cn.indexOf('JUAREZ')>=0 || cn.indexOf('JV')>=0 || cn.indexOf('JUÁREZ')>=0;
+        if (cn.indexOf('ANTEQUERA')>=0 || cn.indexOf('CC2')>=0 || cn.indexOf('JUAREZ')>=0 || cn.indexOf('JV')>=0 || cn.indexOf('JUÁREZ')>=0) showInv = true;
+      }
+      // Fallback: check if any agent under this supervisor belongs to Puebla centro
+      if (!showInv && (currentUser.rol === 'supervisor' || currentUser.rol === 'coordinador')) {
+        var myAgents = (hFilterUsers||[]).filter(function(u){return u.supervisor_id===currentUser.id || u.coordinador_id===currentUser.id});
+        myAgents.forEach(function(a) {
+          if (a.centros) {
+            var acn = (a.centros.nombre||'').toUpperCase();
+            if (acn.indexOf('ANTEQUERA')>=0 || acn.indexOf('CC2')>=0 || acn.indexOf('JUAREZ')>=0 || acn.indexOf('JV')>=0 || acn.indexOf('JUÁREZ')>=0) showInv = true;
+          }
+        });
+      }
+      // Fallback 2: check centro_id directly from currentUser
+      if (!showInv && currentUser.centro_id) {
+        var uc = (adminCentros||[]).find(function(c){return c.id===currentUser.centro_id});
+        if (uc) {
+          var ucn = (uc.nombre||'').toUpperCase();
+          if (ucn.indexOf('ANTEQUERA')>=0 || ucn.indexOf('CC2')>=0 || ucn.indexOf('JUAREZ')>=0 || ucn.indexOf('JV')>=0 || ucn.indexOf('JUÁREZ')>=0) showInv = true;
+        }
       }
     }
     invCard.style.display = showInv ? '' : 'none';
