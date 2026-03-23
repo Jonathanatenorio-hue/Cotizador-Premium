@@ -1999,12 +1999,20 @@ async function processPriceListData(arrayBuf, fileName) {
         console.log('Base plan start col:', bPlanStart);
         
         var addedBase = 0;
+        var baseAddedNames = {};
         for (var bi = bStartRow; bi < bRows.length; bi++) {
           var brow = bRows[bi]; if (!brow) continue;
-          var bEquipo = brow[bCols.equipo];
-          if (!bEquipo || typeof bEquipo !== 'string' || bEquipo.trim() === '') continue;
-          bEquipo = bEquipo.trim();
-          if (existingNames[bEquipo.toLowerCase().trim()]) continue;
+          var bEquipoRaw = brow[bCols.equipo];
+          if (!bEquipoRaw || typeof bEquipoRaw !== 'string' || bEquipoRaw.trim() === '') continue;
+          bEquipoRaw = bEquipoRaw.trim();
+          // Normalize: strip color from name for dedup
+          var bEquipoClean = bEquipoRaw.toUpperCase()
+            .replace(/\s*(NEGRO|BLANCO|AZUL|ROJO|VERDE|MORADO|ROSA|GRIS|TITANIO|NATURAL|LAVANDA|PLATA|DORADO|CREMA|NARANJA|CORAL|MIDNIGHT|STARLIGHT|PURPLE|BLACK|WHITE|BLUE|GREEN|RED|GRAY|SILVER|GOLD|PINK|TEAL|DESERT|ULTRAMARINE|OBSIDIAN|SAND|TUNDRA)\s*/gi, ' ')
+            .replace(/\s*AT&?T\s*/g, ' ').replace(/\s+/g, ' ').trim();
+          // Skip if already in promo (vigente) or already added from base
+          if (existingNames[bEquipoRaw.toLowerCase().trim()]) continue;
+          if (existingNames[bEquipoClean.toLowerCase()]) continue;
+          if (baseAddedNames[bEquipoClean.toLowerCase()]) continue;
           var bPrecio = bCols.precio >= 0 ? (typeof brow[bCols.precio] === 'number' ? brow[bCols.precio] : parseFloat(String(brow[bCols.precio] || '').replace(/[$,]/g, ''))) : 0;
           if (!bPrecio || bPrecio <= 0) continue;
           var bMarca = bCols.marca >= 0 ? (brow[bCols.marca] || '') : '';
@@ -2037,13 +2045,17 @@ async function processPriceListData(arrayBuf, fileName) {
             });
           });
           
+          // Use cleaned name (without color) as display name
+          var bEquipoDisplay = bEquipoClean.split(' ').map(function(w){return w.charAt(0)+w.slice(1).toLowerCase()}).join(' ');
+          
           devices.push({
-            id:'b'+bi, sheet:'Base', oferta:'AT\u0026T Premium', equipo:bEquipo, marca:String(bMarca),
+            id:'b'+bi, sheet:'Base', oferta:'AT\u0026T Premium', equipo:bEquipoDisplay, marca:String(bMarca),
             precioContado:bPrecio, estatus:String(bEstatus), vigencia:String(bVigencia),
             fechaInicio:parseVigencia(bVigencia).inicio, fechaFin:parseVigencia(bVigencia).fin,
             fechaFinText:'', pricing:bPricing, plans:PLANS_PREMIUM, plazos:[24,30,36],
             sinPromo: true
           });
+          baseAddedNames[bEquipoClean.toLowerCase()] = true;
           addedBase++;
         }
         console.log('Base sheet "'+baseSheetName+'": added '+addedBase+' non-promo devices');
