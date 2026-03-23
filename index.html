@@ -2783,7 +2783,7 @@ function goBack() {
 // ============================================================
 // HOME UPDATE
 // ============================================================
-function updateHome() {
+async function updateHome() {
   loadAnnouncement();
   loadAnnouncements();
   // Agent display
@@ -2875,13 +2875,15 @@ function updateHome() {
           }
         });
       }
-      // Fallback 2: check centro_id directly from currentUser
-      if (!showInv && currentUser.centro_id) {
-        var uc = (adminCentros||[]).find(function(c){return c.id===currentUser.centro_id});
-        if (uc) {
-          var ucn = (uc.nombre||'').toUpperCase();
-          if (ucn.indexOf('ANTEQUERA')>=0 || ucn.indexOf('CC2')>=0 || ucn.indexOf('JUAREZ')>=0 || ucn.indexOf('JV')>=0 || ucn.indexOf('JUÁREZ')>=0) showInv = true;
-        }
+      // Fallback 2: check centro_id directly from Supabase
+      if (!showInv && currentUser.centro_id && supabase) {
+        try {
+          var {data: centroData} = await supabase.from('centros').select('nombre').eq('id', currentUser.centro_id).maybeSingle();
+          if (centroData) {
+            var ucn = (centroData.nombre||'').toUpperCase();
+            if (ucn.indexOf('ANTEQUERA')>=0 || ucn.indexOf('CC2')>=0 || ucn.indexOf('JUAREZ')>=0 || ucn.indexOf('JV')>=0 || ucn.indexOf('JUÁREZ')>=0) showInv = true;
+          }
+        } catch(e) {}
       }
     }
     invCard.style.display = showInv ? '' : 'none';
