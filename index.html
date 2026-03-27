@@ -1488,8 +1488,15 @@ body{padding-bottom:60px}
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <select class="field" id="metasFilterOp" onchange="metasFilterChanged()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todas las operaciones</option><option value="PUE">Puebla</option><option value="CDMX">CDMX / Sub Yelitza</option></select>
         <select class="field" id="metasFilterCentro" onchange="metasCentroChanged()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todos los centros</option></select>
-        <select class="field" id="metasFilterSup" onchange="metasRender()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todos los supervisores</option></select>
-        <select class="field" id="metasFilterMes" onchange="metasRender()" style="width:auto;font-size:12px;padding:6px 8px"></select>
+        <select class="field" id="metasFilterSup" onchange="metasSupChanged()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todos los supervisores</option></select>
+        <select class="field" id="metasFilterAgent" onchange="metasRender()" style="width:auto;font-size:12px;padding:6px 8px"><option value="all">Todos los agentes</option></select>
+        <select class="field" id="metasFilterMes" onchange="metasMesChanged()" style="width:auto;font-size:12px;padding:6px 8px"></select>
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:9px;color:var(--text-3);white-space:nowrap">Desde:</label>
+          <input type="date" class="field" id="metasFilterDesde" onchange="metasRender()" style="font-size:11px;padding:4px 6px;width:auto">
+          <label style="font-size:9px;color:var(--text-3);white-space:nowrap">Hasta:</label>
+          <input type="date" class="field" id="metasFilterHasta" onchange="metasRender()" style="font-size:11px;padding:4px 6px;width:auto">
+        </div>
         <button onclick="metasClearFilters()" style="background:none;border:1px solid var(--border);color:var(--text-3);font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer" title="Limpiar filtros">✕ Limpiar</button>
       </div>
     </div>
@@ -10443,6 +10450,16 @@ async function openMetas() {
     document.getElementById('metasFilterOp').style.display = 'none';
     document.getElementById('metasFilterCentro').style.display = 'none';
     document.getElementById('metasFilterSup').style.display = 'none';
+    if (document.getElementById('metasFilterAgent')) document.getElementById('metasFilterAgent').style.display = 'none';
+  }
+  if (rol === 'supervisor') {
+    document.getElementById('metasFilterOp').style.display = 'none';
+    document.getElementById('metasFilterCentro').style.display = 'none';
+    document.getElementById('metasFilterSup').style.display = 'none';
+    if (document.getElementById('metasFilterAgent')) document.getElementById('metasFilterAgent').style.display = '';
+  }
+  if (rol === 'admin' || rol === 'coordinador') {
+    if (document.getElementById('metasFilterAgent')) document.getElementById('metasFilterAgent').style.display = '';
   }
   // Populate month selectors
   var now = new Date();
@@ -10554,7 +10571,25 @@ function metasClearFilters() {
   document.getElementById('metasFilterOp').value = 'all';
   document.getElementById('metasFilterCentro').value = 'all';
   document.getElementById('metasFilterSup').value = 'all';
+  if (document.getElementById('metasFilterAgent')) document.getElementById('metasFilterAgent').value = 'all';
+  document.getElementById('metasFilterDesde').value = '';
+  document.getElementById('metasFilterHasta').value = '';
   metasFilterChanged();
+}
+
+function metasMesChanged() {
+  // When month changes, set date range to that month
+  var mesVal = document.getElementById('metasFilterMes').value;
+  if (mesVal) {
+    var parts = mesVal.split('-');
+    var year = parseInt(parts[0]);
+    var month = parseInt(parts[1]) - 1;
+    var firstDay = new Date(year, month, 1);
+    var lastDay = new Date(year, month + 1, 0);
+    document.getElementById('metasFilterDesde').value = firstDay.getFullYear()+'-'+String(firstDay.getMonth()+1).padStart(2,'0')+'-'+String(firstDay.getDate()).padStart(2,'0');
+    document.getElementById('metasFilterHasta').value = lastDay.getFullYear()+'-'+String(lastDay.getMonth()+1).padStart(2,'0')+'-'+String(lastDay.getDate()).padStart(2,'0');
+  }
+  metasRender();
 }
 
 function metasFilterChanged() {
@@ -10570,6 +10605,37 @@ function metasFilterChanged() {
 
 function metasCentroChanged() {
   metasPopulateSups();
+}
+
+function metasSupChanged() {
+  metasPopulateAgents();
+  metasRender();
+}
+
+function metasPopulateAgents() {
+  var supVal = document.getElementById('metasFilterSup').value;
+  var agSel = document.getElementById('metasFilterAgent');
+  if (!agSel) return;
+  var agents = {};
+  metasVentas.forEach(function(v) {
+    if (supVal !== 'all' && v.supervisor !== supVal) return;
+    if (v.agente) agents[v.agente] = true;
+  });
+  metasMetas.filter(function(m){return m.tipo==='agente'}).forEach(function(m) {
+    if (supVal !== 'all') {
+      var found = metasVentas.some(function(v){return v.agente===m.nombre && v.supervisor===supVal});
+      if (!found) return;
+    }
+    agents[m.nombre] = true;
+  });
+  // Also add agents from cotizaciones
+  state.cotizaciones.forEach(function(c) {
+    if (!c.ejecutivo || !c.ejecutivo.nombre) return;
+    if (supVal !== 'all' && c.supervisorNombre !== supVal) return;
+    agents[c.ejecutivo.nombre] = true;
+  });
+  agSel.innerHTML = '<option value="all">Todos los agentes</option>';
+  Object.keys(agents).sort().forEach(function(a) { agSel.innerHTML += '<option value="'+a+'">'+a+'</option>'; });
 }
 
 function metasPopulateSups() {
@@ -10589,6 +10655,7 @@ function metasPopulateSups() {
   });
   supSel.innerHTML = '<option value="all">Todos los supervisores</option>';
   Object.keys(sups).sort().forEach(function(s) { supSel.innerHTML += '<option value="'+s+'">'+s+'</option>'; });
+  metasPopulateAgents();
   metasRender();
 }
 
@@ -10598,6 +10665,7 @@ async function metasRender() {
   var opVal = document.getElementById('metasFilterOp').value;
   var centroVal = document.getElementById('metasFilterCentro').value;
   var supVal = document.getElementById('metasFilterSup').value;
+  var agentVal = document.getElementById('metasFilterAgent') ? document.getElementById('metasFilterAgent').value : 'all';
   var rol = currentUser ? currentUser.rol : 'agente';
 
   // Role-based filtering of ventas
@@ -10623,11 +10691,27 @@ async function metasRender() {
       }
       if (centroVal !== 'all' && v.centro_key !== centroVal) return false;
       if (supVal !== 'all' && v.supervisor !== supVal) return false;
+      if (agentVal !== 'all' && v.agente !== agentVal) return false;
       return true;
     });
   }
 
   var totalVentas = fv.length;
+
+  // Apply date range filter
+  var metasDesde = document.getElementById('metasFilterDesde').value;
+  var metasHasta = document.getElementById('metasFilterHasta').value;
+  if (metasDesde || metasHasta) {
+    fv = fv.filter(function(v) {
+      if (!v.fecha) return false;
+      var fd = typeof v.fecha === 'string' ? v.fecha.substring(0,10) : '';
+      if (!fd) return false;
+      if (metasDesde && fd < metasDesde) return false;
+      if (metasHasta && fd > metasHasta) return false;
+      return true;
+    });
+    totalVentas = fv.length;
+  }
 
   // Calculate meta
   var totalMeta = 0;
@@ -10635,7 +10719,8 @@ async function metasRender() {
     totalMeta = metasGetMeta('agente', currentUser ? currentUser.nombre : '');
   } else if (rol === 'supervisor') {
     totalMeta = metasGetMeta('supervisor', currentUser ? currentUser.nombre : '');
-  } else if (supVal !== 'all') { totalMeta = metasGetMeta('supervisor', supVal); }
+  } else if (agentVal !== 'all') { totalMeta = metasGetMeta('agente', agentVal); }
+  else if (supVal !== 'all') { totalMeta = metasGetMeta('supervisor', supVal); }
   else if (centroVal !== 'all') { totalMeta = metasGetMeta('centro', centroVal); }
   else if (opVal !== 'all') { totalMeta = metasGetMeta('operacion', opVal); }
   else {
