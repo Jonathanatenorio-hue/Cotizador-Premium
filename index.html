@@ -1009,10 +1009,13 @@ body{padding-bottom:60px}
       <select class="field" id="rachaFilterSup" onchange="rachaFilterChanged()" multiple style="width:auto;font-size:10px;padding:4px 6px;min-width:140px;height:50px"><option value="all" selected>Todos los supervisores</option></select>
       <select class="field" id="rachaFilterAgent" onchange="renderRachaNegativa()" multiple style="width:auto;font-size:10px;padding:4px 6px;min-width:140px;height:50px"><option value="all" selected>Todos los agentes</option></select>
       <select class="field" id="rachaFilterDias" onchange="renderRachaNegativa()" style="width:auto;font-size:11px;padding:5px 8px">
-        <option value="1">1+ día sin venta</option>
-        <option value="2" selected>2+ días sin venta</option>
-        <option value="3">3+ días sin venta</option>
+        <option value="all">Todos</option>
+        <option value="vendio_ayer">✅ Vendió ayer</option>
+        <option value="exact_1">1 día sin venta</option>
+        <option value="exact_2" selected>2 días sin venta</option>
+        <option value="3plus">3+ días sin venta</option>
       </select>
+      <button onclick="exportRachaExcel()" class="btn btn-primary" style="font-size:10px;padding:5px 12px">📥 Exportar Excel</button>
     </div>
     <div id="rachaList"></div>
   </div>
@@ -12329,7 +12332,7 @@ function renderRachaNegativa() {
   var supVals = getMultiSelectValues('rachaFilterSup');
   var centroVals = getMultiSelectValues('rachaFilterCentro');
   var agentVals = getMultiSelectValues('rachaFilterAgent');
-  var minDias = parseInt(document.getElementById('rachaFilterDias').value) || 2;
+  var diasFilter = document.getElementById('rachaFilterDias').value;
   
   var agents = (hFilterUsers||[]).filter(function(u){return u.rol==='agente' && (u.activo===true||u.activo==='true')});
   if (supVals[0] !== 'all') agents = agents.filter(function(u){return supVals.indexOf(u.supervisor_id)>=0});
@@ -12342,7 +12345,7 @@ function renderRachaNegativa() {
   var hoyStr = toMexDateStr(new Date().toISOString());
   var hoy = new Date(hoyStr+'T12:00:00');
   
-  var rachaAgents = [];
+  window._rachaAgents = [];
   
   agents.forEach(function(ag) {
     // Last venta from metasVentas (uploaded Excel) - match by name
@@ -12368,7 +12371,12 @@ function renderRachaNegativa() {
       diasSinVenta = 99;
     }
     
-    if (diasSinVenta < minDias) return;
+    // Filter by dias mode
+    if (diasFilter === 'vendio_ayer') { if (diasSinVenta !== 0) return; }
+    else if (diasFilter === 'exact_1') { if (diasSinVenta !== 1) return; }
+    else if (diasFilter === 'exact_2') { if (diasSinVenta !== 2) return; }
+    else if (diasFilter === '3plus') { if (diasSinVenta < 3) return; }
+    // 'all' shows everyone
     
     // Diagnostics from cotizaciones
     var agCots = state.cotizaciones.filter(function(c){return c.agente_id===ag.id});
@@ -12406,7 +12414,7 @@ function renderRachaNegativa() {
     
     var centroName = ag.centros ? ag.centros.nombre : '';
     
-    rachaAgents.push({
+    window._rachaAgents.push({
       nombre: ag.nombre,
       supervisor: supMap[ag.supervisor_id] || 'Sin sup',
       centro: centroName,
@@ -12424,23 +12432,23 @@ function renderRachaNegativa() {
     });
   });
   
-  rachaAgents.sort(function(a,b){return b.diasSinVenta - a.diasSinVenta});
+  window._rachaAgents.sort(function(a,b){return b.diasSinVenta - a.diasSinVenta});
   
-  if (rachaAgents.length === 0) {
-    el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3)"><div style="font-size:36px;margin-bottom:8px">✅</div><div style="font-size:13px;font-weight:700;color:#10B981">¡Todos vendiendo!</div><div style="font-size:11px">No hay agentes con '+minDias+'+ días hábiles sin venta</div></div>';
+  if (window._rachaAgents.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3)"><div style="font-size:36px;margin-bottom:8px">✅</div><div style="font-size:13px;font-weight:700;color:#10B981">¡Todos vendiendo!</div><div style="font-size:11px">No hay agentes en esta categoría</div></div>';
     return;
   }
   
-  var criticos = rachaAgents.filter(function(a){return a.diasSinVenta >= 3}).length;
-  var advertencia = rachaAgents.filter(function(a){return a.diasSinVenta === 2}).length;
+  var criticos = window._rachaAgents.filter(function(a){return a.diasSinVenta >= 3}).length;
+  var advertencia = window._rachaAgents.filter(function(a){return a.diasSinVenta === 2}).length;
   
   var h = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">';
-  h += '<div style="text-align:center;padding:8px;background:#FEF2F2;border-radius:8px"><div style="font-size:20px;font-weight:900;color:#DC3545">'+rachaAgents.length+'</div><div style="font-size:9px;color:#DC3545">Total sin venta</div></div>';
+  h += '<div style="text-align:center;padding:8px;background:#FEF2F2;border-radius:8px"><div style="font-size:20px;font-weight:900;color:#DC3545">'+window._rachaAgents.length+'</div><div style="font-size:9px;color:#DC3545">Total sin venta</div></div>';
   h += '<div style="text-align:center;padding:8px;background:#FFF7ED;border-radius:8px"><div style="font-size:20px;font-weight:900;color:#EA580C">'+criticos+'</div><div style="font-size:9px;color:#EA580C">Críticos (3+d)</div></div>';
   h += '<div style="text-align:center;padding:8px;background:#FEF3C7;border-radius:8px"><div style="font-size:20px;font-weight:900;color:#E6A200">'+advertencia+'</div><div style="font-size:9px;color:#E6A200">Advertencia (2d)</div></div>';
   h += '</div>';
   
-  rachaAgents.forEach(function(ag) {
+  window._rachaAgents.forEach(function(ag) {
     var borderColor = ag.diasSinVenta >= 3 ? '#DC3545' : ag.diasSinVenta >= 2 ? '#EA580C' : '#E6A200';
     
     h += '<div class="section" style="padding:12px;margin-bottom:6px;border-left:4px solid '+borderColor+'">';
@@ -12519,6 +12527,36 @@ async function renderHomeRacha() {
   } else {
     el.style.display = 'none';
   }
+}
+
+function exportRachaExcel() {
+  var data = window._rachaAgents || [];
+  if (data.length === 0) { alert('No hay datos para exportar'); return; }
+  
+  var rows = [['Agente','Supervisor','Centro','Días sin venta','Última venta','Ventas del mes','Cots hoy','Cots ayer','Seguimientos pendientes','Sin gestión','Total cotizaciones','Diagnóstico']];
+  data.forEach(function(ag) {
+    rows.push([
+      ag.nombre,
+      ag.supervisor,
+      ag.centro,
+      ag.diasSinVenta >= 99 ? 'Sin ventas' : ag.diasSinVenta,
+      ag.lastVenta,
+      ag.ventasMes,
+      ag.cotsHoy,
+      ag.cotsAyer,
+      ag.segPendientes,
+      ag.enviadasSinGestion,
+      ag.totalCots,
+      ag.diagnostico.replace(/[🔴🟠🟡]/g,'').trim()
+    ]);
+  });
+  
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:28},{wch:22},{wch:18},{wch:14},{wch:14},{wch:12},{wch:10},{wch:10},{wch:18},{wch:12},{wch:14},{wch:45}];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Agentes Sin Venta');
+  var hoy = new Date().toISOString().substring(0,10);
+  XLSX.writeFile(wb, 'agentes_sin_venta_'+hoy+'.xlsx');
 }
 
 // ── INVENTARIO (Stock por Hub) ──
