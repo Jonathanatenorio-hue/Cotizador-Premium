@@ -1124,6 +1124,7 @@ body{padding-bottom:60px}
           <input type="file" accept=".xlsx,.xls" onchange="cargaMasivaUsuarios(this)" style="display:none">
         </label>
         <button class="btn btn-secondary" onclick="descargarPlantillaUsuarios()">📋 Plantilla</button>
+        <button class="btn btn-secondary" onclick="exportAdminUsersExcel()">📥 Exportar</button>
         <select class="field" id="adminFilterRol" onchange="renderAdminUsers()" style="width:auto">
           <option value="all">Todos los roles</option>
           <option value="coordinador">Coordinadores</option>
@@ -8598,6 +8599,39 @@ function descargarPlantillaUsuarios() {
   XLSX.writeFile(wb, 'Plantilla_Usuarios_ExpertCell.xlsx');
 }
 
+function exportAdminUsersExcel() {
+  var filterRol = document.getElementById('adminFilterRol').value;
+  var filterCentro = document.getElementById('adminFilterCentro').value;
+  var filterSup = document.getElementById('adminFilterSup') ? document.getElementById('adminFilterSup').value : 'all';
+  var filterEstatus = document.getElementById('adminFilterEstatus').value;
+  var searchTerm = document.getElementById('adminSearchBar') ? document.getElementById('adminSearchBar').value.toLowerCase().trim() : '';
+  var list = adminUsers.filter(function(u) {
+    if (filterRol !== 'all' && u.rol !== filterRol) return false;
+    if (filterCentro !== 'all' && u.centro_id !== parseInt(filterCentro)) return false;
+    if (filterSup !== 'all' && u.supervisor_id !== filterSup) return false;
+    if (filterEstatus === 'activos' && !u.activo) return false;
+    if (filterEstatus === 'baja' && u.activo) return false;
+    if (searchTerm) {
+      var match = (u.nombre||'').toLowerCase().indexOf(searchTerm) >= 0 || (u.attuid||'').toLowerCase().indexOf(searchTerm) >= 0;
+      if (!match) return false;
+    }
+    return true;
+  });
+  if (list.length === 0) { alert('No hay usuarios para exportar'); return; }
+  var rows = [['Nombre','ATTUID','Rol','Centro','Supervisor','Coordinador','WhatsApp','Estatus']];
+  list.forEach(function(u) {
+    var centro = adminCentros.find(function(c){return c.id===u.centro_id});
+    var sup = adminUsers.find(function(s){return s.id===u.supervisor_id});
+    var coord = adminUsers.find(function(c){return c.id===u.coordinador_id});
+    rows.push([u.nombre, u.attuid, u.rol, centro?centro.nombre:'', sup?sup.nombre:'', coord?coord.nombre:'', u.whatsapp||'', u.activo?'Activo':'Baja']);
+  });
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:28},{wch:10},{wch:14},{wch:20},{wch:24},{wch:24},{wch:14},{wch:10}];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Usuarios');
+  XLSX.writeFile(wb, 'usuarios_expertcell_'+new Date().toISOString().substring(0,10)+'.xlsx');
+}
+
 async function cargaMasivaUsuarios(input) {
   var file = input.files[0];
   if (!file || !supabase) return;
@@ -11911,84 +11945,134 @@ async function eliminarAviso(id) {
 }
 
 // ── VER PROPÓSITOS (ADMIN) ──
+var _propositosData = {users:[], norteMap:{}, supMap:{}, centroMap:{}};
+
 async function verPropositos() {
   if (!supabase) return;
   
-  // Load all propósitos
   var {data: nortes} = await supabase.from('agent_norte').select('*');
-  nortes = nortes || [];
+  var {data: users} = await supabase.from('usuarios').select('id, nombre, rol, supervisor_id, centro_id, activo');
+  var {data: centros} = await supabase.from('centros').select('id, nombre');
+  nortes = nortes || []; users = users || []; centros = centros || [];
   
-  // Load all users
-  var {data: users} = await supabase.from('usuarios').select('id, nombre, rol, supervisor_id, activo');
-  users = users || [];
-  var userMap = {};
-  users.forEach(function(u) { userMap[u.id] = u; });
+  var supMap = {}; users.filter(function(u){return u.rol==='supervisor'}).forEach(function(u){supMap[u.id]=u.nombre});
+  var centroMap = {}; centros.forEach(function(c){centroMap[c.id]=c.nombre});
+  var norteMap = {}; nortes.forEach(function(n){norteMap[n.user_id]=n});
   
-  // Supervisors map
-  var supMap = {};
-  users.filter(function(u){return u.rol==='supervisor'}).forEach(function(u){ supMap[u.id]=u.nombre; });
-  
-  // Norte map by user_id
-  var norteMap = {};
-  nortes.forEach(function(n) { norteMap[n.user_id] = n; });
-  
-  // Build list: active agents/supervisors
-  var activeUsers = users.filter(function(u) { return (u.activo === true || u.activo === 'true') && (u.rol === 'agente' || u.rol === 'supervisor'); });
-  activeUsers.sort(function(a,b) { return a.nombre.localeCompare(b.nombre); });
-  
-  var conProposito = activeUsers.filter(function(u) { return norteMap[u.id]; });
-  var sinProposito = activeUsers.filter(function(u) { return !norteMap[u.id]; });
+  _propositosData = {users:users, norteMap:norteMap, supMap:supMap, centroMap:centroMap};
   
   var overlay = document.createElement('div');
   overlay.id = 'propositosOverlay';
-  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:20px';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:16px';
   
-  var h = '<div style="background:white;border-radius:16px;padding:20px;max-width:600px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">';
-  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">';
+  var h = '<div style="background:white;border-radius:16px;padding:16px;max-width:600px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:90vh;display:flex;flex-direction:column">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-shrink:0">';
   h += '<div style="font-size:18px;font-weight:900">🔥 Propósitos del Equipo</div>';
-  h += '<button onclick="document.getElementById(\'propositosOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>';
+  h += '<div style="display:flex;gap:6px"><button onclick="exportPropositosExcel()" class="btn btn-primary" style="font-size:9px;padding:4px 10px">📥 Excel</button>';
+  h += '<button onclick="document.getElementById(\'propositosOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div></div>';
+  
+  // Filters
+  var centroOpts = '<option value="all">Todos los centros</option>';
+  var centroSet = {};
+  users.forEach(function(u){if(u.centro_id && centroMap[u.centro_id]) centroSet[u.centro_id]=centroMap[u.centro_id]});
+  Object.keys(centroSet).sort(function(a,b){return centroSet[a].localeCompare(centroSet[b])}).forEach(function(id){
+    centroOpts += '<option value="'+id+'">'+centroSet[id]+'</option>';
+  });
+  var supOpts = '<option value="all">Todos los supervisores</option>';
+  Object.keys(supMap).sort(function(a,b){return supMap[a].localeCompare(supMap[b])}).forEach(function(id){
+    supOpts += '<option value="'+id+'">'+supMap[id]+'</option>';
+  });
+  
+  h += '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;flex-shrink:0">';
+  h += '<select class="field" id="propFilterCentro" onchange="renderPropositosList()" style="font-size:10px;padding:4px 6px;width:auto">'+centroOpts+'</select>';
+  h += '<select class="field" id="propFilterSup" onchange="renderPropositosList()" style="font-size:10px;padding:4px 6px;width:auto">'+supOpts+'</select>';
+  h += '<select class="field" id="propFilterEstatus" onchange="renderPropositosList()" style="font-size:10px;padding:4px 6px;width:auto"><option value="all">Todos</option><option value="con">✅ Con propósito</option><option value="sin">❌ Sin propósito</option></select>';
   h += '</div>';
   
-  // KPIs
-  h += '<div style="display:flex;gap:8px;margin-bottom:14px">';
-  h += '<div style="flex:1;text-align:center;padding:8px;background:#E8F5E9;border-radius:8px"><div style="font-size:20px;font-weight:900;color:#10B981">'+conProposito.length+'</div><div style="font-size:9px;color:#2E7D32">Lo llenaron</div></div>';
-  h += '<div style="flex:1;text-align:center;padding:8px;background:#FEF2F2;border-radius:8px"><div style="font-size:20px;font-weight:900;color:#DC3545">'+sinProposito.length+'</div><div style="font-size:9px;color:#DC3545">No lo han llenado</div></div>';
-  h += '<div style="flex:1;text-align:center;padding:8px;background:var(--surface-2);border-radius:8px"><div style="font-size:20px;font-weight:900;color:var(--att-blue)">'+Math.round(conProposito.length/Math.max(activeUsers.length,1)*100)+'%</div><div style="font-size:9px;color:var(--text-3)">Cumplimiento</div></div>';
-  h += '</div>';
-  
-  // Sin propósito
-  if (sinProposito.length > 0) {
-    h += '<div style="font-size:12px;font-weight:800;color:#DC3545;margin-bottom:6px">⚠️ Sin propósito (' + sinProposito.length + ')</div>';
-    h += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px">';
-    sinProposito.forEach(function(u) {
-      var sup = supMap[u.supervisor_id] || '';
-      h += '<span style="font-size:10px;padding:3px 8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;color:#DC3545">'+u.nombre+(sup?' · '+sup:'')+'</span>';
-    });
-    h += '</div>';
-  }
-  
-  // Con propósito
-  if (conProposito.length > 0) {
-    h += '<div style="font-size:12px;font-weight:800;color:#10B981;margin-bottom:6px">✅ Con propósito (' + conProposito.length + ')</div>';
-    conProposito.forEach(function(u) {
-      var n = norteMap[u.id];
-      var sup = supMap[u.supervisor_id] || '';
-      var updated = n.updated_at ? new Date(n.updated_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) : '';
-      h += '<div style="background:var(--surface-2);border-radius:8px;padding:10px;margin-bottom:6px;border-left:3px solid #10B981">';
-      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
-      h += '<span style="font-size:11px;font-weight:700">'+u.nombre+'</span>';
-      h += '<span style="font-size:8px;color:var(--text-3)">'+(sup?'Sup: '+sup+' · ':'')+updated+'</span>';
-      h += '</div>';
-      if (n.meta_vida) h += '<div style="font-size:10px;margin-bottom:2px"><span style="color:var(--text-3)">🌟 Meta vida:</span> '+n.meta_vida+'</div>';
-      if (n.meta_ec) h += '<div style="font-size:10px;margin-bottom:2px"><span style="color:var(--text-3)">🎯 Meta EC:</span> '+n.meta_ec+'</div>';
-      if (n.motivacion) h += '<div style="font-size:10px"><span style="color:var(--text-3)">🔥 Motivación:</span> '+n.motivacion+'</div>';
-      h += '</div>';
-    });
-  }
-  
+  h += '<div id="propositosList" style="overflow-y:auto;flex:1"></div>';
   h += '</div>';
   overlay.innerHTML = h;
   document.body.appendChild(overlay);
+  renderPropositosList();
+}
+
+function renderPropositosList() {
+  var el = document.getElementById('propositosList');
+  if (!el) return;
+  var d = _propositosData;
+  var centroVal = document.getElementById('propFilterCentro').value;
+  var supVal = document.getElementById('propFilterSup').value;
+  var statusVal = document.getElementById('propFilterEstatus').value;
+  
+  var activeUsers = d.users.filter(function(u){return (u.activo===true||u.activo==='true') && (u.rol==='agente'||u.rol==='supervisor')});
+  if (centroVal !== 'all') activeUsers = activeUsers.filter(function(u){return String(u.centro_id)===centroVal});
+  if (supVal !== 'all') activeUsers = activeUsers.filter(function(u){return u.supervisor_id===supVal});
+  activeUsers.sort(function(a,b){return a.nombre.localeCompare(b.nombre)});
+  
+  var conProposito = activeUsers.filter(function(u){return d.norteMap[u.id]});
+  var sinProposito = activeUsers.filter(function(u){return !d.norteMap[u.id]});
+  
+  var showList = statusVal === 'con' ? conProposito : statusVal === 'sin' ? sinProposito : activeUsers;
+  
+  var h = '';
+  // KPIs
+  h += '<div style="display:flex;gap:6px;margin-bottom:10px">';
+  h += '<div style="flex:1;text-align:center;padding:6px;background:#E8F5E9;border-radius:8px"><div style="font-size:18px;font-weight:900;color:#10B981">'+conProposito.length+'</div><div style="font-size:8px;color:#2E7D32">Llenaron</div></div>';
+  h += '<div style="flex:1;text-align:center;padding:6px;background:#FEF2F2;border-radius:8px"><div style="font-size:18px;font-weight:900;color:#DC3545">'+sinProposito.length+'</div><div style="font-size:8px;color:#DC3545">Sin llenar</div></div>';
+  h += '<div style="flex:1;text-align:center;padding:6px;background:var(--surface-2);border-radius:8px"><div style="font-size:18px;font-weight:900;color:var(--att-blue)">'+Math.round(conProposito.length/Math.max(activeUsers.length,1)*100)+'%</div><div style="font-size:8px;color:var(--text-3)">Cumplimiento</div></div>';
+  h += '</div>';
+  
+  showList.forEach(function(u) {
+    var n = d.norteMap[u.id];
+    var sup = d.supMap[u.supervisor_id] || '';
+    var centro = d.centroMap[u.centro_id] || '';
+    if (n) {
+      var updated = n.updated_at ? new Date(n.updated_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short'}) : '';
+      h += '<div style="background:var(--surface-2);border-radius:8px;padding:8px 10px;margin-bottom:4px;border-left:3px solid #10B981">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">';
+      h += '<span style="font-size:11px;font-weight:700">'+u.nombre+'</span>';
+      h += '<span style="font-size:8px;color:var(--text-3)">'+(sup?sup+' · ':'')+centro+' · '+updated+'</span></div>';
+      if (n.meta_vida) h += '<div style="font-size:10px;margin-bottom:1px"><span style="color:var(--text-3)">🌟</span> '+n.meta_vida+'</div>';
+      if (n.meta_ec) h += '<div style="font-size:10px;margin-bottom:1px"><span style="color:var(--text-3)">🎯</span> '+n.meta_ec+'</div>';
+      if (n.motivacion) h += '<div style="font-size:10px"><span style="color:var(--text-3)">🔥</span> '+n.motivacion+'</div>';
+      h += '</div>';
+    } else {
+      h += '<div style="background:#FEF2F222;border-radius:8px;padding:8px 10px;margin-bottom:4px;border-left:3px solid #DC3545">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      h += '<span style="font-size:11px;font-weight:700;color:#DC3545">'+u.nombre+'</span>';
+      h += '<span style="font-size:8px;color:var(--text-3)">'+(sup?sup+' · ':'')+centro+' · ❌ Sin propósito</span></div></div>';
+    }
+  });
+  
+  if (showList.length === 0) h += '<div style="text-align:center;padding:20px;color:var(--text-3)">No hay resultados con estos filtros</div>';
+  el.innerHTML = h;
+}
+
+function exportPropositosExcel() {
+  var d = _propositosData;
+  var centroVal = document.getElementById('propFilterCentro').value;
+  var supVal = document.getElementById('propFilterSup').value;
+  
+  var activeUsers = d.users.filter(function(u){return (u.activo===true||u.activo==='true') && (u.rol==='agente'||u.rol==='supervisor')});
+  if (centroVal !== 'all') activeUsers = activeUsers.filter(function(u){return String(u.centro_id)===centroVal});
+  if (supVal !== 'all') activeUsers = activeUsers.filter(function(u){return u.supervisor_id===supVal});
+  activeUsers.sort(function(a,b){return a.nombre.localeCompare(b.nombre)});
+  
+  var rows = [['Nombre','Rol','Supervisor','Centro','Estatus','Meta de vida','Meta en EC','Motivación','Última actualización']];
+  activeUsers.forEach(function(u) {
+    var n = d.norteMap[u.id];
+    rows.push([
+      u.nombre, u.rol, d.supMap[u.supervisor_id]||'', d.centroMap[u.centro_id]||'',
+      n ? '✅ Llenado' : '❌ Sin llenar',
+      n ? (n.meta_vida||'') : '', n ? (n.meta_ec||'') : '', n ? (n.motivacion||'') : '',
+      n && n.updated_at ? new Date(n.updated_at).toLocaleDateString('es-MX') : ''
+    ]);
+  });
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:28},{wch:12},{wch:22},{wch:18},{wch:14},{wch:35},{wch:35},{wch:35},{wch:14}];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Propósitos');
+  XLSX.writeFile(wb, 'propositos_equipo_'+new Date().toISOString().substring(0,10)+'.xlsx');
 }
 
 // ── AVISOS / COMUNICADOS ──
@@ -12277,6 +12361,13 @@ async function openRachaNegativa() {
       metasVentas = vr.data || [];
       console.log('Racha: loaded', metasVentas.length, 'ventas for', mes);
     } catch(e) { console.error('Racha ventas load error:', e); }
+    // Also load metas
+    if (metasMetas.length === 0) {
+      try {
+        var mr = await supabase.from('metas').select('*').eq('mes', mes);
+        metasMetas = mr.data || [];
+      } catch(e) {}
+    }
   }
   initRachaFilters();
   renderRachaNegativa();
@@ -12402,9 +12493,20 @@ function renderRachaNegativa() {
     var cotsVenta = agCots.filter(function(c){return c.estatus==='venta'}).length;
     var totalCotsMes = agCots.length;
     
+    // Meta info
+    var metaAgente = metasGetMeta('agente', ag.nombre.toUpperCase());
+    if (!metaAgente) metaAgente = metasGetMeta('agente', ag.nombre);
+    var metaPct = metaAgente > 0 ? Math.round(ventasMes / metaAgente * 100) : 0;
+    var metaFaltan = metaAgente > 0 ? Math.max(0, metaAgente - ventasMes) : 0;
+    var metaSuperada = metaAgente > 0 && ventasMes >= metaAgente;
+    
     var diagnostico = '';
     var diagColor = '';
-    if (cotsAyer === 0 && cotsHoy === 0) {
+    
+    if (metaSuperada && diasSinVenta >= 2) {
+      diagnostico = '🟢 Meta cumplida (' + ventasMes + '/' + metaAgente + ') pero ' + diasSinVenta + 'd sin vender — Mantener ritmo';
+      diagColor = '#059669';
+    } else if (cotsAyer === 0 && cotsHoy === 0) {
       diagnostico = '🔴 No genera cotizaciones — Revisar actividad y llamadas';
       diagColor = '#DC3545';
     } else if (totalCotsMes > 5 && ventasMes === 0) {
@@ -12437,6 +12539,10 @@ function renderRachaNegativa() {
       segPendientes: segPendientes,
       enviadasSinGestion: enviadasSinGestion,
       ventasMes: ventasMes,
+      meta: metaAgente,
+      metaPct: metaPct,
+      metaFaltan: metaFaltan,
+      metaSuperada: metaSuperada,
       cotsVenta: cotsVenta,
       totalCots: totalCotsMes,
       diagnostico: diagnostico,
@@ -12481,6 +12587,19 @@ function renderRachaNegativa() {
     h += '<span style="font-size:9px;padding:2px 6px;background:var(--surface-2);border-radius:4px">Seg: <b style="color:#E6A200">'+ag.segPendientes+'</b></span>';
     h += '<span style="font-size:9px;padding:2px 6px;background:var(--surface-2);border-radius:4px">Sin gestión: <b style="color:#DC3545">'+ag.enviadasSinGestion+'</b></span>';
     h += '</div>';
+    
+    // Meta progress
+    if (ag.meta > 0) {
+      var metaBarPct = Math.min(ag.metaPct, 100);
+      var metaColor = ag.metaSuperada ? '#10B981' : ag.metaPct >= 70 ? '#E6A200' : '#DC3545';
+      h += '<div style="margin-bottom:6px">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">';
+      h += '<span style="font-size:9px;font-weight:700;color:var(--text-2)">Meta: ' + ag.ventasMes + '/' + ag.meta + '</span>';
+      h += ag.metaSuperada ? '<span style="font-size:9px;font-weight:800;color:#10B981">✅ +' + (ag.ventasMes - ag.meta) + ' sobre meta</span>' : '<span style="font-size:9px;font-weight:700;color:' + metaColor + '">Faltan ' + ag.metaFaltan + ' · ' + ag.metaPct + '%</span>';
+      h += '</div>';
+      h += '<div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:' + metaBarPct + '%;background:' + metaColor + ';border-radius:3px"></div></div>';
+      h += '</div>';
+    }
     
     h += '<div style="font-size:10px;font-weight:700;color:'+ag.diagColor+';padding:4px 8px;background:'+ag.diagColor+'11;border-radius:4px;border:1px solid '+ag.diagColor+'33">'+ag.diagnostico+'</div>';
     h += '</div>';
@@ -12557,7 +12676,7 @@ function exportRachaExcel() {
   var data = window._rachaAgents || [];
   if (data.length === 0) { alert('No hay datos para exportar'); return; }
   
-  var rows = [['AGENTE','SUPERVISOR','CENTRO','DÍAS SIN VENTA','SEMÁFORO','ÚLTIMA VENTA','VENTAS MES','COTS HOY','COTS AYER','SEG. PENDIENTES','SIN GESTIÓN','TOTAL COTS','DIAGNÓSTICO']];
+  var rows = [['AGENTE','SUPERVISOR','CENTRO','DÍAS SIN VENTA','SEMÁFORO','ÚLTIMA VENTA','VENTAS MES','META','% META','FALTAN','COTS HOY','COTS AYER','SEG. PENDIENTES','SIN GESTIÓN','TOTAL COTS','DIAGNÓSTICO']];
   data.forEach(function(ag) {
     var dias = ag.diasSinVenta >= 99 ? 'Sin ventas' : ag.diasSinVenta;
     var semaforo = ag.diasSinVenta >= 3 ? '🔴 CRÍTICO' : ag.diasSinVenta === 2 ? '🟠 ALERTA' : ag.diasSinVenta === 1 ? '🟡 ATENCIÓN' : '✅ OK';
@@ -12569,21 +12688,24 @@ function exportRachaExcel() {
       semaforo,
       ag.lastVenta,
       ag.ventasMes,
+      ag.meta || 0,
+      ag.metaPct + '%',
+      ag.metaFaltan,
       ag.cotsHoy,
       ag.cotsAyer,
       ag.segPendientes,
       ag.enviadasSinGestion,
       ag.totalCots,
-      ag.diagnostico.replace(/[🔴🟠🟡]/g,'').trim()
+      ag.diagnostico.replace(/[🔴🟠🟡🟢]/g,'').trim()
     ]);
   });
   
   var ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{wch:30},{wch:22},{wch:18},{wch:15},{wch:14},{wch:14},{wch:12},{wch:10},{wch:10},{wch:16},{wch:12},{wch:12},{wch:48}];
+  ws['!cols'] = [{wch:30},{wch:22},{wch:18},{wch:15},{wch:14},{wch:14},{wch:12},{wch:8},{wch:9},{wch:8},{wch:10},{wch:10},{wch:16},{wch:12},{wch:12},{wch:48}];
   
   // Style header row
   var headerStyle = {font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'0057B8'}},alignment:{horizontal:'center',vertical:'center'},border:{bottom:{style:'thin',color:{rgb:'000000'}}}};
-  var cols = 'ABCDEFGHIJKLM';
+  var cols = 'ABCDEFGHIJKLMNOP';
   for (var ci = 0; ci < cols.length; ci++) {
     var ref = cols[ci] + '1';
     if (ws[ref]) ws[ref].s = headerStyle;
