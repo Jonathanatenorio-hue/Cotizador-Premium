@@ -699,6 +699,11 @@ body{padding-bottom:60px}
         <div class="card-title">Promociones</div>
         <div class="card-desc">Promociones activas del mes</div>
       </div>
+      <div class="home-card clickable" id="cardRacha" style="display:none" onclick="openRachaNegativa()">
+        <div class="card-icon">🚨</div>
+        <div class="card-title">Sin Venta</div>
+        <div class="card-desc">Agentes sin venta reciente</div>
+      </div>
     </div>
     <div id="homeAnnouncement" style="display:none;margin-bottom:10px"></div>
     <div id="homeRachaNegativa" style="display:none;margin-bottom:10px"></div>
@@ -2961,6 +2966,8 @@ async function updateHome() {
 
   // Show aceleraciones card - always visible for all roles
   renderHomeRacha();
+  var rachaCard = document.getElementById('cardRacha');
+  if (rachaCard) rachaCard.style.display = (currentUser && currentUser.rol !== 'agente') ? '' : 'none';
   var acelCard = document.getElementById('cardAceleraciones');
   var acelCount = state.cotizaciones.filter(function(c) {
     return c.sub_estatus === 'aceleracion' && c.estatus !== 'perdida' && c.estatus !== 'venta';
