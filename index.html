@@ -940,6 +940,7 @@ body{padding-bottom:60px}
         <button class="btn btn-secondary" onclick="limpiarFiltrosHistorial()" style="font-size:10px;padding:4px 8px">✕ Limpiar</button>
         <select class="field" id="hFilterSubEstatus" onchange="renderHistorial()" style="width:auto;min-width:140px;font-size:11px;padding:5px 8px">
           <option value="all">Todas las sub-tipificaciones</option>
+          <option value="_agentes_baja">👤 Agentes dados de baja</option>
           <option value="reasignada">🔄 Reasignadas</option>
           <option value="aceleracion">Aceleración pendiente</option>
           <option value="en_negociacion">En negociación</option>
@@ -953,7 +954,6 @@ body{padding-bottom:60px}
           <option value="pago_rechazado">Pago rechazado</option>
           <option value="desconfianza">Desconfianza trámite</option>
           <option value="adeudo_pendiente">Adeudo por pagar</option>
-          <option value="reasignada">Reasignada</option>
           <option value="confirmada">Venta confirmada ✅</option>
           <option value="no_confirmada">No confirmada ⚠️</option>
         </select>
@@ -5431,13 +5431,10 @@ async function initHistorialFilters() {
 
   // Load users
   try {
-    var { data, error } = await supabase.from('usuarios').select('*, centros(nombre, ciudad)').eq('activo', true).order('nombre');
-    if (error || !data || data.length === 0) {
-      // Fallback: try without activo filter
-      var res = await supabase.from('usuarios').select('*, centros(nombre, ciudad)').order('nombre');
-      data = (res.data || []).filter(function(u) { return u.activo === true || u.activo === 'true' || u.activo === 1; });
-    }
-    hFilterUsers = data || [];
+    var { data, error } = await supabase.from('usuarios').select('*, centros(nombre, ciudad)').order('nombre');
+    if (error) data = [];
+    hFilterUsers = (data || []).filter(function(u) { return u.activo === true || u.activo === 'true' || u.activo === 1; });
+    window._allUsersIncBaja = data || [];
   } catch(e) { console.error('hFilter users error:', e); hFilterUsers = []; }
 
   // Load centros
@@ -6016,7 +6013,16 @@ function exportHistorialExcel() {
   }
   
   var hSubEst = document.getElementById('hFilterSubEstatus') ? document.getElementById('hFilterSubEstatus').value : 'all';
-  if (hSubEst !== 'all') filtered = filtered.filter(function(c) { return c.sub_estatus === hSubEst; });
+  if (hSubEst === '_agentes_baja') {
+    var allU = window._allUsersIncBaja || [];
+    var inactiveIds = allU.filter(function(u){return !(u.activo===true||u.activo==='true'||u.activo===1)}).map(function(u){return u.id});
+    var knownIds = allU.map(function(u){return u.id});
+    filtered = filtered.filter(function(c) {
+      return inactiveIds.indexOf(c.agente_id) >= 0 || knownIds.indexOf(c.agente_id) < 0;
+    });
+  } else if (hSubEst !== 'all') {
+    filtered = filtered.filter(function(c) { return c.sub_estatus === hSubEst; });
+  }
   
   if (state.filterEstatus !== 'all') filtered = filtered.filter(function(c) { return c.estatus === state.filterEstatus; });
   
