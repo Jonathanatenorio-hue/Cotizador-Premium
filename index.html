@@ -12370,12 +12370,12 @@ function renderRachaNegativa() {
       if (fd && (!lastVentaDate || fd > lastVentaDate)) lastVentaDate = fd;
     });
     
-    // Calculate business days since last venta
+    // Calculate business days since last venta (not counting today)
     var diasSinVenta = 0;
     if (lastVentaDate) {
       var tempDate = new Date(lastVentaDate+'T12:00:00');
       tempDate.setDate(tempDate.getDate()+1);
-      while (tempDate <= hoy) {
+      while (tempDate < hoy) {
         if (tempDate.getDay() !== 0) diasSinVenta++;
         tempDate.setDate(tempDate.getDate()+1);
       }
@@ -12538,7 +12538,7 @@ async function renderHomeRacha() {
     if (lastVenta) {
       var tempDate = new Date(lastVenta+'T12:00:00');
       tempDate.setDate(tempDate.getDate()+1);
-      while (tempDate <= hoy) { if (tempDate.getDay()!==0) dias++; tempDate.setDate(tempDate.getDate()+1); }
+      while (tempDate < hoy) { if (tempDate.getDay()!==0) dias++; tempDate.setDate(tempDate.getDate()+1); }
     } else { dias = 99; }
     if (dias >= 2) sinVenta++;
   });
