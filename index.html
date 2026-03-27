@@ -10691,9 +10691,12 @@ async function metasRender() {
       }
       if (centroVal !== 'all' && v.centro_key !== centroVal) return false;
       if (supVal !== 'all' && v.supervisor !== supVal) return false;
-      if (agentVal !== 'all' && v.agente !== agentVal) return false;
       return true;
     });
+  }
+  // Agent filter applies to all roles (supervisor, admin, coord)
+  if (agentVal !== 'all') {
+    fv = fv.filter(function(v) { return v.agente === agentVal; });
   }
 
   var totalVentas = fv.length;
