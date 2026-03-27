@@ -701,6 +701,7 @@ body{padding-bottom:60px}
       </div>
     </div>
     <div id="homeAnnouncement" style="display:none;margin-bottom:10px"></div>
+    <div id="homeRachaNegativa" style="display:none;margin-bottom:10px"></div>
     <div id="homeAlerts" style="display:none;margin-bottom:10px;cursor:pointer" onclick="openAceleraciones()"></div>
     <div id="homeAnnouncements" style="display:none;margin-bottom:10px"></div>
     <div id="homeMotivMsg" style="display:none;border-radius:12px;padding:14px 18px;margin-bottom:10px;text-align:center;font-size:13px;font-weight:700;line-height:1.4"></div>
@@ -934,6 +935,7 @@ body{padding-bottom:60px}
         <button class="btn btn-secondary" onclick="limpiarFiltrosHistorial()" style="font-size:10px;padding:4px 8px">✕ Limpiar</button>
         <select class="field" id="hFilterSubEstatus" onchange="renderHistorial()" style="width:auto;min-width:140px;font-size:11px;padding:5px 8px">
           <option value="all">Todas las sub-tipificaciones</option>
+          <option value="reasignada">🔄 Reasignadas</option>
           <option value="aceleracion">Aceleración pendiente</option>
           <option value="en_negociacion">En negociación</option>
           <option value="espera_pago">En espera de pago</option>
@@ -985,6 +987,28 @@ body{padding-bottom:60px}
     <div class="filter-row" id="filterRow"></div>
     <div id="historialChart" style="margin-bottom:8px"></div>
     <div id="historialList"></div>
+  </div>
+</div>
+
+<!-- ===== VIEW: RACHA NEGATIVA ===== -->
+<div class="view" id="viewRachaNegativa">
+  <div class="container">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+      <div>
+        <div style="font-size:18px;font-weight:900">🚨 Agentes Sin Venta</div>
+        <div style="font-size:10px;color:var(--text-3)">Detecta y actúa antes de que la racha crezca</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+      <select class="field" id="rachaFilterSup" onchange="rachaFilterChanged()" style="width:auto;font-size:11px;padding:5px 8px;min-width:140px"><option value="all">Todos los supervisores</option></select>
+      <select class="field" id="rachaFilterAgent" onchange="renderRachaNegativa()" style="width:auto;font-size:11px;padding:5px 8px;min-width:140px"><option value="all">Todos los agentes</option></select>
+      <select class="field" id="rachaFilterDias" onchange="renderRachaNegativa()" style="width:auto;font-size:11px;padding:5px 8px">
+        <option value="1">1+ día sin venta</option>
+        <option value="2" selected>2+ días sin venta</option>
+        <option value="3">3+ días sin venta</option>
+      </select>
+    </div>
+    <div id="rachaList"></div>
   </div>
 </div>
 
@@ -2784,7 +2808,7 @@ function showView(name, title) {
 
   const titles = {
     home: '', config: 'Mi Perfil', cotizar: 'Nueva Cotización',
-    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Propósito', aiDashboard: 'Análisis IA', midia: 'Mi Día', promociones: 'Promociones', buzonAnonimo: 'Buzón Anónimo',
+    historial: 'Historial de Cotizaciones', detalle: '', admin: 'Admin Usuarios', dashboard: 'Dashboard', recuperacion: 'Recuperación', aceleraciones: 'Aceleraciones', whatsapp: 'Generador WhatsApp', training: 'Sales Academy', metas: 'Metas de Ventas', informes: 'Informes', miNorte: 'Mi Propósito', aiDashboard: 'Análisis IA', midia: 'Mi Día', rachaNegativa: 'Agentes Sin Venta', promociones: 'Promociones', buzonAnonimo: 'Buzón Anónimo',
   };
   headerTitle.textContent = title || titles[name] || '';
 
@@ -2935,6 +2959,7 @@ async function updateHome() {
   }
 
   // Show aceleraciones card - always visible for all roles
+  renderHomeRacha();
   var acelCard = document.getElementById('cardAceleraciones');
   var acelCount = state.cotizaciones.filter(function(c) {
     return c.sub_estatus === 'aceleracion' && c.estatus !== 'perdida' && c.estatus !== 'venta';
@@ -6535,7 +6560,7 @@ function showDetalle(folio) {
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
           <button class="btn btn-secondary" onclick="editCotizacion('${cot.folio}')">✏️ Editar</button>
           <button class="btn btn-secondary" onclick="buildAndDownloadPDF(state.selectedCotizacion)">📄 Descargar PDF</button>
-          ${currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador') ? '<button class="btn btn-secondary" onclick="reasignarCotDetalle(\''+cot.folio+'\')" style="color:#8B5CF6;border-color:#8B5CF6">🔄 Reasignar</button>' : ''}
+          ${currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor') ? '<button class="btn btn-secondary" onclick="reasignarCotDetalle(\''+cot.folio+'\')" style="color:#8B5CF6;border-color:#8B5CF6">🔄 Reasignar</button>' : ''}
         </div>
       </div>
     </div>
@@ -6980,7 +7005,7 @@ var reasignarAgentsList = [];
 
 async function reasignarCotDetalle(folio) {
   if (!supabase || !currentUser) return;
-  if (currentUser.rol !== 'admin' && currentUser.rol !== 'coordinador') { alert('Sin permisos'); return; }
+  if (currentUser.rol !== 'admin' && currentUser.rol !== 'coordinador' && currentUser.rol !== 'supervisor') { alert('Sin permisos'); return; }
   
   // Load active agents with supervisors
   var {data: allUsers} = await supabase.from('usuarios').select('id, nombre, attuid, rol, supervisor_id, coordinador_id, activo');
@@ -12215,6 +12240,230 @@ function addIncluidoToCart(devId, planId, plazo) {
   renderItems();
   document.getElementById('incluidosOverlay').remove();
   alert('✅ ' + dev.equipo + ' agregado a la cotización (incluido $0)');
+}
+
+// ── RACHA NEGATIVA (Agentes sin venta) ──
+function openRachaNegativa() {
+  showView('rachaNegativa', 'Agentes Sin Venta');
+  initRachaFilters();
+  renderRachaNegativa();
+}
+
+function initRachaFilters() {
+  var supSel = document.getElementById('rachaFilterSup');
+  var sups = {};
+  (hFilterUsers||[]).filter(function(u){return u.rol==='supervisor'}).forEach(function(u){sups[u.id]=u.nombre});
+  var h = '<option value="all">Todos los supervisores</option>';
+  Object.keys(sups).sort(function(a,b){return sups[a].localeCompare(sups[b])}).forEach(function(id){
+    h += '<option value="'+id+'">'+sups[id]+'</option>';
+  });
+  supSel.innerHTML = h;
+  rachaFilterChanged();
+}
+
+function rachaFilterChanged() {
+  var supId = document.getElementById('rachaFilterSup').value;
+  var agSel = document.getElementById('rachaFilterAgent');
+  var agents = (hFilterUsers||[]).filter(function(u){return u.rol==='agente' && (u.activo===true||u.activo==='true')});
+  if (supId !== 'all') agents = agents.filter(function(u){return u.supervisor_id===supId});
+  var h = '<option value="all">Todos los agentes</option>';
+  agents.sort(function(a,b){return a.nombre.localeCompare(b.nombre)}).forEach(function(a){
+    h += '<option value="'+a.id+'">'+a.nombre+'</option>';
+  });
+  agSel.innerHTML = h;
+  renderRachaNegativa();
+}
+
+function renderRachaNegativa() {
+  var el = document.getElementById('rachaList');
+  if (!el) return;
+  var supId = document.getElementById('rachaFilterSup').value;
+  var agentId = document.getElementById('rachaFilterAgent').value;
+  var minDias = parseInt(document.getElementById('rachaFilterDias').value) || 2;
+  
+  // Get active agents
+  var agents = (hFilterUsers||[]).filter(function(u){return u.rol==='agente' && (u.activo===true||u.activo==='true')});
+  if (supId !== 'all') agents = agents.filter(function(u){return u.supervisor_id===supId});
+  if (agentId !== 'all') agents = agents.filter(function(u){return u.id===agentId});
+  
+  var supMap = {};
+  (hFilterUsers||[]).filter(function(u){return u.rol==='supervisor'}).forEach(function(u){supMap[u.id]=u.nombre});
+  
+  var hoyStr = toMexDateStr(new Date().toISOString());
+  var hoy = new Date(hoyStr+'T12:00:00');
+  
+  var rachaAgents = [];
+  
+  agents.forEach(function(ag) {
+    // Find last venta date
+    var agCots = state.cotizaciones.filter(function(c){return c.agente_id===ag.id});
+    var ventas = agCots.filter(function(c){return c.estatus==='venta'});
+    var lastVentaDate = null;
+    ventas.forEach(function(v) {
+      var d = toMexDateStr(v.createdAt) || (v.fecha||'').substring(0,10);
+      if (!lastVentaDate || d > lastVentaDate) lastVentaDate = d;
+    });
+    
+    // Calculate business days since last venta
+    var diasSinVenta = 0;
+    if (lastVentaDate) {
+      var checkDate = new Date(lastVentaDate+'T12:00:00');
+      var tempDate = new Date(checkDate);
+      tempDate.setDate(tempDate.getDate()+1);
+      while (tempDate <= hoy) {
+        if (tempDate.getDay() !== 0) diasSinVenta++; // Skip sundays
+        tempDate.setDate(tempDate.getDate()+1);
+      }
+    } else {
+      diasSinVenta = 99; // No ventas at all this month
+    }
+    
+    if (diasSinVenta < minDias) return;
+    
+    // Diagnostics
+    var cotsAyer = agCots.filter(function(c){
+      var d = toMexDateStr(c.createdAt)||(c.fecha||'').substring(0,10);
+      var ayer = new Date(hoy); ayer.setDate(ayer.getDate()-1);
+      var ayerStr = ayer.getFullYear()+'-'+String(ayer.getMonth()+1).padStart(2,'0')+'-'+String(ayer.getDate()).padStart(2,'0');
+      return d === ayerStr;
+    });
+    var cotsHoy = agCots.filter(function(c){
+      var d = toMexDateStr(c.createdAt)||(c.fecha||'').substring(0,10);
+      return d === hoyStr;
+    });
+    var segPendientes = agCots.filter(function(c){return c.estatus==='seguimiento'}).length;
+    var enviadasSinGestion = agCots.filter(function(c){return c.estatus==='enviada'}).length;
+    var totalVentasMes = ventas.length;
+    var totalCotsMes = agCots.length;
+    
+    // Diagnosis
+    var diagnostico = '';
+    var diagColor = '';
+    if (cotsAyer.length === 0 && cotsHoy.length === 0) {
+      diagnostico = '🔴 No genera cotizaciones — Revisar actividad';
+      diagColor = '#DC3545';
+    } else if (totalCotsMes > 0 && totalVentasMes === 0) {
+      diagnostico = '🟠 Cotiza pero no cierra — Revisar técnica de cierre';
+      diagColor = '#EA580C';
+    } else if (segPendientes > 5) {
+      diagnostico = '🟡 Tiene ' + segPendientes + ' seguimientos — Foco en cerrar pendientes';
+      diagColor = '#E6A200';
+    } else if (enviadasSinGestion > 3) {
+      diagnostico = '🟡 ' + enviadasSinGestion + ' cotizaciones sin gestionar — Debe dar seguimiento';
+      diagColor = '#E6A200';
+    } else {
+      diagnostico = '🟠 Generando pero sin conversión reciente';
+      diagColor = '#EA580C';
+    }
+    
+    rachaAgents.push({
+      nombre: ag.nombre,
+      supervisor: supMap[ag.supervisor_id] || 'Sin sup',
+      diasSinVenta: diasSinVenta,
+      lastVenta: lastVentaDate || 'Nunca',
+      cotsHoy: cotsHoy.length,
+      cotsAyer: cotsAyer.length,
+      segPendientes: segPendientes,
+      enviadasSinGestion: enviadasSinGestion,
+      totalVentas: totalVentasMes,
+      totalCots: totalCotsMes,
+      diagnostico: diagnostico,
+      diagColor: diagColor
+    });
+  });
+  
+  // Sort by dias sin venta desc
+  rachaAgents.sort(function(a,b){return b.diasSinVenta - a.diasSinVenta});
+  
+  if (rachaAgents.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3)"><div style="font-size:36px;margin-bottom:8px">✅</div><div style="font-size:13px;font-weight:700;color:#10B981">¡Todos vendiendo!</div><div style="font-size:11px">No hay agentes con '+minDias+'+ días sin venta</div></div>';
+    return;
+  }
+  
+  // KPIs
+  var criticos = rachaAgents.filter(function(a){return a.diasSinVenta >= 3}).length;
+  var advertencia = rachaAgents.filter(function(a){return a.diasSinVenta >= 2 && a.diasSinVenta < 3}).length;
+  
+  var h = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">';
+  h += '<div style="text-align:center;padding:8px;background:#FEF2F2;border-radius:8px"><div style="font-size:20px;font-weight:900;color:#DC3545">'+rachaAgents.length+'</div><div style="font-size:9px;color:#DC3545">Sin venta</div></div>';
+  h += '<div style="text-align:center;padding:8px;background:#FFF7ED;border-radius:8px"><div style="font-size:20px;font-weight:900;color:#EA580C">'+criticos+'</div><div style="font-size:9px;color:#EA580C">Críticos (3+d)</div></div>';
+  h += '<div style="text-align:center;padding:8px;background:#FEF3C7;border-radius:8px"><div style="font-size:20px;font-weight:900;color:#E6A200">'+advertencia+'</div><div style="font-size:9px;color:#E6A200">Advertencia (2d)</div></div>';
+  h += '</div>';
+  
+  rachaAgents.forEach(function(ag) {
+    var bgColor = ag.diasSinVenta >= 3 ? '#FEF2F2' : ag.diasSinVenta >= 2 ? '#FFF7ED' : '#FEF3C7';
+    var borderColor = ag.diasSinVenta >= 3 ? '#DC3545' : ag.diasSinVenta >= 2 ? '#EA580C' : '#E6A200';
+    
+    h += '<div class="section" style="padding:12px;margin-bottom:6px;border-left:4px solid '+borderColor+';background:'+bgColor+'22">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+    h += '<div>';
+    h += '<div style="font-size:13px;font-weight:800">'+ag.nombre+'</div>';
+    h += '<div style="font-size:9px;color:var(--text-3)">Sup: '+ag.supervisor+'</div>';
+    h += '</div>';
+    h += '<div style="text-align:right">';
+    h += '<div style="font-size:22px;font-weight:900;color:'+borderColor+'">'+ag.diasSinVenta+'</div>';
+    h += '<div style="font-size:8px;color:'+borderColor+'">días sin venta</div>';
+    h += '</div>';
+    h += '</div>';
+    
+    // Stats row
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">';
+    h += '<span style="font-size:9px;padding:2px 6px;background:white;border-radius:4px;border:1px solid var(--border)">Última venta: <b>'+ag.lastVenta+'</b></span>';
+    h += '<span style="font-size:9px;padding:2px 6px;background:white;border-radius:4px;border:1px solid var(--border)">Ventas mes: <b>'+ag.totalVentas+'</b></span>';
+    h += '<span style="font-size:9px;padding:2px 6px;background:white;border-radius:4px;border:1px solid var(--border)">Cots hoy: <b>'+ag.cotsHoy+'</b></span>';
+    h += '<span style="font-size:9px;padding:2px 6px;background:white;border-radius:4px;border:1px solid var(--border)">Cots ayer: <b>'+ag.cotsAyer+'</b></span>';
+    h += '<span style="font-size:9px;padding:2px 6px;background:white;border-radius:4px;border:1px solid var(--border)">Seg pendientes: <b>'+ag.segPendientes+'</b></span>';
+    h += '<span style="font-size:9px;padding:2px 6px;background:white;border-radius:4px;border:1px solid var(--border)">Sin gestión: <b>'+ag.enviadasSinGestion+'</b></span>';
+    h += '</div>';
+    
+    // Diagnosis
+    h += '<div style="font-size:10px;font-weight:700;color:'+ag.diagColor+';padding:4px 8px;background:white;border-radius:4px;border:1px solid '+ag.diagColor+'33">'+ag.diagnostico+'</div>';
+    h += '</div>';
+  });
+  
+  el.innerHTML = h;
+}
+
+// Home mini racha alert
+function renderHomeRacha() {
+  var el = document.getElementById('homeRachaNegativa');
+  if (!el || !currentUser || currentUser.rol === 'agente') { if(el) el.style.display='none'; return; }
+  
+  var agents = (hFilterUsers||[]).filter(function(u){return u.rol==='agente' && (u.activo===true||u.activo==='true')});
+  if (currentUser.rol === 'supervisor') agents = agents.filter(function(u){return u.supervisor_id===currentUser.id});
+  else if (currentUser.rol === 'coordinador') {
+    var mySups = (hFilterUsers||[]).filter(function(u){return u.coordinador_id===currentUser.id && u.rol==='supervisor'}).map(function(u){return u.id});
+    agents = agents.filter(function(u){return mySups.indexOf(u.supervisor_id)>=0});
+  }
+  
+  var hoyStr = toMexDateStr(new Date().toISOString());
+  var hoy = new Date(hoyStr+'T12:00:00');
+  var sinVenta = 0;
+  
+  agents.forEach(function(ag) {
+    var ventas = state.cotizaciones.filter(function(c){return c.agente_id===ag.id && c.estatus==='venta'});
+    var lastVenta = null;
+    ventas.forEach(function(v){
+      var d = toMexDateStr(v.createdAt)||(v.fecha||'').substring(0,10);
+      if (!lastVenta || d > lastVenta) lastVenta = d;
+    });
+    var dias = 0;
+    if (lastVenta) {
+      var tempDate = new Date(lastVenta+'T12:00:00');
+      tempDate.setDate(tempDate.getDate()+1);
+      while (tempDate <= hoy) { if (tempDate.getDay()!==0) dias++; tempDate.setDate(tempDate.getDate()+1); }
+    } else { dias = 99; }
+    if (dias >= 2) sinVenta++;
+  });
+  
+  if (sinVenta > 0) {
+    el.style.display = '';
+    el.innerHTML = '<div onclick="openRachaNegativa()" style="cursor:pointer;background:linear-gradient(135deg,#FEF2F2,#FFF7ED);border:1px solid #FECACA;border-radius:12px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div><div style="font-size:13px;font-weight:800;color:#DC3545">🚨 '+sinVenta+' agente'+(sinVenta>1?'s':'')+' sin venta (2+ días)</div><div style="font-size:10px;color:var(--text-3)">Toca para ver detalle y diagnóstico</div></div>' +
+      '<div style="font-size:24px">→</div></div>';
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 // ── INVENTARIO (Stock por Hub) ──
