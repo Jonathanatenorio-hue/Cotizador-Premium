@@ -2827,7 +2827,11 @@ function showView(name, title) {
     document.getElementById('cfgAttuid').value = state.agente.attuid;
     document.getElementById('cfgWhatsapp').value = state.agente.whatsapp || '';
   }
-  if (name === 'historial') { if (!hFilterUsers.length) initHistorialFilters(); else renderHistorial(); }
+  if (name === 'historial') {
+    var supDrop = document.getElementById('hFilterSupDrop');
+    var needsInit = !hFilterUsers.length || (supDrop && supDrop.children.length <= 1);
+    if (needsInit) initHistorialFilters(); else renderHistorial();
+  }
   if (name === 'cotizar' && !title) {
     try {
       document.getElementById('cliNombre').value = '';
