@@ -12244,8 +12244,18 @@ function addIncluidoToCart(devId, planId, plazo) {
 }
 
 // ── RACHA NEGATIVA (Agentes sin venta) ──
-function openRachaNegativa() {
+async function openRachaNegativa() {
   showView('rachaNegativa', 'Agentes Sin Venta');
+  // Auto-load ventas from current month if not loaded
+  if (metasVentas.length === 0 && supabase) {
+    var now = new Date();
+    var mes = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    try {
+      var vr = await supabase.from('ventas_global').select('*').eq('mes', mes);
+      metasVentas = vr.data || [];
+      console.log('Racha: loaded', metasVentas.length, 'ventas for', mes);
+    } catch(e) { console.error('Racha ventas load error:', e); }
+  }
   initRachaFilters();
   renderRachaNegativa();
 }
@@ -12453,9 +12463,19 @@ function renderRachaNegativa() {
 }
 
 // Home mini racha alert
-function renderHomeRacha() {
+async function renderHomeRacha() {
   var el = document.getElementById('homeRachaNegativa');
   if (!el || !currentUser || currentUser.rol === 'agente') { if(el) el.style.display='none'; return; }
+  
+  // Auto-load ventas if empty
+  if (metasVentas.length === 0 && supabase) {
+    var now = new Date();
+    var mes = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    try {
+      var vr = await supabase.from('ventas_global').select('*').eq('mes', mes);
+      metasVentas = vr.data || [];
+    } catch(e) {}
+  }
   
   var agents = (hFilterUsers||[]).filter(function(u){return u.rol==='agente' && (u.activo===true||u.activo==='true')});
   if (currentUser.rol === 'supervisor') agents = agents.filter(function(u){return u.supervisor_id===currentUser.id});
