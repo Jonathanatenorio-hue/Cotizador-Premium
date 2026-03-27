@@ -10619,6 +10619,7 @@ function metasPopulateAgents() {
   var agents = {};
   metasVentas.forEach(function(v) {
     if (supVal !== 'all' && v.supervisor !== supVal) return;
+    if (v.ejecutivo) agents[v.ejecutivo] = true;
     if (v.agente) agents[v.agente] = true;
   });
   metasMetas.filter(function(m){return m.tipo==='agente'}).forEach(function(m) {
@@ -10696,7 +10697,7 @@ async function metasRender() {
   }
   // Agent filter applies to all roles (supervisor, admin, coord)
   if (agentVal !== 'all') {
-    fv = fv.filter(function(v) { return v.agente === agentVal; });
+    fv = fv.filter(function(v) { return v.ejecutivo === agentVal || v.agente === agentVal; });
   }
 
   var totalVentas = fv.length;
