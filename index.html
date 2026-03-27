@@ -12256,6 +12256,18 @@ function addIncluidoToCart(devId, planId, plazo) {
 // ── RACHA NEGATIVA (Agentes sin venta) ──
 async function openRachaNegativa() {
   showView('rachaNegativa', 'Agentes Sin Venta');
+  // Auto-load users if not loaded
+  if (hFilterUsers.length === 0 && supabase) {
+    try {
+      var {data, error} = await supabase.from('usuarios').select('*, centros(nombre, ciudad)').eq('activo', true).order('nombre');
+      if (error || !data || data.length === 0) {
+        var res = await supabase.from('usuarios').select('*, centros(nombre, ciudad)').order('nombre');
+        data = (res.data || []).filter(function(u){return u.activo===true||u.activo==='true'||u.activo===1});
+      }
+      hFilterUsers = data || [];
+      console.log('Racha: loaded', hFilterUsers.length, 'users');
+    } catch(e) { console.error('Racha users error:', e); }
+  }
   // Auto-load ventas from current month if not loaded
   if (metasVentas.length === 0 && supabase) {
     var now = new Date();
@@ -12482,6 +12494,18 @@ async function renderHomeRacha() {
   var el = document.getElementById('homeRachaNegativa');
   if (!el || !currentUser || currentUser.rol === 'agente') { if(el) el.style.display='none'; return; }
   
+  // Auto-load users if empty
+  if (hFilterUsers.length === 0 && supabase) {
+    try {
+      var {data, error} = await supabase.from('usuarios').select('*, centros(nombre, ciudad)').eq('activo', true).order('nombre');
+      if (error || !data || data.length === 0) {
+        var res = await supabase.from('usuarios').select('*, centros(nombre, ciudad)').order('nombre');
+        data = (res.data || []).filter(function(u){return u.activo===true||u.activo==='true'||u.activo===1});
+      }
+      hFilterUsers = data || [];
+    } catch(e) {}
+  }
+  
   // Auto-load ventas if empty
   if (metasVentas.length === 0 && supabase) {
     var now = new Date();
@@ -12533,13 +12557,16 @@ function exportRachaExcel() {
   var data = window._rachaAgents || [];
   if (data.length === 0) { alert('No hay datos para exportar'); return; }
   
-  var rows = [['Agente','Supervisor','Centro','Días sin venta','Última venta','Ventas del mes','Cots hoy','Cots ayer','Seguimientos pendientes','Sin gestión','Total cotizaciones','Diagnóstico']];
+  var rows = [['AGENTE','SUPERVISOR','CENTRO','DÍAS SIN VENTA','SEMÁFORO','ÚLTIMA VENTA','VENTAS MES','COTS HOY','COTS AYER','SEG. PENDIENTES','SIN GESTIÓN','TOTAL COTS','DIAGNÓSTICO']];
   data.forEach(function(ag) {
+    var dias = ag.diasSinVenta >= 99 ? 'Sin ventas' : ag.diasSinVenta;
+    var semaforo = ag.diasSinVenta >= 3 ? '🔴 CRÍTICO' : ag.diasSinVenta === 2 ? '🟠 ALERTA' : ag.diasSinVenta === 1 ? '🟡 ATENCIÓN' : '✅ OK';
     rows.push([
       ag.nombre,
       ag.supervisor,
       ag.centro,
-      ag.diasSinVenta >= 99 ? 'Sin ventas' : ag.diasSinVenta,
+      dias,
+      semaforo,
       ag.lastVenta,
       ag.ventasMes,
       ag.cotsHoy,
@@ -12552,7 +12579,43 @@ function exportRachaExcel() {
   });
   
   var ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{wch:28},{wch:22},{wch:18},{wch:14},{wch:14},{wch:12},{wch:10},{wch:10},{wch:18},{wch:12},{wch:14},{wch:45}];
+  ws['!cols'] = [{wch:30},{wch:22},{wch:18},{wch:15},{wch:14},{wch:14},{wch:12},{wch:10},{wch:10},{wch:16},{wch:12},{wch:12},{wch:48}];
+  
+  // Style header row
+  var headerStyle = {font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'0057B8'}},alignment:{horizontal:'center',vertical:'center'},border:{bottom:{style:'thin',color:{rgb:'000000'}}}};
+  var cols = 'ABCDEFGHIJKLM';
+  for (var ci = 0; ci < cols.length; ci++) {
+    var ref = cols[ci] + '1';
+    if (ws[ref]) ws[ref].s = headerStyle;
+  }
+  
+  // Style data rows with semáforo colors
+  for (var ri = 0; ri < data.length; ri++) {
+    var rowNum = ri + 2;
+    var ag = data[ri];
+    var fillColor = ag.diasSinVenta >= 3 ? 'FFCCCC' : ag.diasSinVenta === 2 ? 'FFE0B2' : ag.diasSinVenta === 1 ? 'FFF9C4' : 'C8E6C9';
+    var fontColor = ag.diasSinVenta >= 3 ? 'CC0000' : ag.diasSinVenta === 2 ? 'E65100' : ag.diasSinVenta === 1 ? '827717' : '2E7D32';
+    
+    // Color entire row
+    for (var ci2 = 0; ci2 < cols.length; ci2++) {
+      var cellRef = cols[ci2] + rowNum;
+      if (ws[cellRef]) {
+        ws[cellRef].s = {
+          fill: {fgColor:{rgb: fillColor}},
+          border: {bottom:{style:'thin',color:{rgb:'DDDDDD'}}},
+        };
+      }
+    }
+    // Special style for Días sin venta column (D) and Semáforo (E)
+    var diasRef = 'D' + rowNum;
+    if (ws[diasRef]) ws[diasRef].s = {fill:{fgColor:{rgb:fillColor}},font:{bold:true,sz:14,color:{rgb:fontColor}},alignment:{horizontal:'center'}};
+    var semaforoRef = 'E' + rowNum;
+    if (ws[semaforoRef]) ws[semaforoRef].s = {fill:{fgColor:{rgb:fillColor}},font:{bold:true,color:{rgb:fontColor}},alignment:{horizontal:'center'}};
+    // Bold ventas mes
+    var ventasRef = 'G' + rowNum;
+    if (ws[ventasRef]) ws[ventasRef].s = {fill:{fgColor:{rgb:fillColor}},font:{bold:true},alignment:{horizontal:'center'}};
+  }
+  
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Agentes Sin Venta');
   var hoy = new Date().toISOString().substring(0,10);
