@@ -13601,6 +13601,32 @@ async function updateMetaManual(nombre, valor, mes) {
     // Update local
     var local = metasMetas.find(function(m){return m.nombre===nombre && m.tipo==='agente' && m.mes===mes});
     if (local) local.meta = meta;
+    else metasMetas.push({mes:mes, tipo:'agente', nombre:nombre, meta:meta});
+    
+    // Recalculate supervisor meta
+    var agentMap = window._metasConfigData ? window._metasConfigData.agentMap : {};
+    var agentUser = agentMap[nombre];
+    if (agentUser && agentUser._supNombre) {
+      var supNombre = agentUser._supNombre;
+      // Sum all agent metas under this supervisor
+      var supTotal = 0;
+      metasMetas.filter(function(m){return m.tipo==='agente'}).forEach(function(m) {
+        var u = agentMap[m.nombre];
+        if (u && u._supNombre === supNombre) supTotal += (m.meta || 0);
+      });
+      // Update supervisor meta
+      var {data: supExisting} = await supabase.from('metas').select('id').eq('mes', mes).eq('nombre', supNombre).eq('tipo', 'supervisor').maybeSingle();
+      if (supExisting) {
+        await supabase.from('metas').update({meta: supTotal}).eq('id', supExisting.id);
+      } else {
+        await supabase.from('metas').insert({mes:mes, tipo:'supervisor', nombre:supNombre, meta:supTotal});
+      }
+      var localSup = metasMetas.find(function(m){return m.nombre===supNombre && m.tipo==='supervisor' && m.mes===mes});
+      if (localSup) localSup.meta = supTotal;
+      else metasMetas.push({mes:mes, tipo:'supervisor', nombre:supNombre, meta:supTotal});
+      console.log('Sup meta recalculated:', supNombre, supTotal);
+    }
+    
     console.log('Meta actualizada:', nombre, meta);
   } catch(e) { alert('Error: ' + e.message); }
 }
