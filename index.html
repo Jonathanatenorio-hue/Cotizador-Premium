@@ -13809,22 +13809,18 @@ async function metasUploadMetas() {
       var supTotals = {};
       var centroTotals = {};
       
-      // From matched Excel agents
-      matched.forEach(function(m) {
-        if (m.supervisor) {
-          if (!supTotals[m.supervisor]) supTotals[m.supervisor] = 0;
-          supTotals[m.supervisor] += m.meta;
+      // Build sup totals directly from upserts + DB users for reliability
+      var agentUpserts = upserts.filter(function(u){return u.tipo==='agente'});
+      agentUpserts.forEach(function(m) {
+        var agent = allAgents.find(function(a){return normName(a.nombre)===normName(m.nombre)});
+        if (agent && agent._supNombre) {
+          if (!supTotals[agent._supNombre]) supTotals[agent._supNombre] = 0;
+          supTotals[agent._supNombre] += m.meta;
         }
-        if (m.centro) {
-          if (!centroTotals[m.centro]) centroTotals[m.centro] = 0;
-          centroTotals[m.centro] += m.meta;
+        if (agent && agent._centroKey) {
+          if (!centroTotals[agent._centroKey]) centroTotals[agent._centroKey] = 0;
+          centroTotals[agent._centroKey] += m.meta;
         }
-      });
-      // From missing agents (meta 0, but they still belong to a supervisor/centro)
-      missingAgents.forEach(function(a) {
-        // meta 0 so no impact on totals, but ensures the supervisor/centro exists
-        if (a._supNombre && !supTotals[a._supNombre]) supTotals[a._supNombre] = 0;
-        if (a._centroKey && !centroTotals[a._centroKey]) centroTotals[a._centroKey] = 0;
       });
       
       console.log('Sup totals:', supTotals);
