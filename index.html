@@ -13809,17 +13809,27 @@ async function metasUploadMetas() {
       var supTotals = {};
       var centroTotals = {};
       
-      // Build sup totals directly from upserts + DB users for reliability
+      // Build sup and centro totals directly from upserts + DB users for reliability
       var agentUpserts = upserts.filter(function(u){return u.tipo==='agente'});
       agentUpserts.forEach(function(m) {
         var agent = allAgents.find(function(a){return normName(a.nombre)===normName(m.nombre)});
-        if (agent && agent._supNombre) {
-          if (!supTotals[agent._supNombre]) supTotals[agent._supNombre] = 0;
-          supTotals[agent._supNombre] += m.meta;
+        if (!agent) {
+          // Try all users if not found in agents
+          agent = allUsers.find(function(a){return normName(a.nombre)===normName(m.nombre)});
         }
-        if (agent && agent._centroKey) {
-          if (!centroTotals[agent._centroKey]) centroTotals[agent._centroKey] = 0;
-          centroTotals[agent._centroKey] += m.meta;
+        if (agent) {
+          // Supervisor
+          if (agent.supervisor_id && supNameMap[agent.supervisor_id]) {
+            var sn = supNameMap[agent.supervisor_id];
+            if (!supTotals[sn]) supTotals[sn] = 0;
+            supTotals[sn] += m.meta;
+          }
+          // Centro
+          if (agent.centro_id && centroIdToKey[agent.centro_id]) {
+            var ck = centroIdToKey[agent.centro_id];
+            if (!centroTotals[ck]) centroTotals[ck] = 0;
+            centroTotals[ck] += m.meta;
+          }
         }
       });
       
