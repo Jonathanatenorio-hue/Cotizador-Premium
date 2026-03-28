@@ -13553,7 +13553,11 @@ async function metasLoadConfig() {
         h += '<tr style="' + opacity + '"><td style="padding:4px 6px;background:white;border-radius:6px 0 0 6px;font-weight:600">' + m.nombre + '</td>';
         h += '<td style="padding:4px 6px;background:white;font-size:10px;color:var(--text-3)">' + (user ? (user._supNombre||'') : '') + '</td>';
         h += '<td style="padding:4px 6px;background:white;font-size:10px;color:var(--text-3)">' + (user ? (user._centroName||'') : '') + '</td>';
-        h += '<td style="padding:4px 6px;background:white;text-align:center;font-weight:700">' + m.meta + '</td>';
+        var isAdmin = currentUser && currentUser.rol === 'admin';
+        var metaCell = isAdmin ? 
+          '<input type="number" min="0" value="'+m.meta+'" style="width:50px;text-align:center;font-size:11px;font-weight:700;padding:2px 4px;border:1px solid var(--border);border-radius:4px" onchange="updateMetaManual(\''+m.nombre.replace(/'/g,"\\'")+'\',this.value,\''+mes+'\')">' :
+          m.meta;
+        h += '<td style="padding:4px 6px;background:white;text-align:center;font-weight:700">' + metaCell + '</td>';
         h += '<td style="padding:4px 6px;background:white;border-radius:0 6px 6px 0;text-align:center">' + estadoLabel + '</td></tr>';
       });
       h += '</table></div>';
@@ -13582,6 +13586,23 @@ async function metasLoadConfig() {
     
     document.getElementById('metasConfigTable').innerHTML = h;
   } catch(e) { console.log('Metas config error:', e); }
+}
+
+async function updateMetaManual(nombre, valor, mes) {
+  if (!supabase || !currentUser || currentUser.rol !== 'admin') return;
+  var meta = parseInt(valor) || 0;
+  try {
+    var {data: existing} = await supabase.from('metas').select('id').eq('mes', mes).eq('nombre', nombre).eq('tipo', 'agente').maybeSingle();
+    if (existing) {
+      await supabase.from('metas').update({meta: meta}).eq('id', existing.id);
+    } else {
+      await supabase.from('metas').insert({mes: mes, tipo: 'agente', nombre: nombre, meta: meta});
+    }
+    // Update local
+    var local = metasMetas.find(function(m){return m.nombre===nombre && m.tipo==='agente' && m.mes===mes});
+    if (local) local.meta = meta;
+    console.log('Meta actualizada:', nombre, meta);
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 function filterMetasConfigTable() {
