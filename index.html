@@ -923,6 +923,7 @@ body{padding-bottom:60px}
           <option value="titanio">AT&T Titanio</option>
         </select>
         <button onclick="openEquiposIncluidos()" class="btn btn-primary" style="font-size:10px;padding:6px 12px;background:linear-gradient(135deg,#10B981,#059669);white-space:nowrap">🎁 Equipos incluidos</button>
+        <button onclick="openSoloPlan()" class="btn btn-primary" style="font-size:10px;padding:6px 12px;background:linear-gradient(135deg,#8B5CF6,#6D28D9);white-space:nowrap">📶 Solo Plan</button>
       </div>
       <div id="deviceResults"></div>
     </div>
@@ -4878,6 +4879,7 @@ function buildAndDownloadPDF(cot) {
     var base = it.precioPromo - it.enganche;
     var ep = calcMensualTotal(it);
     var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+    if (it.soloPlan) return [it.planNombre+(it.isPortabilidad?' (Port.)':''), '—', '—', '—', '—', '—', '—', it.planGb, f(it.planPrecio)];
     return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), String(it.plazo), it.enganchePct+'%', f(it.enganche), it.planNombre, f(ep)];
   });
 
@@ -5073,17 +5075,22 @@ function buildAndDownloadPDF(cot) {
     y += 5;
     cot.items.forEach(function(it, idx) {
       if (y > H - 22) { doc.addPage(); y = 16; }
-      var base = it.precioPromo - (it.enganche||0);
       var ep = calcMensualTotal(it);
       var btnW = cW;
       var btnH = 8;
-      // Green rounded pill
+      // Pill text
+      var pillText = '';
+      if (it.soloPlan) {
+        pillText = it.planNombre + '  \u00b7  ' + it.planGb + '  \u00b7  $' + Math.round(it.planPrecio*100)/100 + '/mes' + (it.isPortabilidad ? '  \u00b7  Portabilidad' : '');
+      } else {
+        pillText = it.equipo + '  \u00b7  Plan ' + it.planNombre + '  \u00b7  ' + it.plazo + 'm  \u00b7  $' + Math.round(ep*100)/100 + '/mes';
+      }
       doc.setFillColor(0,159,219);
       doc.roundedRect(mg, y, btnW, btnH, 2, 2, 'F');
       doc.setTextColor(255,255,255);
       doc.setFontSize(7);
       doc.setFont('helvetica','bold');
-      doc.text(it.equipo + '  \u00b7  Plan ' + it.planNombre + '  \u00b7  ' + it.plazo + 'm  \u00b7  $' + Math.round(ep*100)/100 + '/mes', mg + 4, y + 5.2);
+      doc.text(pillText, mg + 4, y + 5.2);
       // Link
       var agFirstName = cot.ejecutivo.nombre.split(' ')[0]; var waMsg = 'Hola ' + agFirstName + ' \u{1F44B}, me interesa la cotizaci\u00f3n ' + cot.folio + '.\n\nQuiero iniciar el tr\u00e1mite con:\n\n\u2705 ' + it.equipo + '\n\u{1F4CB} Plan: ' + it.planNombre + '\n\u{1F4C5} Plazo: ' + it.plazo + ' meses\n\u{1F4B0} Mensual: $' + Math.round(ep*100)/100 + '\n\nTe comparto mi INE \u{1F4F8}';
       doc.link(mg, y, btnW, btnH, {url: 'https://wa.me/52' + wa + '?text=' + encodeURIComponent(waMsg)});
@@ -5297,6 +5304,7 @@ function buildAndDownloadPDF_v2(cot) {
     var base = it.precioPromo - it.enganche;
     var ep = calcMensualTotal(it);
     var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+    if (it.soloPlan) return [it.planNombre+(it.isPortabilidad?' (Port.)':''), '—', '—', '—', '—', '—', '—', it.planGb, f(it.planPrecio)];
     return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), String(it.plazo), it.enganchePct+'%', f(it.enganche), it.planNombre, f(ep)];
   });
 
@@ -12987,6 +12995,194 @@ function exportRachaExcel() {
   XLSX.utils.book_append_sheet(wb, ws, 'Agentes Sin Venta');
   var hoy = new Date().toISOString().substring(0,10);
   XLSX.writeFile(wb, 'agentes_sin_venta_'+hoy+'.xlsx');
+}
+
+// ── SOLO PLAN (sin equipo) ──
+var PLANS_LITE = [
+  {id:'lite1',name:'Lite 1',gb:'15 GB',precioNuevo:349,precioPort:280},
+  {id:'lite2',name:'Lite 2',gb:'25 GB',precioNuevo:449,precioPort:360},
+  {id:'lite3',name:'Lite 3',gb:'40 GB',precioNuevo:549,precioPort:440},
+  {id:'lite4',name:'Lite 4',gb:'50 GB',precioNuevo:669,precioPort:540},
+  {id:'lite5',name:'Lite 5',gb:'60 GB',precioNuevo:769,precioPort:620},
+  {id:'lite6',name:'Lite 6',gb:'120 GB',precioNuevo:999,precioPort:800},
+  {id:'lite_ilimitado',name:'Lite Ilimitado',gb:'Ilimitados',precioNuevo:1499,precioPort:1160},
+];
+
+function openSoloPlan() {
+  // Validate client data first
+  if (!state._cotClienteSaved) {
+    var cNombre = document.getElementById('cliNombre').value.trim();
+    if (!cNombre || cNombre.length < 5) {
+      alert('Primero completa los datos del cliente');
+      return;
+    }
+    guardarDatosClienteSilent();
+  }
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'soloPlanOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:16px';
+  
+  var h = '<div style="background:white;border-radius:16px;padding:16px;max-width:500px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+  h += '<div style="font-size:16px;font-weight:900">📶 Solo Plan (sin equipo)</div>';
+  h += '<button onclick="document.getElementById(\'soloPlanOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div>';
+  
+  // Type selector
+  h += '<div style="display:flex;gap:6px;margin-bottom:12px">';
+  h += '<button id="spTipoNuevo" onclick="soloPlanTipo(\'nuevo\')" class="btn btn-primary" style="flex:1;font-size:11px;padding:8px;background:var(--att-blue)">📱 Línea nueva / Adición</button>';
+  h += '<button id="spTipoPort" onclick="soloPlanTipo(\'port\')" class="btn btn-secondary" style="flex:1;font-size:11px;padding:8px">🔄 Portabilidad</button>';
+  h += '</div>';
+  
+  // Plan type selector
+  h += '<div style="display:flex;gap:6px;margin-bottom:12px">';
+  h += '<button id="spCatLite" onclick="soloPlanCat(\'lite\')" class="btn btn-primary" style="flex:1;font-size:11px;padding:8px;background:#8B5CF6">📶 Planes Lite</button>';
+  h += '<button id="spCatPremium" onclick="soloPlanCat(\'premium\')" class="btn btn-secondary" style="flex:1;font-size:11px;padding:8px">⭐ Planes Premium</button>';
+  h += '</div>';
+  
+  h += '<div id="soloPlanList"></div></div>';
+  overlay.innerHTML = h;
+  document.body.appendChild(overlay);
+  
+  window._soloPlanTipo = 'nuevo';
+  window._soloPlanCat = 'lite';
+  renderSoloPlanList();
+}
+
+function soloPlanTipo(tipo) {
+  window._soloPlanTipo = tipo;
+  document.getElementById('spTipoNuevo').className = tipo==='nuevo' ? 'btn btn-primary' : 'btn btn-secondary';
+  document.getElementById('spTipoNuevo').style.background = tipo==='nuevo' ? 'var(--att-blue)' : '';
+  document.getElementById('spTipoPort').className = tipo==='port' ? 'btn btn-primary' : 'btn btn-secondary';
+  document.getElementById('spTipoPort').style.background = tipo==='port' ? 'var(--att-blue)' : '';
+  renderSoloPlanList();
+}
+
+function soloPlanCat(cat) {
+  window._soloPlanCat = cat;
+  document.getElementById('spCatLite').className = cat==='lite' ? 'btn btn-primary' : 'btn btn-secondary';
+  document.getElementById('spCatLite').style.background = cat==='lite' ? '#8B5CF6' : '';
+  document.getElementById('spCatPremium').className = cat==='premium' ? 'btn btn-primary' : 'btn btn-secondary';
+  document.getElementById('spCatPremium').style.background = cat==='premium' ? '#8B5CF6' : '';
+  renderSoloPlanList();
+}
+
+function renderSoloPlanList() {
+  var el = document.getElementById('soloPlanList');
+  if (!el) return;
+  var tipo = window._soloPlanTipo || 'nuevo';
+  var cat = window._soloPlanCat || 'lite';
+  var isPort = tipo === 'port';
+  var h = '';
+  
+  if (isPort) {
+    h += '<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:10px;color:#1D4ED8">';
+    h += '<b>📌 Portabilidad:</b> El precio mostrado aplica los primeros 6 meses. Después aplica la renta normal.';
+    h += '</div>';
+  }
+  
+  if (cat === 'lite') {
+    PLANS_LITE.forEach(function(p) {
+      var precio = isPort ? p.precioPort : p.precioNuevo;
+      var precioNormal = p.precioNuevo;
+      var ahorro = isPort ? (precioNormal - precio) : 0;
+      var rentaSinImp = Math.round(precio * 0.837);
+      
+      h += '<div style="background:var(--surface-2);border-radius:10px;padding:12px;margin-bottom:6px;border-left:4px solid #8B5CF6">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+      h += '<div><div style="font-size:14px;font-weight:800">'+p.name+'</div>';
+      h += '<div style="font-size:11px;color:var(--text-3)">'+p.gb+' · 6 redes sociales ilimitadas</div></div>';
+      h += '<div style="text-align:right">';
+      h += '<div style="font-size:18px;font-weight:900;color:#8B5CF6">$'+precio+'<span style="font-size:10px;font-weight:400">/mes</span></div>';
+      h += '<div style="font-size:9px;color:var(--text-3)">Renta sin imp: $'+rentaSinImp+'</div>';
+      if (isPort && ahorro > 0) h += '<div style="font-size:9px;color:#10B981;font-weight:700">Ahorras $'+ahorro+'/mes x 6 meses</div>';
+      h += '</div></div>';
+      h += '<div style="display:flex;gap:6px">';
+      h += '<button onclick="addSoloPlan(\''+p.id+'\',\'lite\',\''+tipo+'\')" class="btn btn-primary" style="flex:1;font-size:11px;padding:6px;background:#8B5CF6">+ Agregar a cotización</button>';
+      h += '</div></div>';
+    });
+  } else {
+    // Premium plans sin equipo
+    var premPlans = (typeof ALL_PLANS !== 'undefined' ? ALL_PLANS : []).filter(function(p){return p.id !== 'titanio'});
+    premPlans.forEach(function(p) {
+      var precio = p.price;
+      var precioPort = isPort ? Math.round(precio * 0.80) : precio;
+      var displayPrice = isPort ? precioPort : precio;
+      var ahorro = isPort ? (precio - precioPort) : 0;
+      var rentaSinImp = Math.round(displayPrice * 0.837);
+      
+      h += '<div style="background:var(--surface-2);border-radius:10px;padding:12px;margin-bottom:6px;border-left:4px solid #0057B8">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+      h += '<div><div style="font-size:14px;font-weight:800">'+p.name+'</div>';
+      h += '<div style="font-size:11px;color:var(--text-3)">'+p.gb+' · 6 apps ilimitadas · EUA/Canadá</div></div>';
+      h += '<div style="text-align:right">';
+      h += '<div style="font-size:18px;font-weight:900;color:#0057B8">$'+displayPrice+'<span style="font-size:10px;font-weight:400">/mes</span></div>';
+      h += '<div style="font-size:9px;color:var(--text-3)">Renta sin imp: $'+rentaSinImp+'</div>';
+      if (isPort && ahorro > 0) h += '<div style="font-size:9px;color:#10B981;font-weight:700">20% desc x 6 meses (-$'+ahorro+')</div>';
+      h += '</div></div>';
+      h += '<div style="display:flex;gap:6px">';
+      h += '<button onclick="addSoloPlan(\''+p.id+'\',\'premium\',\''+tipo+'\')" class="btn btn-primary" style="flex:1;font-size:11px;padding:6px;background:#0057B8">+ Agregar a cotización</button>';
+      h += '</div></div>';
+    });
+  }
+  
+  el.innerHTML = h;
+}
+
+function addSoloPlan(planId, cat, tipo) {
+  var isPort = tipo === 'port';
+  var plan = null;
+  var precio = 0;
+  var precioNormal = 0;
+  var planName = '';
+  var planGb = '';
+  
+  if (cat === 'lite') {
+    var lp = PLANS_LITE.find(function(p){return p.id===planId});
+    if (!lp) return;
+    precio = isPort ? lp.precioPort : lp.precioNuevo;
+    precioNormal = lp.precioNuevo;
+    planName = lp.name;
+    planGb = lp.gb;
+  } else {
+    plan = ALL_PLANS.find(function(p){return p.id===planId});
+    if (!plan) return;
+    precioNormal = plan.price;
+    precio = isPort ? Math.round(plan.price * 0.80) : plan.price;
+    planName = plan.name;
+    planGb = plan.gb;
+  }
+  
+  var isDup = state.items.some(function(it){return it.planId===planId && it.soloPlan===true && it.soloPlanTipo===tipo});
+  if (isDup) { alert('Este plan ya está en la cotización'); return; }
+  
+  state.items.push({
+    id: Date.now() + Math.random(),
+    equipo: 'Solo Plan — ' + planName,
+    marca: cat === 'lite' ? 'AT&T Lite' : 'AT&T Premium',
+    planId: planId,
+    planNombre: planName,
+    planGb: planGb,
+    planPrecio: precio,
+    planPrecioNormal: precioNormal,
+    plazo: 0,
+    precioLista: 0,
+    precioPromo: 0,
+    mensual: precio,
+    enganche: 0,
+    enganchePct: 0,
+    soloPlan: true,
+    soloPlanCat: cat,
+    soloPlanTipo: tipo,
+    isPortabilidad: isPort,
+    adicional_control: false,
+    adicional_seguro: false,
+    adicional_bateria: false,
+    adicional_pantalla: false,
+  });
+  
+  renderItems();
+  document.getElementById('soloPlanOverlay').remove();
 }
 
 // ── INVENTARIO (Stock por Hub) ──
