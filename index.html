@@ -829,6 +829,34 @@ body{padding-bottom:60px}
       </div>
       <button class="btn btn-primary btn-lg" onclick="saveConfig()">Guardar</button>
     </div>
+    <!-- Centro de Configuración - Admin only -->
+    <div id="adminConfigCenter" style="display:none;margin-top:16px">
+      <div class="form-card" style="border:2px solid var(--att-blue)">
+        <div style="font-size:16px;font-weight:900;color:var(--att-blue);margin-bottom:4px">⚙️ Centro de Configuración</div>
+        <div style="font-size:10px;color:var(--text-3);margin-bottom:14px">Solo visible para admin · Los cambios aplican para todos los usuarios</div>
+        
+        <div style="font-size:12px;font-weight:800;color:var(--text-1);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">📄 Secciones del PDF</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer"><input type="checkbox" id="cfgPdfComparativa" onchange="saveAppConfigToggle(this,'pdf_comparativa')"> Comparativa de plan actual vs nuevo</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer"><input type="checkbox" id="cfgPdfAdicionales" onchange="saveAppConfigToggle(this,'pdf_adicionales')"> Catálogo de adicionales (seguro, control, batería, pantalla)</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer"><input type="checkbox" id="cfgPdfAhorro" onchange="saveAppConfigToggle(this,'pdf_ahorro')"> Sección de ahorro en equipo</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer"><input type="checkbox" id="cfgPdfTitanio" onchange="saveAppConfigToggle(this,'pdf_titanio')"> Mensaje de Titanio / beneficio especial</label>
+        </div>
+        
+        <div style="font-size:12px;font-weight:800;color:var(--text-1);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">📝 Campos Obligatorios de Cotización</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer"><input type="checkbox" id="cfgReqNombre" checked disabled> Nombre del cliente (siempre obligatorio)</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer"><input type="checkbox" id="cfgReqTelefono" onchange="saveAppConfigToggle(this,'req_telefono')"> Teléfono</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer"><input type="checkbox" id="cfgReqEmail" onchange="saveAppConfigToggle(this,'req_email')"> Email</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer"><input type="checkbox" id="cfgReqDireccion" onchange="saveAppConfigToggle(this,'req_direccion')"> Dirección</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer"><input type="checkbox" id="cfgReqContexto" onchange="saveAppConfigToggle(this,'req_contexto')"> Contexto del prospecto (interés/barrera)</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer"><input type="checkbox" id="cfgReqNota" onchange="saveAppConfigToggle(this,'req_nota')"> Nota obligatoria al guardar</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer"><input type="checkbox" id="cfgReqProxContacto" onchange="saveAppConfigToggle(this,'req_proximo_contacto')"> Próximo contacto</label>
+        </div>
+        
+        <div style="font-size:10px;color:#10B981;font-weight:700" id="cfgSaveStatus"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -844,14 +872,14 @@ body{padding-bottom:60px}
           <input class="field" id="cliNombre" placeholder="Nombre del cliente" required>
         </div>
         <div class="form-group">
-          <label class="field-label">Teléfono (10 dígitos) *</label>
+          <label class="field-label" id="lblTelefono">Teléfono (10 dígitos) *</label>
           <input class="field" id="cliTelefono" placeholder="10 dígitos" maxlength="10" pattern="[0-9]{10}" inputmode="numeric"
             oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,10); validatePhone(this)" onblur="checkDuplicatePhone(this.value)">
           <span class="field-hint" id="phoneHint" style="display:none;font-size:11px;color:var(--danger)">Debe ser exactamente 10 dígitos</span>
           <span id="phoneDupHint" style="display:none;font-size:11px;color:#E65100;background:#FFF3E0;padding:4px 8px;border-radius:6px;margin-top:4px;display:none"></span>
         </div>
         <div class="form-group">
-          <label class="field-label">Email *</label>
+          <label class="field-label" id="lblEmail">Email *</label>
           <input class="field" id="cliEmail" placeholder="correo@ejemplo.com" type="email" required>
         </div>
         <div class="form-group">
@@ -866,7 +894,7 @@ body{padding-bottom:60px}
           </select>
         </div>
         <div class="form-group full">
-          <label class="field-label">Dirección *</label>
+          <label class="field-label" id="lblDireccion">Dirección *</label>
           <input class="field" id="cliDireccion" placeholder="Calle, colonia, municipio, estado" required>
         </div>
         <div class="form-group full">
@@ -2257,6 +2285,11 @@ async function doLogin() {
     document.getElementById('appContainer').style.display = 'block';
     document.getElementById('bottomNav').style.display = 'flex';
     await loadCotizacionesFromSupabase();
+    // Load app config for PDF/field settings
+    try {
+      var {data:cfgData} = await supabase.from('app_config').select('key, value');
+      (cfgData||[]).forEach(function(r){appConfigCache[r.key]=r.value});
+    } catch(e){}
     loadDeviceImgIndex();
     updateHome();
     // Set greeting in header
@@ -2829,6 +2862,9 @@ function showView(name, title) {
     document.getElementById('cfgNombre').value = state.agente.nombre;
     document.getElementById('cfgAttuid').value = state.agente.attuid;
     document.getElementById('cfgWhatsapp').value = state.agente.whatsapp || '';
+    var acc = document.getElementById('adminConfigCenter');
+    if (acc) acc.style.display = (currentUser && currentUser.rol === 'admin') ? '' : 'none';
+    if (currentUser && currentUser.rol === 'admin') loadAdminConfigCenter();
   }
   if (name === 'historial') {
     var supDrop = document.getElementById('hFilterSupDrop');
@@ -2837,6 +2873,13 @@ function showView(name, title) {
   }
   if (name === 'cotizar' && !title) {
     try {
+      // Update required field labels based on config
+      var lT = document.getElementById('lblTelefono');
+      var lE = document.getElementById('lblEmail');
+      var lD = document.getElementById('lblDireccion');
+      if (lT) lT.textContent = 'Teléfono (10 dígitos)' + (cfgIsRequired('req_telefono') ? ' *' : '');
+      if (lE) lE.textContent = 'Email' + (cfgIsRequired('req_email') ? ' *' : '');
+      if (lD) lD.textContent = 'Dirección' + (cfgIsRequired('req_direccion') ? ' *' : '');
       document.getElementById('cliNombre').value = '';
       document.getElementById('cliTelefono').value = '';
       document.getElementById('cliEmail').value = '';
@@ -3058,6 +3101,52 @@ async function updateHome() {
 // ============================================================
 // CONFIG
 // ============================================================
+// ── CENTRO DE CONFIGURACIÓN ──
+var appConfigCache = {};
+
+async function loadAdminConfigCenter() {
+  if (!supabase) return;
+  try {
+    var {data} = await supabase.from('app_config').select('key, value');
+    appConfigCache = {};
+    (data||[]).forEach(function(r) { appConfigCache[r.key] = r.value; });
+    
+    // PDF sections (default: all on)
+    document.getElementById('cfgPdfComparativa').checked = appConfigCache.pdf_comparativa !== 'false';
+    document.getElementById('cfgPdfAdicionales').checked = appConfigCache.pdf_adicionales !== 'false';
+    document.getElementById('cfgPdfAhorro').checked = appConfigCache.pdf_ahorro !== 'false';
+    document.getElementById('cfgPdfTitanio').checked = appConfigCache.pdf_titanio !== 'false';
+    
+    // Required fields (default: all required except noted)
+    document.getElementById('cfgReqTelefono').checked = appConfigCache.req_telefono !== 'false';
+    document.getElementById('cfgReqEmail').checked = appConfigCache.req_email !== 'false';
+    document.getElementById('cfgReqDireccion').checked = appConfigCache.req_direccion !== 'false';
+    document.getElementById('cfgReqContexto').checked = appConfigCache.req_contexto !== 'false';
+    document.getElementById('cfgReqNota').checked = appConfigCache.req_nota !== 'false';
+    document.getElementById('cfgReqProxContacto').checked = appConfigCache.req_proximo_contacto !== 'false';
+  } catch(e) { console.error('Config center load error:', e); }
+}
+
+async function saveAppConfigToggle(checkbox, key) {
+  if (!supabase) return;
+  var value = checkbox.checked ? 'true' : 'false';
+  try {
+    await supabase.from('app_config').upsert({key: key, value: value, updated_at: new Date().toISOString()});
+    appConfigCache[key] = value;
+    var st = document.getElementById('cfgSaveStatus');
+    st.textContent = '✅ Guardado: ' + key.replace(/_/g,' ');
+    setTimeout(function(){st.textContent=''},2000);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+function cfgIsRequired(key) {
+  return appConfigCache[key] !== 'false';
+}
+
+function cfgPdfEnabled(key) {
+  return appConfigCache[key] !== 'false';
+}
+
 function saveConfig() {
   const nombre = document.getElementById('cfgNombre').value.trim();
   const attuid = document.getElementById('cfgAttuid').value.trim().toUpperCase();
@@ -4276,13 +4365,14 @@ async function generarCotizacion() {
   const planActualId = document.getElementById('cliPlanActual').value;
   const planActual = planActualId ? PLANS_ACTUALES.find(function(p){return p.id===planActualId}) : null;
 
-  // Validate required fields
+  // Validate required fields (respects Centro de Configuración)
   const errors = [];
   if (!nombre || nombre.length < 5 || /^[0-9xX]+$/.test(nombre)) errors.push('Nombre del cliente (mínimo 5 caracteres, debe ser un nombre real)');
-  if (!telefono || telefono.length !== 10 || parseInt(telefono) < 2000000000) errors.push('Teléfono (10 dígitos, debe iniciar con 2-9)');
+  if (cfgIsRequired('req_telefono') && (!telefono || telefono.length !== 10 || parseInt(telefono) < 2000000000)) errors.push('Teléfono (10 dígitos, debe iniciar con 2-9)');
+  if (!cfgIsRequired('req_telefono') && telefono && (telefono.length !== 10 || parseInt(telefono) < 2000000000)) errors.push('Teléfono inválido (debe ser 10 dígitos si lo proporcionas)');
   if (!planActualId) errors.push('Plan actual del cliente');
-  if (!email) errors.push('Email');
-  if (!direccion) errors.push('Dirección');
+  if (cfgIsRequired('req_email') && !email) errors.push('Email');
+  if (cfgIsRequired('req_direccion') && !direccion) errors.push('Dirección');
   if (state.items.length === 0) errors.push('Agrega al menos un equipo');
   if (!state.agente.nombre) errors.push('Configura tu perfil de agente');
 
@@ -4773,7 +4863,7 @@ function buildAndDownloadPDF(cot) {
 
   // ═══════ AHORRO TABLE PER EQUIPMENT ═══════
   var ahorroItems = cot.items.filter(function(it){return (it.precioLista - it.precioPromo) > 0});
-  if (ahorroItems.length > 0) {
+  if (ahorroItems.length > 0 && cfgPdfEnabled('pdf_ahorro')) {
     doc.setTextColor(...DARK);
     doc.setFontSize(12);
     doc.setFont('helvetica','bold');
@@ -4883,13 +4973,13 @@ function buildAndDownloadPDF(cot) {
   }
 
   // ═══════ PLAN COMPARISON (if plan actual selected) ═══════
-  if (cot.planActual) {
+  if (cot.planActual && cfgPdfEnabled('pdf_comparativa')) {
     y = addPlanComparison(doc, cot, mg, y, cW, H);
   }
 
   // ═══════ TITANIO MESSAGE (if any item is Titanio) ═══════
   var hasTitanio = cot.items.some(function(it) { return it.planId === 'titanio' || it.planNombre === 'Titanio'; });
-  if (hasTitanio) {
+  if (hasTitanio && cfgPdfEnabled('pdf_titanio')) {
     y = addTitanioMessage(doc, mg, y, cW, H);
   }
 
@@ -4956,6 +5046,7 @@ function buildAndDownloadPDF(cot) {
   doc.text('V\u00e1lido hasta: ' + cot.validoHasta, W-mg-5, H-6.5, {align:'right'});
 
   // ═══════ CATÁLOGO DE ADICIONALES (siempre al final) ═══════
+  if (cfgPdfEnabled('pdf_adicionales')) {
   // Check if need new page
   y += 10;
   if (y > H - 60) { doc.addPage(); y = 15; }
@@ -4984,6 +5075,7 @@ function buildAndDownloadPDF(cot) {
   doc.setFont('helvetica','italic');
   doc.setTextColor(0,87,184);
   doc.text('Si te interesa alguna cobertura, solicítala con tu asesor. ¡Estamos para protegerte!', mg, y);
+  } // end cfgPdfEnabled pdf_adicionales
 
   doc.save('cotizacion_' + cot.folio.replace(/[^a-zA-Z0-9-]/g,'') + '.pdf');
 }
@@ -5186,7 +5278,7 @@ function buildAndDownloadPDF_v2(cot) {
 
   // ═══════ AHORRO TABLE PER EQUIPMENT ═══════
   var ahorroItems2 = cot.items.filter(function(it){return (it.precioLista - it.precioPromo) > 0});
-  if (ahorroItems2.length > 0) {
+  if (ahorroItems2.length > 0 && cfgPdfEnabled('pdf_ahorro')) {
     doc.setFillColor(...D1);
     doc.roundedRect(mg, y, cW, 7, 1.5, 1.5, 'F');
     doc.setTextColor(...WH);
@@ -5301,13 +5393,13 @@ function buildAndDownloadPDF_v2(cot) {
   }
 
   // ═══════ PLAN COMPARISON (if plan actual selected) ═══════
-  if (cot.planActual) {
+  if (cot.planActual && cfgPdfEnabled('pdf_comparativa')) {
     y = addPlanComparison(doc, cot, mg, y, cW, H);
   }
 
   // ═══════ TITANIO MESSAGE ═══════
   var hasTitanio2 = cot.items.some(function(it) { return it.planId === 'titanio' || it.planNombre === 'Titanio'; });
-  if (hasTitanio2) {
+  if (hasTitanio2 && cfgPdfEnabled('pdf_titanio')) {
     y = addTitanioMessage(doc, mg, y, cW, H);
   }
 
@@ -5384,6 +5476,7 @@ function buildAndDownloadPDF_v2(cot) {
   doc.text('Hasta: ' + cot.validoHasta, W-mg-24, H-7.5, {align:'center'});
 
   // ═══════ CATÁLOGO DE ADICIONALES — Template 2 (siempre al final) ═══════
+  if (cfgPdfEnabled('pdf_adicionales')) {
   y += 10;
   if (y > H - 60) { doc.addPage(); y = 15; }
   doc.setFontSize(9);
@@ -5412,6 +5505,7 @@ function buildAndDownloadPDF_v2(cot) {
   doc.setTextColor(0,87,184);
   doc.text('Si te interesa alguna cobertura, solicítala con tu asesor. ¡Estamos para protegerte!', mg, y);
 
+  } // end cfgPdfEnabled pdf_adicionales
   doc.save('cotizacion_premium_' + cot.folio.replace(/[^a-zA-Z0-9-]/g,'') + '.pdf');
 }
 
@@ -8431,7 +8525,7 @@ function renderAdminUsers() {
       // Forzar PDF toggle + Eliminar - ONLY admin
       if (currentUser.rol === 'admin') {
         var fpActive = u.forzar_pdf === true;
-        html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;color:'+(fpActive?'#DC3545':'#8B5CF6')+';border-color:'+(fpActive?'#DC3545':'#8B5CF6')+'" onclick="toggleForzarPDF(\\''+u.id+'\\',' + (!fpActive) + ')">'+(fpActive?'\ud83d\udd13 PDF libre':'\ud83d\udd12 Forzar PDF')+'</button>';
+        html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;color:'+(fpActive?'#DC3545':'#8B5CF6')+';border-color:'+(fpActive?'#DC3545':'#8B5CF6')+'" onclick="toggleForzarPDF(\''+u.id+'\','+(!fpActive)+')">'+(fpActive?'🔓 PDF libre':'🔒 Forzar PDF')+'</button>';
         html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;color:#DC3545;border-color:#DC3545" onclick="eliminarUsuario(\''+u.id+'\',\''+u.nombre.replace(/'/g,"\\'")+'\')">🗑️</button>';
       }
     }
