@@ -3798,8 +3798,25 @@ function searchDevices() {
 
   if (term.length < 2) { container.innerHTML = ''; return; }
   
-  // Silent auto-save: register prospect if not yet saved
+  // Validate client data before showing equipment
   if (!state._cotClienteSaved) {
+    var cNombre = document.getElementById('cliNombre').value.trim();
+    var cTelefono = document.getElementById('cliTelefono').value.trim();
+    var cEmail = document.getElementById('cliEmail').value.trim();
+    var cDireccion = document.getElementById('cliDireccion').value.trim();
+    
+    var faltan = [];
+    if (!cNombre || cNombre.length < 5) faltan.push('Nombre completo');
+    if (cfgIsRequired('req_telefono') && (!cTelefono || cTelefono.length !== 10)) faltan.push('Teléfono (10 dígitos)');
+    if (cfgIsRequired('req_email') && !cEmail) faltan.push('Email');
+    if (cfgIsRequired('req_direccion') && !cDireccion) faltan.push('Dirección');
+    
+    if (faltan.length > 0) {
+      container.innerHTML = '<div style="text-align:center;padding:20px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;margin-top:8px"><div style="font-size:13px;font-weight:700;color:#92400E;margin-bottom:4px">📋 Primero completa los datos del cliente</div><div style="font-size:11px;color:#92400E">Faltan: '+faltan.join(', ')+'</div></div>';
+      return;
+    }
+    
+    // All data filled — silent save
     guardarDatosClienteSilent();
   }
 
