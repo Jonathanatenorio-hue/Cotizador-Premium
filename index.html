@@ -2805,6 +2805,7 @@ async function loadCotizacionesFromSupabase() {
         createdAt: c.created_at,
         editedAt: c.edited_at,
         agente_id: c.agente_id,
+        pdf_generado: c.pdf_generado || false,
       };
       // Set ultima nota
       if (mapped.notas.length > 0) {
