@@ -1835,6 +1835,9 @@ var SUPABASE_URL = 'https://smytiyjzmzbmcllivxkc.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNteXRpeWp6bXpibWNsbGl2eGtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MTIwNzQsImV4cCI6MjA4NzM4ODA3NH0.KScWdne5ItM-iXtdKWuy75lXUUORJqmwRzp7z0W7OMo';
 var supabase = null;
 var currentUser = null;
+function isForzarPDF() { return currentUser && currentUser.forzar_pdf === true; }
+function maskPrice(val) { return isForzarPDF() ? '$***' : '$' + val.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function maskPriceInt(val) { return isForzarPDF() ? '$***' : '$' + val.toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:0}); }
 
 function initSupabase() {
   try {
@@ -3730,7 +3733,7 @@ function searchDevices() {
 
 function renderDeviceCard(dev) {
   const planOptions = dev.plans.map(p =>
-    `<option value="${p.id}">${p.name} (${p.gb}) - $${p.price}/mes</option>`
+    `<option value="${p.id}">${p.name} (${p.gb})${isForzarPDF() ? '' : ' - $'+p.price+'/mes'}</option>`
   ).join('');
   const plazoOptions = dev.plazos.map(p =>
     `<option value="${p}">${p} meses</option>`
@@ -3755,7 +3758,7 @@ function renderDeviceCard(dev) {
         </div>
         <div class="device-price">
           <div class="device-price-label">Precio lista</div>
-          <div class="device-price-val">$${dev.precioContado.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+          <div class="device-price-val">${isForzarPDF() ? '$***' : '$'+dev.precioContado.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
         </div>
         <span class="expand-icon" id="icon_${dev.id}">▼</span>
       </div>
@@ -3804,8 +3807,8 @@ function updateDeviceCalc(id) {
     const mensualFull = dev.precioContado / plazo + plan.price;
     container.innerHTML = '<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:10px;margin-top:8px">' +
       '<div style="font-size:10px;color:#E65100;font-weight:700;margin-bottom:4px">⚠️ Sin precio promocional en este plan/plazo</div>' +
-      '<div style="font-size:11px;color:var(--text-2);margin-bottom:6px">Se cotiza a precio de lista: <b>$' + dev.precioContado.toLocaleString('es-MX',{minimumFractionDigits:2}) + '</b></div>' +
-      '<div style="font-size:13px;font-weight:800;color:var(--att-blue);margin-bottom:6px">Mensual: $' + mensualFull.toLocaleString('es-MX',{minimumFractionDigits:2}) + '</div>' +
+      '<div style="font-size:11px;color:var(--text-2);margin-bottom:6px">Se cotiza a precio de lista: <b>' + (isForzarPDF() ? '$***' : '$' + dev.precioContado.toLocaleString('es-MX',{minimumFractionDigits:2})) + '</b></div>' +
+      '<div style="font-size:13px;font-weight:800;color:var(--att-blue);margin-bottom:6px">Mensual: ' + (isForzarPDF() ? '$***' : '$' + mensualFull.toLocaleString('es-MX',{minimumFractionDigits:2})) + '</div>' +
       '<button class="btn btn-primary" style="font-size:11px;padding:6px 14px;background:#E65100" onclick="addItemFullPrice(\'' + id + '\',\'' + planId + '\',' + plazo + ')">Cotizar a precio lista</button>' +
       '</div>';
     return;
@@ -3814,38 +3817,40 @@ function updateDeviceCalc(id) {
   const ahorro = dev.precioContado - precioPromo;
   const mensual = precioPromo / plazo + plan.price;
   const ahorroMensualidades = ahorro > 0 ? Math.floor(ahorro / plan.price) : 0;
+  const _fp = isForzarPDF();
 
   container.innerHTML = `
     <div class="device-calc">
       <div class="calc-row">
         <span>Precio promoción:</span>
-        <span class="calc-val blue">$${precioPromo.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        <span class="calc-val blue">${_fp ? '$***' : '$'+precioPromo.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
       </div>
       ${ahorro > 0 ? `
       <div style="background:linear-gradient(135deg,#D1FAE5,#A7F3D0);border:1px solid #6EE7B7;border-radius:10px;padding:12px;margin:8px 0;color:#065F46">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-size:9px;text-transform:uppercase;font-weight:600;color:#047857">AHORRO EN EQUIPO</div>
-            <div style="font-size:22px;font-weight:900;color:#065F46">$${ahorro.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+            <div style="font-size:22px;font-weight:900;color:#065F46">${_fp ? '$***' : '$'+ahorro.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
           </div>
           <div style="text-align:right">
             <div style="font-size:9px;text-transform:uppercase;font-weight:600;color:#047857">EQUIVALE A</div>
-            <div style="font-size:18px;font-weight:900;color:#065F46">${ahorroMensualidades} meses</div>
-            <div style="font-size:9px;color:#047857">de plan pagados</div>
+            <div style="font-size:18px;font-weight:900;color:#065F46">${_fp ? '***' : ahorroMensualidades+' meses'}</div>
+            <div style="font-size:9px;color:#047857">${_fp ? '' : 'de plan pagados'}</div>
           </div>
         </div>
-        <div style="margin-top:6px;padding-top:6px;border-top:1px solid #6EE7B7;font-size:10px;color:#047857">
+        ${_fp ? '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #6EE7B7;font-size:10px;color:#047857;font-weight:700">📄 Genera el PDF para ver los precios completos</div>' : `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #6EE7B7;font-size:10px;color:#047857">
           El cliente ahorra <strong>$${ahorro.toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:0})}</strong> vs precio de contado — es como si AT&T le pagara <strong>${ahorroMensualidades} mensualidades</strong> de su plan
-        </div>
+        </div>`}
       </div>` : `
       <div class="calc-row">
         <span>Ahorro:</span>
-        <span class="calc-val green">$${ahorro.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        <span class="calc-val green">${_fp ? '$***' : '$'+ahorro.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
       </div>`}
       <div class="calc-row total">
         <span>Equipo + Plan /mes:</span>
-        <span class="calc-val big">$${mensual.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        <span class="calc-val big">${_fp ? '$***' : '$'+mensual.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
       </div>
+      ${_fp ? '<div style="text-align:center;margin-top:6px;font-size:10px;color:#DC3545;font-weight:700">🔒 Precios ocultos — Genera el PDF para compartir con el cliente</div>' : ''}
       <button class="btn btn-primary" style="margin-top:10px" onclick="addItemFromDevice('${id}')">+ Agregar a cotización</button>
     </div>
   `;
@@ -8423,8 +8428,10 @@ function renderAdminUsers() {
           html += '<button class="btn btn-primary" style="font-size:10px;padding:3px 8px" onclick="reactivarUsuario(\''+u.id+'\')">Reactivar</button>';
         }
       }
-      // Eliminar - ONLY admin
+      // Forzar PDF toggle + Eliminar - ONLY admin
       if (currentUser.rol === 'admin') {
+        var fpActive = u.forzar_pdf === true;
+        html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;color:'+(fpActive?'#DC3545':'#8B5CF6')+';border-color:'+(fpActive?'#DC3545':'#8B5CF6')+'" onclick="toggleForzarPDF(\\''+u.id+'\\',' + (!fpActive) + ')">'+(fpActive?'\ud83d\udd13 PDF libre':'\ud83d\udd12 Forzar PDF')+'</button>';
         html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;color:#DC3545;border-color:#DC3545" onclick="eliminarUsuario(\''+u.id+'\',\''+u.nombre.replace(/'/g,"\\'")+'\')">🗑️</button>';
       }
     }
@@ -9575,6 +9582,17 @@ async function editarUsuario(userId) {
   // Mark as editing
   form.dataset.editId = userId;
   form.querySelector('div[style*="font-weight:700"]').textContent = 'Editar Usuario: ' + user.nombre;
+}
+
+async function toggleForzarPDF(userId, enable) {
+  if (!supabase || !currentUser || currentUser.rol !== 'admin') return;
+  try {
+    await supabase.from('usuarios').update({forzar_pdf: enable}).eq('id', userId);
+    var u = adminUsers.find(function(x){return x.id===userId});
+    if (u) u.forzar_pdf = enable;
+    renderAdminUsers();
+    alert(enable ? '🔒 Modo Forzar PDF activado' : '🔓 Modo Forzar PDF desactivado');
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 async function eliminarUsuario(userId, nombre) {
