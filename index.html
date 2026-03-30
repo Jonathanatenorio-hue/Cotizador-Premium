@@ -907,17 +907,7 @@ body{padding-bottom:60px}
     </div>
 
     <!-- Search -->
-    <!-- Save client data first -->
-    <div id="cotClienteGuardado" style="display:none;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 14px;margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:11px;font-weight:700;color:#10B981">✅ Prospecto registrado — Ahora busca equipos</span>
-        <button onclick="editarDatosCliente()" style="font-size:9px;padding:3px 8px;background:white;border:1px solid var(--border);border-radius:6px;cursor:pointer">✏️ Editar datos</button>
-      </div>
-    </div>
-    <div id="cotBtnGuardarCliente" style="margin-bottom:10px">
-      <button class="btn btn-primary btn-lg" onclick="guardarDatosCliente()" style="width:100%;background:linear-gradient(135deg,#0057B8,#009FDB);font-size:14px;padding:12px">📋 Registrar prospecto y buscar equipos</button>
-    </div>
-    <!-- Equipment section - hidden until client saved -->
+    <!-- Equipment section - shown after client data filled (auto-save invisible) -->
     <div id="cotEquipmentSection" style="display:none">
     <div class="section">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -979,7 +969,7 @@ body{padding-bottom:60px}
         <span style="font-size:11px;color:var(--text-3)">a</span>
         <input type="date" class="field" id="hFilterHasta" onchange="renderHistorial()" style="width:auto;font-size:11px;padding:5px 8px">
         <button class="btn btn-secondary" onclick="limpiarFiltrosHistorial()" style="font-size:10px;padding:4px 8px">✕ Limpiar</button>
-        <select class="field" id="hFilterSubEstatus" onchange="renderHistorial()" style="width:auto;min-width:140px;font-size:11px;padding:5px 8px">
+        <select class="field" id="hFilterSubEstatus" onchange="renderHistorial()" multiple style="width:auto;min-width:160px;font-size:10px;padding:4px 6px;height:55px">
           <option value="all">Todas las sub-tipificaciones</option>
           <option value="_agentes_baja">👤 Agentes dados de baja</option>
           <option value="_con_pdf">📄 Con PDF generado</option>
@@ -2904,10 +2894,8 @@ function showView(name, title) {
       state.editingFolio = null;
       state._cotClienteSaved = false;
       renderItems();
-      // Hide equipment, show client save button
-      document.getElementById('cotEquipmentSection').style.display = 'none';
-      document.getElementById('cotBtnGuardarCliente').style.display = '';
-      document.getElementById('cotClienteGuardado').style.display = 'none';
+      // Show equipment section normally
+      document.getElementById('cotEquipmentSection').style.display = '';
     } catch(e) {}
   }
   if (name === 'home') {
@@ -3809,6 +3797,11 @@ function searchDevices() {
   const container = document.getElementById('deviceResults');
 
   if (term.length < 2) { container.innerHTML = ''; return; }
+  
+  // Silent auto-save: register prospect if not yet saved
+  if (!state._cotClienteSaved) {
+    guardarDatosClienteSilent();
+  }
 
   const vigentes = state.devices.filter(isVigente);
   var termClean = term.replace(/\s+/g, '');
@@ -4377,71 +4370,50 @@ function selectTemplate(tpl) {
 // ============================================================
 // PDF GENERATION
 // ============================================================
-// ── REGISTRO DE PROSPECTO (antes de cotizar) ──
-async function guardarDatosCliente() {
+// ── REGISTRO DE PROSPECTO (invisible para el agente) ──
+async function guardarDatosClienteSilent() {
+  if (state._cotClienteSaved || state.editingFolio) return;
+  
   var nombre = document.getElementById('cliNombre').value.trim();
   var telefono = document.getElementById('cliTelefono').value.trim();
   var email = document.getElementById('cliEmail').value.trim();
   var direccion = document.getElementById('cliDireccion').value.trim();
   var planActualId = document.getElementById('cliPlanActual').value;
   
-  // Validate
-  var errors = [];
-  if (!nombre || nombre.length < 5 || /^[0-9xX]+$/.test(nombre)) errors.push('Nombre del cliente (mínimo 5 caracteres)');
-  if (cfgIsRequired('req_telefono') && (!telefono || telefono.length !== 10)) errors.push('Teléfono (10 dígitos)');
-  if (cfgIsRequired('req_email') && !email) errors.push('Email');
-  if (cfgIsRequired('req_direccion') && !direccion) errors.push('Dirección');
+  // Only save if at least name is filled
+  if (!nombre || nombre.length < 3) return;
   
-  if (errors.length > 0) {
-    alert('Completa los campos obligatorios:\n\n• ' + errors.join('\n• '));
-    return;
-  }
+  var folio = 'COT-' + Date.now().toString(36).toUpperCase();
+  var planActual = planActualId ? PLANS_ACTUALES.find(function(p){return p.id===planActualId}) : null;
   
-  // Generate folio and save to Supabase as cotización without items
-  if (!state.editingFolio) {
-    var folio = 'COT-' + Date.now().toString(36).toUpperCase();
-    var planActual = planActualId ? PLANS_ACTUALES.find(function(p){return p.id===planActualId}) : null;
+  try {
+    var cotData = {
+      folio: folio,
+      agente_id: currentUser ? currentUser.id : null,
+      cliente_nombre: nombre,
+      cliente_telefono: telefono,
+      cliente_email: email,
+      cliente_direccion: direccion,
+      plan_actual: planActual ? planActual.name : '',
+      plan_actual_gb: planActual ? planActual.gb : '',
+      plan_actual_precio: planActual ? planActual.price : 0,
+      estatus: 'enviada',
+      pdf_generado: false,
+      validez_dias: parseInt(document.getElementById('cliValidez').value) || 7
+    };
     
-    try {
-      var cotData = {
-        folio: folio,
-        agente_id: currentUser ? currentUser.id : null,
-        cliente_nombre: nombre,
-        cliente_telefono: telefono,
-        cliente_email: email,
-        cliente_direccion: direccion,
-        plan_actual: planActual ? planActual.name : '',
-        plan_actual_gb: planActual ? planActual.gb : '',
-        plan_actual_precio: planActual ? planActual.price : 0,
-        estatus: 'enviada',
-        pdf_generado: false,
-        validez_dias: parseInt(document.getElementById('cliValidez').value) || 7
-      };
-      
-      var {data, error} = await supabase.from('cotizaciones').insert(cotData).select().single();
-      if (error) { alert('Error al guardar: ' + error.message); return; }
-      
-      state.editingFolio = folio;
-      state._cotClienteSaved = true;
-      
-      // Add to local state
-      await loadCotizacionesFromSupabase();
-      
-    } catch(e) { alert('Error: ' + e.message); return; }
-  } else {
+    var {data, error} = await supabase.from('cotizaciones').insert(cotData).select().single();
+    if (error) { console.log('Silent save error:', error.message); return; }
+    
+    state.editingFolio = folio;
     state._cotClienteSaved = true;
-  }
-  
-  // Show equipment section, hide save button
-  document.getElementById('cotEquipmentSection').style.display = '';
-  document.getElementById('cotBtnGuardarCliente').style.display = 'none';
-  document.getElementById('cotClienteGuardado').style.display = '';
+    console.log('Prospecto registrado silenciosamente:', folio);
+    
+  } catch(e) { console.log('Silent save error:', e.message); }
 }
 
 function editarDatosCliente() {
-  document.getElementById('cotEquipmentSection').style.display = 'none';
-  document.getElementById('cotBtnGuardarCliente').style.display = '';
-  document.getElementById('cotClienteGuardado').style.display = 'none';
+  // Not needed in invisible mode
 }
 
 async function generarCotizacion() {
@@ -5846,7 +5818,8 @@ function limpiarFiltrosHistorial() {
   document.getElementById('hFilterMes').value = 'all';
   document.getElementById('hFilterDesde').value = '';
   document.getElementById('hFilterHasta').value = '';
-  document.getElementById('hFilterSubEstatus').value = 'all';
+  var subSel = document.getElementById('hFilterSubEstatus');
+  if (subSel) { for (var si=0;si<subSel.options.length;si++) subSel.options[si].selected = subSel.options[si].value==='all'; }
   document.getElementById('historialSearch').value = '';
   var centro = document.getElementById('hFilterCentro'); if (centro) centro.value = 'all';
   var coord = document.getElementById('hFilterCoord'); if (coord) coord.value = 'all';
@@ -6192,6 +6165,12 @@ function exportHistorialExcel() {
   // Get currently filtered cotizaciones (same logic as renderHistorial)
   var agentIds = getFilteredAgentIds();
   var filtered = state.cotizaciones;
+  
+  // Agents don't see registros without PDF (invisible tracking)
+  if (currentUser && currentUser.rol === 'agente') {
+    filtered = filtered.filter(function(c) { return c.pdf_generado === true || (c.items && c.items.length > 0); });
+  }
+  
   if (agentIds) filtered = filtered.filter(function(c) { return agentIds.indexOf(c.agente_id || (currentUser ? currentUser.id : null)) !== -1; });
   
   var searchTerm = (document.getElementById('historialSearch').value || '').toLowerCase().trim();
@@ -6216,20 +6195,38 @@ function exportHistorialExcel() {
     });
   }
   
-  var hSubEst = document.getElementById('hFilterSubEstatus') ? document.getElementById('hFilterSubEstatus').value : 'all';
-  if (hSubEst === '_agentes_baja') {
-    var allU = window._allUsersIncBaja || [];
-    var inactiveIds = allU.filter(function(u){return !(u.activo===true||u.activo==='true'||u.activo===1)}).map(function(u){return u.id});
-    var knownIds = allU.map(function(u){return u.id});
-    filtered = filtered.filter(function(c) {
-      return inactiveIds.indexOf(c.agente_id) >= 0 || knownIds.indexOf(c.agente_id) < 0;
-    });
-  } else if (hSubEst === '_con_pdf') {
-    filtered = filtered.filter(function(c) { return c.pdf_generado === true; });
-  } else if (hSubEst === '_sin_pdf') {
-    filtered = filtered.filter(function(c) { return !c.pdf_generado; });
-  } else if (hSubEst !== 'all') {
-    filtered = filtered.filter(function(c) { return c.sub_estatus === hSubEst; });
+  var hSubEstSel = document.getElementById('hFilterSubEstatus');
+  var hSubEstVals = [];
+  if (hSubEstSel) { for (var si=0;si<hSubEstSel.options.length;si++) { if (hSubEstSel.options[si].selected) hSubEstVals.push(hSubEstSel.options[si].value); } }
+  if (hSubEstVals.indexOf('all')>=0 || hSubEstVals.length===0) hSubEstVals = ['all'];
+  
+  if (hSubEstVals[0] !== 'all') {
+    // Check for special filters
+    var hasSpecial = false;
+    if (hSubEstVals.indexOf('_agentes_baja') >= 0) {
+      hasSpecial = true;
+      var allU = window._allUsersIncBaja || [];
+      var inactiveIds = allU.filter(function(u){return !(u.activo===true||u.activo==='true'||u.activo===1)}).map(function(u){return u.id});
+      var knownIds = allU.map(function(u){return u.id});
+      filtered = filtered.filter(function(c) {
+        return inactiveIds.indexOf(c.agente_id) >= 0 || knownIds.indexOf(c.agente_id) < 0;
+      });
+    }
+    if (hSubEstVals.indexOf('_con_pdf') >= 0) {
+      hasSpecial = true;
+      filtered = filtered.filter(function(c) { return c.pdf_generado === true; });
+    }
+    if (hSubEstVals.indexOf('_sin_pdf') >= 0) {
+      hasSpecial = true;
+      filtered = filtered.filter(function(c) { return !c.pdf_generado; });
+    }
+    // Regular sub-estatus filters
+    var regularVals = hSubEstVals.filter(function(v){return v.indexOf('_')!==0});
+    if (regularVals.length > 0) {
+      filtered = filtered.filter(function(c) { return regularVals.indexOf(c.sub_estatus) >= 0; });
+    } else if (!hasSpecial) {
+      filtered = filtered.filter(function(c) { return hSubEstVals.indexOf(c.sub_estatus) >= 0; });
+    }
   }
   
   if (state.filterEstatus !== 'all') filtered = filtered.filter(function(c) { return c.estatus === state.filterEstatus; });
@@ -7372,10 +7369,8 @@ function editCotizacion(folio) {
   state.editingFolio = cot.folio;
   state._cotClienteSaved = true;
   
-  // Show equipment section since this is an existing cotización
+  // Equipment section already visible
   document.getElementById('cotEquipmentSection').style.display = '';
-  document.getElementById('cotBtnGuardarCliente').style.display = 'none';
-  document.getElementById('cotClienteGuardado').style.display = '';
 
   // Update button text
   var btn = document.getElementById('btnGenerar');
