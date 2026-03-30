@@ -907,6 +907,18 @@ body{padding-bottom:60px}
     </div>
 
     <!-- Search -->
+    <!-- Save client data first -->
+    <div id="cotClienteGuardado" style="display:none;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:11px;font-weight:700;color:#10B981">✅ Prospecto registrado — Ahora busca equipos</span>
+        <button onclick="editarDatosCliente()" style="font-size:9px;padding:3px 8px;background:white;border:1px solid var(--border);border-radius:6px;cursor:pointer">✏️ Editar datos</button>
+      </div>
+    </div>
+    <div id="cotBtnGuardarCliente" style="margin-bottom:10px">
+      <button class="btn btn-primary btn-lg" onclick="guardarDatosCliente()" style="width:100%;background:linear-gradient(135deg,#0057B8,#009FDB);font-size:14px;padding:12px">📋 Registrar prospecto y buscar equipos</button>
+    </div>
+    <!-- Equipment section - hidden until client saved -->
+    <div id="cotEquipmentSection" style="display:none">
     <div class="section">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div class="section-title" style="margin:0">Buscar Equipo</div>
@@ -949,6 +961,7 @@ body{padding-bottom:60px}
         📄 Generar Cotización PDF
       </button>
     </div>
+    </div><!-- end cotEquipmentSection -->
   </div>
 </div>
 
@@ -969,6 +982,8 @@ body{padding-bottom:60px}
         <select class="field" id="hFilterSubEstatus" onchange="renderHistorial()" style="width:auto;min-width:140px;font-size:11px;padding:5px 8px">
           <option value="all">Todas las sub-tipificaciones</option>
           <option value="_agentes_baja">👤 Agentes dados de baja</option>
+          <option value="_con_pdf">📄 Con PDF generado</option>
+          <option value="_sin_pdf">🚫 Sin PDF generado</option>
           <option value="reasignada">🔄 Reasignadas</option>
           <option value="aceleracion">Aceleración pendiente</option>
           <option value="en_negociacion">En negociación</option>
@@ -2887,7 +2902,12 @@ function showView(name, title) {
       document.getElementById('cliPlanActual').value = '';
       state.items = [];
       state.editingFolio = null;
+      state._cotClienteSaved = false;
       renderItems();
+      // Hide equipment, show client save button
+      document.getElementById('cotEquipmentSection').style.display = 'none';
+      document.getElementById('cotBtnGuardarCliente').style.display = '';
+      document.getElementById('cotClienteGuardado').style.display = 'none';
     } catch(e) {}
   }
   if (name === 'home') {
@@ -3911,8 +3931,8 @@ function updateDeviceCalc(id) {
   container.innerHTML = `
     <div class="device-calc">
       <div class="calc-row">
-        <span>Precio promoción:</span>
-        <span class="calc-val blue">${_fp ? '$***' : '$'+precioPromo.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+        <span>Precio promocional del equipo:</span>
+        <span class="calc-val blue">${_fp ? '$***' : (precioPromo === 0 ? '<span style="color:#10B981;font-weight:900">$0 — ¡Equipo incluido sin costo!</span>' : '$'+precioPromo.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}))}</span>
       </div>
       ${ahorro > 0 ? `
       <div style="background:linear-gradient(135deg,#D1FAE5,#A7F3D0);border:1px solid #6EE7B7;border-radius:10px;padding:12px;margin:8px 0;color:#065F46">
@@ -4357,6 +4377,73 @@ function selectTemplate(tpl) {
 // ============================================================
 // PDF GENERATION
 // ============================================================
+// ── REGISTRO DE PROSPECTO (antes de cotizar) ──
+async function guardarDatosCliente() {
+  var nombre = document.getElementById('cliNombre').value.trim();
+  var telefono = document.getElementById('cliTelefono').value.trim();
+  var email = document.getElementById('cliEmail').value.trim();
+  var direccion = document.getElementById('cliDireccion').value.trim();
+  var planActualId = document.getElementById('cliPlanActual').value;
+  
+  // Validate
+  var errors = [];
+  if (!nombre || nombre.length < 5 || /^[0-9xX]+$/.test(nombre)) errors.push('Nombre del cliente (mínimo 5 caracteres)');
+  if (cfgIsRequired('req_telefono') && (!telefono || telefono.length !== 10)) errors.push('Teléfono (10 dígitos)');
+  if (cfgIsRequired('req_email') && !email) errors.push('Email');
+  if (cfgIsRequired('req_direccion') && !direccion) errors.push('Dirección');
+  
+  if (errors.length > 0) {
+    alert('Completa los campos obligatorios:\n\n• ' + errors.join('\n• '));
+    return;
+  }
+  
+  // Generate folio and save to Supabase as cotización without items
+  if (!state.editingFolio) {
+    var folio = 'COT-' + Date.now().toString(36).toUpperCase();
+    var planActual = planActualId ? PLANS_ACTUALES.find(function(p){return p.id===planActualId}) : null;
+    
+    try {
+      var cotData = {
+        folio: folio,
+        agente_id: currentUser ? currentUser.id : null,
+        cliente_nombre: nombre,
+        cliente_telefono: telefono,
+        cliente_email: email,
+        cliente_direccion: direccion,
+        plan_actual: planActual ? planActual.name : '',
+        plan_actual_gb: planActual ? planActual.gb : '',
+        plan_actual_precio: planActual ? planActual.price : 0,
+        estatus: 'enviada',
+        pdf_generado: false,
+        validez_dias: parseInt(document.getElementById('cliValidez').value) || 7
+      };
+      
+      var {data, error} = await supabase.from('cotizaciones').insert(cotData).select().single();
+      if (error) { alert('Error al guardar: ' + error.message); return; }
+      
+      state.editingFolio = folio;
+      state._cotClienteSaved = true;
+      
+      // Add to local state
+      await loadCotizacionesFromSupabase();
+      
+    } catch(e) { alert('Error: ' + e.message); return; }
+  } else {
+    state._cotClienteSaved = true;
+  }
+  
+  // Show equipment section, hide save button
+  document.getElementById('cotEquipmentSection').style.display = '';
+  document.getElementById('cotBtnGuardarCliente').style.display = 'none';
+  document.getElementById('cotClienteGuardado').style.display = '';
+}
+
+function editarDatosCliente() {
+  document.getElementById('cotEquipmentSection').style.display = 'none';
+  document.getElementById('cotBtnGuardarCliente').style.display = '';
+  document.getElementById('cotClienteGuardado').style.display = 'none';
+}
+
 async function generarCotizacion() {
   const nombre = document.getElementById('cliNombre').value.trim();
   const telefono = document.getElementById('cliTelefono').value.trim();
@@ -5078,6 +5165,13 @@ function buildAndDownloadPDF(cot) {
   } // end cfgPdfEnabled pdf_adicionales
 
   doc.save('cotizacion_' + cot.folio.replace(/[^a-zA-Z0-9-]/g,'') + '.pdf');
+  // Mark PDF as generated
+  if (supabase && cot.folio) {
+    supabase.from('cotizaciones').update({pdf_generado: true}).eq('folio', cot.folio).then(function(){
+      var local = state.cotizaciones.find(function(c){return c.folio===cot.folio});
+      if (local) local.pdf_generado = true;
+    });
+  }
 }
 
 // ============================================================
@@ -5507,6 +5601,13 @@ function buildAndDownloadPDF_v2(cot) {
 
   } // end cfgPdfEnabled pdf_adicionales
   doc.save('cotizacion_premium_' + cot.folio.replace(/[^a-zA-Z0-9-]/g,'') + '.pdf');
+  // Mark PDF as generated
+  if (supabase && cot.folio) {
+    supabase.from('cotizaciones').update({pdf_generado: true}).eq('folio', cot.folio).then(function(){
+      var local = state.cotizaciones.find(function(c){return c.folio===cot.folio});
+      if (local) local.pdf_generado = true;
+    });
+  }
 }
 
 
@@ -6123,6 +6224,10 @@ function exportHistorialExcel() {
     filtered = filtered.filter(function(c) {
       return inactiveIds.indexOf(c.agente_id) >= 0 || knownIds.indexOf(c.agente_id) < 0;
     });
+  } else if (hSubEst === '_con_pdf') {
+    filtered = filtered.filter(function(c) { return c.pdf_generado === true; });
+  } else if (hSubEst === '_sin_pdf') {
+    filtered = filtered.filter(function(c) { return !c.pdf_generado; });
   } else if (hSubEst !== 'all') {
     filtered = filtered.filter(function(c) { return c.sub_estatus === hSubEst; });
   }
@@ -7265,6 +7370,12 @@ function editCotizacion(folio) {
 
   // Set edit mode
   state.editingFolio = cot.folio;
+  state._cotClienteSaved = true;
+  
+  // Show equipment section since this is an existing cotización
+  document.getElementById('cotEquipmentSection').style.display = '';
+  document.getElementById('cotBtnGuardarCliente').style.display = 'none';
+  document.getElementById('cotClienteGuardado').style.display = '';
 
   // Update button text
   var btn = document.getElementById('btnGenerar');
