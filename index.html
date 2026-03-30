@@ -970,7 +970,7 @@ body{padding-bottom:60px}
         <span style="font-size:11px;color:var(--text-3)">a</span>
         <input type="date" class="field" id="hFilterHasta" onchange="renderHistorial()" style="width:auto;font-size:11px;padding:5px 8px">
         <button class="btn btn-secondary" onclick="limpiarFiltrosHistorial()" style="font-size:10px;padding:4px 8px">✕ Limpiar</button>
-        <select class="field" id="hFilterSubEstatus" onchange="renderHistorial()" multiple style="width:auto;min-width:160px;font-size:10px;padding:4px 6px;height:55px">
+        <select class="field" id="hFilterSubEstatus" onchange="handleSubEstatusChange();renderHistorial()" multiple style="width:auto;min-width:160px;font-size:10px;padding:4px 6px;height:55px">
           <option value="all">Todas las sub-tipificaciones</option>
           <option value="_agentes_baja">👤 Agentes dados de baja</option>
           <option value="_con_pdf">📄 Con PDF generado</option>
@@ -2846,6 +2846,13 @@ function bnavUpdate(name) {
 }
 
 function showView(name, title) {
+  // Silent save if leaving cotizar with client data filled
+  if (state.currentView === 'cotizar' && name !== 'cotizar' && !state._cotClienteSaved) {
+    var cNombre = document.getElementById('cliNombre');
+    if (cNombre && cNombre.value.trim().length >= 5) {
+      guardarDatosClienteSilent();
+    }
+  }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
 
@@ -4175,8 +4182,9 @@ function toggleAdicional(idx, tipo) {
 }
 
 function calcMensualTotal(item) {
+  if (item.soloPlan) return (item.planPrecio||0);
   var base = (item.precioPromo||0) - (item.enganche||0);
-  var mensualBase = base / (item.plazo||1) + (item.planPrecio||0);
+  var mensualBase = item.plazo > 0 ? base / item.plazo + (item.planPrecio||0) : (item.planPrecio||0);
   var seg = getSeguro(item.precioLista||0);
   var segCosto = (item.adicionales && item.adicionales.seguro && seg) ? seg.costo : 0;
   var ctrlCosto = (item.adicionales && item.adicionales.control) ? 50 : 0;
@@ -4200,16 +4208,64 @@ function renderItems() {
 
   let html = '';
   state.items.forEach((item, idx) => {
+    const isSoloPlan = item.soloPlan === true;
     const ahorro = item.precioLista - item.precioPromo;
-    const base = item.precioPromo - item.enganche;
+    const base = item.precioPromo - (item.enganche||0);
     const seguro = getSeguro(item.precioLista);
     const seguroCosto = (item.adicionales && item.adicionales.seguro && seguro) ? seguro.costo : 0;
     const controlCosto = (item.adicionales && item.adicionales.control) ? 50 : 0;
     const bateriaCosto = (item.adicionales && item.adicionales.bateria) ? 99 : 0;
     const pantallaCosto = (item.adicionales && item.adicionales.pantalla) ? 99 : 0;
-    const mensualBase = base / item.plazo + item.planPrecio;
+    const mensualBase = isSoloPlan ? (item.planPrecio||0) : (item.plazo > 0 ? base / item.plazo + item.planPrecio : item.planPrecio);
     const mensual = mensualBase + seguroCosto + controlCosto + bateriaCosto + pantallaCosto;
     const totalAdicionales = seguroCosto + controlCosto + bateriaCosto + pantallaCosto;
+
+    if (isSoloPlan) {
+      // Solo Plan card
+      html += `
+      <div class="item-card" style="border-left:4px solid #8B5CF6">
+        <div class="item-top">
+          <div style="display:flex;gap:10px;align-items:center">
+            <div style="width:42px;height:42px;border-radius:8px;background:#F5F3FF;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <span style="font-size:22px">📶</span>
+            </div>
+            <div>
+              <div class="item-name">${item.planNombre}</div>
+              <div class="item-plan">${item.marca} · ${item.planGb} · ${item.isPortabilidad ? 'Portabilidad' : 'Línea nueva/Adición'}</div>
+            </div>
+          </div>
+          <button class="btn-danger-ghost" onclick="removeItem(${idx})">✕</button>
+        </div>
+        <div class="item-grid">
+          <div class="item-detail">
+            <span class="detail-label">Mensualidad</span>
+            <span style="color:#8B5CF6;font-weight:800;font-size:16px">$${item.planPrecio.toLocaleString('es-MX',{minimumFractionDigits:2})}/mes</span>
+          </div>
+          <div class="item-detail">
+            <span class="detail-label">Datos</span>
+            <span style="font-weight:700">${item.planGb}</span>
+          </div>
+          ${item.isPortabilidad && item.planPrecioNormal ? `
+          <div class="item-detail">
+            <span class="detail-label">Renta normal (después de 6m)</span>
+            <span>$${item.planPrecioNormal.toLocaleString('es-MX',{minimumFractionDigits:2})}/mes</span>
+          </div>
+          <div class="item-detail">
+            <span class="detail-label">Ahorro mensual x 6 meses</span>
+            <span style="color:var(--success);font-weight:600">$${(item.planPrecioNormal - item.planPrecio).toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+          </div>` : ''}
+          <div class="item-detail">
+            <span class="detail-label">Renta sin impuestos</span>
+            <span>$${Math.round(item.planPrecio * 0.837).toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+          </div>
+          <div class="item-detail">
+            <span class="detail-label">6 redes sociales ilimitadas</span>
+            <span style="color:#10B981;font-weight:700">✅ Incluidas</span>
+          </div>
+        </div>
+      </div>`;
+      return; // skip normal card rendering for this item
+    }
 
     html += `
       <div class="item-card">
@@ -4393,17 +4449,24 @@ function selectTemplate(tpl) {
 async function guardarDatosClienteSilent() {
   if (state._cotClienteSaved || state.editingFolio) return;
   
-  var nombre = document.getElementById('cliNombre').value.trim();
-  var telefono = document.getElementById('cliTelefono').value.trim();
-  var email = document.getElementById('cliEmail').value.trim();
-  var direccion = document.getElementById('cliDireccion').value.trim();
-  var planActualId = document.getElementById('cliPlanActual').value;
+  var cliNombre = document.getElementById('cliNombre');
+  var cliTelefono = document.getElementById('cliTelefono');
+  var cliEmail = document.getElementById('cliEmail');
+  var cliDireccion = document.getElementById('cliDireccion');
+  var cliPlanActual = document.getElementById('cliPlanActual');
+  var cliValidez = document.getElementById('cliValidez');
   
-  // Only save if at least name is filled
+  if (!cliNombre) return;
+  var nombre = cliNombre.value.trim();
   if (!nombre || nombre.length < 3) return;
   
-  var folio = 'COT-' + Date.now().toString(36).toUpperCase();
+  var telefono = cliTelefono ? cliTelefono.value.trim() : '';
+  var email = cliEmail ? cliEmail.value.trim() : '';
+  var direccion = cliDireccion ? cliDireccion.value.trim() : '';
+  var planActualId = cliPlanActual ? cliPlanActual.value : '';
   var planActual = planActualId ? PLANS_ACTUALES.find(function(p){return p.id===planActualId}) : null;
+  
+  var folio = generateFolio();
   
   try {
     var cotData = {
@@ -4418,7 +4481,7 @@ async function guardarDatosClienteSilent() {
       plan_actual_precio: planActual ? planActual.price : 0,
       estatus: 'enviada',
       pdf_generado: false,
-      validez_dias: parseInt(document.getElementById('cliValidez').value) || 7
+      validez_dias: cliValidez ? parseInt(cliValidez.value) || 7 : 7
     };
     
     var {data, error} = await supabase.from('cotizaciones').insert(cotData).select().single();
@@ -4448,7 +4511,8 @@ async function generarCotizacion() {
   if (!nombre || nombre.length < 5 || /^[0-9xX]+$/.test(nombre)) errors.push('Nombre del cliente (mínimo 5 caracteres, debe ser un nombre real)');
   if (cfgIsRequired('req_telefono') && (!telefono || telefono.length !== 10 || parseInt(telefono) < 2000000000)) errors.push('Teléfono (10 dígitos, debe iniciar con 2-9)');
   if (!cfgIsRequired('req_telefono') && telefono && (telefono.length !== 10 || parseInt(telefono) < 2000000000)) errors.push('Teléfono inválido (debe ser 10 dígitos si lo proporcionas)');
-  if (!planActualId) errors.push('Plan actual del cliente');
+  var hasSoloPlan = state.items.some(function(it){return it.soloPlan});
+  if (!planActualId && !hasSoloPlan) errors.push('Plan actual del cliente');
   if (cfgIsRequired('req_email') && !email) errors.push('Email');
   if (cfgIsRequired('req_direccion') && !direccion) errors.push('Dirección');
   if (state.items.length === 0) errors.push('Agrega al menos un equipo');
@@ -5914,6 +5978,29 @@ var SUB_ESTATUS_LABELS = {
 };
 function subEstatusLabel(code) { return SUB_ESTATUS_LABELS[code] || code || ''; }
 
+function handleSubEstatusChange() {
+  var sel = document.getElementById('hFilterSubEstatus');
+  if (!sel) return;
+  var vals = [];
+  for (var i=0;i<sel.options.length;i++) { if (sel.options[i].selected) vals.push(sel.options[i].value); }
+  
+  if (vals.length > 1 && vals.indexOf('all') >= 0) {
+    // If "all" was already selected and user clicked something else, deselect "all"
+    // If user clicked "all", deselect everything else
+    var allOpt = sel.options[0]; // "all" is first option
+    if (vals[vals.length-1] === 'all' || (vals.length === 2 && vals[0] === 'all')) {
+      // User clicked "all" — deselect others
+      for (var j=0;j<sel.options.length;j++) sel.options[j].selected = sel.options[j].value === 'all';
+    } else {
+      // User clicked a specific option — deselect "all"
+      allOpt.selected = false;
+    }
+  }
+  if (vals.length === 0) {
+    sel.options[0].selected = true; // Select "all" if nothing selected
+  }
+}
+
 function renderHistorial() {
   const filterRow = document.getElementById('filterRow');
   const list = document.getElementById('historialList');
@@ -5957,10 +6044,35 @@ function renderHistorial() {
     });
   }
 
-  // Apply sub-estatus filter
-  var hSubEst = document.getElementById('hFilterSubEstatus') ? document.getElementById('hFilterSubEstatus').value : 'all';
-  if (hSubEst !== 'all') {
-    searchFiltered = searchFiltered.filter(function(c) { return c.sub_estatus === hSubEst; });
+  // Apply sub-estatus filter (multi-select)
+  var hSubEstSel = document.getElementById('hFilterSubEstatus');
+  var hSubEstVals = [];
+  if (hSubEstSel) { for (var si=0;si<hSubEstSel.options.length;si++) { if (hSubEstSel.options[si].selected) hSubEstVals.push(hSubEstSel.options[si].value); } }
+  if (hSubEstVals.indexOf('all')>=0 || hSubEstVals.length===0) hSubEstVals = ['all'];
+  
+  if (hSubEstVals[0] !== 'all') {
+    var hasSpecial = false;
+    if (hSubEstVals.indexOf('_agentes_baja') >= 0) {
+      hasSpecial = true;
+      var allU = window._allUsersIncBaja || [];
+      var inactiveIds = allU.filter(function(u){return !(u.activo===true||u.activo==='true'||u.activo===1)}).map(function(u){return u.id});
+      var knownIds = allU.map(function(u){return u.id});
+      searchFiltered = searchFiltered.filter(function(c) {
+        return inactiveIds.indexOf(c.agente_id) >= 0 || knownIds.indexOf(c.agente_id) < 0;
+      });
+    }
+    if (hSubEstVals.indexOf('_con_pdf') >= 0) {
+      hasSpecial = true;
+      searchFiltered = searchFiltered.filter(function(c) { return c.pdf_generado === true; });
+    }
+    if (hSubEstVals.indexOf('_sin_pdf') >= 0) {
+      hasSpecial = true;
+      searchFiltered = searchFiltered.filter(function(c) { return !c.pdf_generado; });
+    }
+    var regularVals = hSubEstVals.filter(function(v){return v.indexOf('_')!==0});
+    if (regularVals.length > 0) {
+      searchFiltered = searchFiltered.filter(function(c) { return regularVals.indexOf(c.sub_estatus) >= 0; });
+    }
   }
 
   filterRow.innerHTML = statuses.map(s => {
