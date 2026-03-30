@@ -4442,9 +4442,9 @@ function addPlanComparison(doc, cot, mg, y, cW, H) {
   doc.setFont('helvetica','normal');
   doc.setFontSize(6.5);
   doc.text('Actual', mg + 2, y + 5);
-  doc.text(pa.name, mg + colW * 0.5, y + 5, { align: 'center' });
-  doc.text(pa.gb, mg + colW * 1.5, y + 5, { align: 'center' });
-  doc.text('$' + pa.price, mg + colW * 2.5, y + 5, { align: 'center' });
+  doc.text(String(pa.name||''), mg + colW * 0.5, y + 5, { align: 'center' });
+  doc.text(String(pa.gb||''), mg + colW * 1.5, y + 5, { align: 'center' });
+  doc.text('$' + String(pa.price||0), mg + colW * 2.5, y + 5, { align: 'center' });
   doc.text('—', mg + colW * 3.5, y + 5, { align: 'center' });
   y += 8;
 
@@ -4457,15 +4457,15 @@ function addPlanComparison(doc, cot, mg, y, cW, H) {
     doc.setFont('helvetica','bold');
     doc.setFontSize(6.5);
     doc.text('Nuevo', mg + 2, y + 5);
-    doc.text(np.name, mg + colW * 0.5, y + 5, { align: 'center' });
-    doc.text(np.gb, mg + colW * 1.5, y + 5, { align: 'center' });
-    doc.text('$' + np.price, mg + colW * 2.5, y + 5, { align: 'center' });
-    var diff = np.price - pa.price;
+    doc.text(String(np.name||''), mg + colW * 0.5, y + 5, { align: 'center' });
+    doc.text(String(np.gb||''), mg + colW * 1.5, y + 5, { align: 'center' });
+    doc.text('$' + String(np.price||0), mg + colW * 2.5, y + 5, { align: 'center' });
+    var diff = (np.price||0) - (pa.price||0);
     var gbOld = parseFloat(pa.gb) || 0;
     var gbNew = parseFloat(np.gb) || 0;
     var gbDiff = gbNew - gbOld;
     var diffText = (diff >= 0 ? '+$' + diff : '-$' + Math.abs(diff)) + ' | +' + gbDiff + 'GB';
-    doc.text(diffText, mg + colW * 3.5, y + 5, { align: 'center' });
+    doc.text(String(diffText), mg + colW * 3.5, y + 5, { align: 'center' });
     y += 8;
   });
 
@@ -13290,11 +13290,18 @@ function renderMiDia() {
     }
   });
 
-  // Sort each group by dias sin contacto desc
-  var sortByUrgency = function(a,b) { return b.diasSinContacto - a.diasSinContacto; };
-  urgentes.sort(sortByUrgency);
-  calientes.sort(sortByUrgency);
-  frias.sort(sortByUrgency);
+  // Sort urgentes: contacts for today sorted by time first, then overdue, then others
+  urgentes.sort(function(a,b) {
+    var aTime = a.cot.proximo_contacto && a.cot.proximo_contacto.length > 10 ? a.cot.proximo_contacto.substring(11,16) : '99:99';
+    var bTime = b.cot.proximo_contacto && b.cot.proximo_contacto.length > 10 ? b.cot.proximo_contacto.substring(11,16) : '99:99';
+    var aIsToday = a.razon.indexOf('Contacto hoy') >= 0 ? 0 : 1;
+    var bIsToday = b.razon.indexOf('Contacto hoy') >= 0 ? 0 : 1;
+    if (aIsToday !== bIsToday) return aIsToday - bIsToday;
+    if (aIsToday === 0 && bIsToday === 0) return aTime.localeCompare(bTime);
+    return b.diasSinContacto - a.diasSinContacto;
+  });
+  calientes.sort(function(a,b) { return b.diasSinContacto - a.diasSinContacto; });
+  frias.sort(function(a,b) { return b.diasSinContacto - a.diasSinContacto; });
 
   var total = urgentes.length + programadas.length + calientes.length + frias.length;
 
@@ -13362,52 +13369,96 @@ function renderMiDia() {
 }
 
 function midiaNotaRapida(folio) {
-  var nota = prompt('¿Qué acción realizaste? (llamada, mensaje, etc.)');
-  if (!nota || !nota.trim()) return;
+  var overlay = document.createElement('div');
+  overlay.id = 'midiaContactOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
   
-  // Ask for next contact
-  var prox = prompt('¿Cuándo es el próximo contacto? (formato AAAA-MM-DD, o deja vacío)');
+  var manana = new Date();
+  manana.setDate(manana.getDate()+1);
+  var defDateTime = manana.getFullYear()+'-'+String(manana.getMonth()+1).padStart(2,'0')+'-'+String(manana.getDate()).padStart(2,'0')+'T10:00';
   
-  (async function() {
-    try {
-      var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', folio).single();
-      if (!cotRow) return;
-      await supabase.from('cotizacion_notas').insert({
-        cotizacion_id: cotRow.id,
-        tipo: 'llamada',
-        texto: nota.trim(),
-        autor: currentUser ? currentUser.nombre : '',
-        rol_autor: currentUser ? currentUser.rol : ''
-      });
-      if (prox && /^\d{4}-\d{2}-\d{2}$/.test(prox)) {
-        await supabase.from('cotizaciones').update({proximo_contacto: prox}).eq('folio', folio);
-        var cot = state.cotizaciones.find(function(c){return c.folio===folio});
-        if (cot) cot.proximo_contacto = prox;
-      }
-      // Reload notas in state
-      var {data: notas} = await supabase.from('cotizacion_notas').select('*').eq('cotizacion_id', cotRow.id).order('created_at',{ascending:false});
+  overlay.innerHTML = '<div style="background:white;border-radius:16px;padding:20px;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">' +
+    '<div style="font-size:15px;font-weight:800;margin-bottom:12px">✅ Registrar Contacto</div>' +
+    '<div style="font-size:10px;color:var(--text-3);margin-bottom:8px">Folio: '+folio+'</div>' +
+    '<div style="margin-bottom:10px">' +
+    '<label style="font-size:10px;font-weight:700;color:var(--text-2);display:block;margin-bottom:3px">¿Qué resultado tuvo?</label>' +
+    '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">' +
+    '<button onclick="document.getElementById(\'midiaNotaText\').value=\'Llamada realizada — cliente interesado, pendiente confirmar\'" style="font-size:9px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:white;cursor:pointer">📞 Llamada OK</button>' +
+    '<button onclick="document.getElementById(\'midiaNotaText\').value=\'No contestó, se dejó mensaje\'" style="font-size:9px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:white;cursor:pointer">📵 No contestó</button>' +
+    '<button onclick="document.getElementById(\'midiaNotaText\').value=\'Se envió mensaje por WhatsApp, esperando respuesta\'" style="font-size:9px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:white;cursor:pointer">💬 WhatsApp</button>' +
+    '<button onclick="document.getElementById(\'midiaNotaText\').value=\'Cliente solicita llamar después\'" style="font-size:9px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:white;cursor:pointer">⏳ Después</button>' +
+    '</div>' +
+    '<textarea id="midiaNotaText" class="field" rows="2" placeholder="Detalle de la gestión..." style="width:100%;font-size:11px;resize:none"></textarea>' +
+    '</div>' +
+    '<div style="margin-bottom:12px">' +
+    '<label style="font-size:10px;font-weight:700;color:var(--text-2);display:block;margin-bottom:3px">📅 Próximo contacto</label>' +
+    '<input type="datetime-local" id="midiaProxContacto" class="field" value="'+defDateTime+'" style="width:100%;font-size:11px">' +
+    '</div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<button onclick="document.getElementById(\'midiaContactOverlay\').remove()" class="btn btn-secondary" style="flex:1">Cancelar</button>' +
+    '<button onclick="confirmarMidiaContacto(\''+folio+'\')" class="btn btn-primary" style="flex:1;background:#10B981">✅ Guardar</button>' +
+    '</div></div>';
+  document.body.appendChild(overlay);
+}
+
+async function confirmarMidiaContacto(folio) {
+  var nota = document.getElementById('midiaNotaText').value.trim();
+  if (!nota) { alert('Escribe qué acción realizaste'); return; }
+  var prox = document.getElementById('midiaProxContacto').value;
+  
+  try {
+    var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', folio).single();
+    if (!cotRow) return;
+    await supabase.from('cotizacion_notas').insert({
+      cotizacion_id: cotRow.id,
+      tipo: 'llamada',
+      texto: nota,
+      autor: currentUser ? currentUser.nombre : '',
+      rol_autor: currentUser ? currentUser.rol : ''
+    });
+    if (prox) {
+      await supabase.from('cotizaciones').update({proximo_contacto: prox}).eq('folio', folio);
       var cot = state.cotizaciones.find(function(c){return c.folio===folio});
-      if (cot && notas) cot.notas = notas;
-      renderMiDia();
-    } catch(e) { alert('Error: ' + e.message); }
-  })();
+      if (cot) cot.proximo_contacto = prox;
+    }
+    var {data: notas} = await supabase.from('cotizacion_notas').select('*').eq('cotizacion_id', cotRow.id).order('created_at',{ascending:false});
+    var cot2 = state.cotizaciones.find(function(c){return c.folio===folio});
+    if (cot2 && notas) cot2.notas = notas;
+    document.getElementById('midiaContactOverlay').remove();
+    renderMiDia();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 function midiaReagendar(folio) {
   var manana = new Date();
   manana.setDate(manana.getDate() + 1);
-  var defDate = manana.getFullYear()+'-'+String(manana.getMonth()+1).padStart(2,'0')+'-'+String(manana.getDate()).padStart(2,'0');
-  var fecha = prompt('¿Para qué fecha reagendar? (AAAA-MM-DD)', defDate);
-  if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return;
+  var defDateTime = manana.getFullYear()+'-'+String(manana.getMonth()+1).padStart(2,'0')+'-'+String(manana.getDate()).padStart(2,'0')+'T10:00';
   
-  (async function() {
-    try {
-      await supabase.from('cotizaciones').update({proximo_contacto: fecha}).eq('folio', folio);
-      var cot = state.cotizaciones.find(function(c){return c.folio===folio});
-      if (cot) cot.proximo_contacto = fecha;
-      renderMiDia();
-    } catch(e) { alert('Error: ' + e.message); }
-  })();
+  var overlay = document.createElement('div');
+  overlay.id = 'midiaReagendarOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px';
+  overlay.innerHTML = '<div style="background:white;border-radius:16px;padding:20px;max-width:340px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3)">' +
+    '<div style="font-size:15px;font-weight:800;margin-bottom:12px">⏰ Reagendar Contacto</div>' +
+    '<label style="font-size:10px;font-weight:700;color:var(--text-2);display:block;margin-bottom:4px">Fecha y hora</label>' +
+    '<input type="datetime-local" id="midiaReagendarFecha" class="field" value="'+defDateTime+'" style="width:100%;font-size:12px;margin-bottom:12px">' +
+    '<div style="display:flex;gap:8px">' +
+    '<button onclick="document.getElementById(\'midiaReagendarOverlay\').remove()" class="btn btn-secondary" style="flex:1">Cancelar</button>' +
+    '<button onclick="confirmarMidiaReagendar(\''+folio+'\')" class="btn btn-primary" style="flex:1;background:#F59E0B">⏰ Reagendar</button>' +
+    '</div></div>';
+  document.body.appendChild(overlay);
+}
+
+async function confirmarMidiaReagendar(folio) {
+  var fecha = document.getElementById('midiaReagendarFecha').value;
+  if (!fecha) { alert('Selecciona fecha'); return; }
+  try {
+    await supabase.from('cotizaciones').update({proximo_contacto: fecha}).eq('folio', folio);
+    var cot = state.cotizaciones.find(function(c){return c.folio===folio});
+    if (cot) cot.proximo_contacto = fecha;
+    document.getElementById('midiaReagendarOverlay').remove();
+    renderMiDia();
+  } catch(e) { alert('Error: ' + e.message); }
+}
 }
 
 // Excel Parser - Auto-detects Puebla vs CDMX format
