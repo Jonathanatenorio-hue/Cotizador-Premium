@@ -2748,7 +2748,7 @@ async function loadCotizacionesFromSupabase() {
     // Convert Supabase format to local format
     var cotizaciones = data.map(function(c) {
       var ag = agentMap[c.agente_id];
-      return {
+      var mapped = {
         folio: c.folio,
         fecha: c.fecha,
         validoHasta: c.valido_hasta,
