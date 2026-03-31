@@ -2928,6 +2928,7 @@ function showView(name, title) {
       state.items = [];
       state.editingFolio = null;
       state._cotClienteSaved = false;
+      state._cotSaving = false;
       renderItems();
       // Show equipment section normally
       document.getElementById('cotEquipmentSection').style.display = '';
@@ -4491,7 +4492,6 @@ function selectTemplate(tpl) {
 async function guardarRegistroSilent(d) {
   if (!supabase || !currentUser || !d || !d.nombre) return;
   var folio = generateFolio();
-  var planActual = d.planActualId ? PLANS_ACTUALES.find(function(p){return p.id===d.planActualId}) : null;
   try {
     await supabase.from('cotizaciones').insert({
       folio: folio,
@@ -4500,9 +4500,7 @@ async function guardarRegistroSilent(d) {
       cliente_telefono: d.telefono,
       cliente_email: d.email,
       cliente_direccion: d.direccion,
-      plan_actual: planActual ? planActual.name : '',
-      plan_actual_gb: planActual ? planActual.gb : '',
-      plan_actual_precio: planActual ? planActual.price : 0,
+      plan_actual_id: d.planActualId || null,
       estatus: 'enviada',
       pdf_generado: false,
       validez_dias: d.validez
@@ -4512,7 +4510,8 @@ async function guardarRegistroSilent(d) {
 }
 
 async function guardarDatosClienteSilent() {
-  if (state._cotClienteSaved || state.editingFolio) return;
+  if (state._cotClienteSaved || state.editingFolio || state._cotSaving) return;
+  state._cotSaving = true;
   
   var cliNombre = document.getElementById('cliNombre');
   var cliTelefono = document.getElementById('cliTelefono');
@@ -4529,7 +4528,6 @@ async function guardarDatosClienteSilent() {
   var email = cliEmail ? cliEmail.value.trim() : '';
   var direccion = cliDireccion ? cliDireccion.value.trim() : '';
   var planActualId = cliPlanActual ? cliPlanActual.value : '';
-  var planActual = planActualId ? PLANS_ACTUALES.find(function(p){return p.id===planActualId}) : null;
   
   var folio = generateFolio();
   
@@ -4541,22 +4539,21 @@ async function guardarDatosClienteSilent() {
       cliente_telefono: telefono,
       cliente_email: email,
       cliente_direccion: direccion,
-      plan_actual: planActual ? planActual.name : '',
-      plan_actual_gb: planActual ? planActual.gb : '',
-      plan_actual_precio: planActual ? planActual.price : 0,
+      plan_actual_id: planActualId || null,
       estatus: 'enviada',
       pdf_generado: false,
       validez_dias: cliValidez ? parseInt(cliValidez.value) || 7 : 7
     };
     
     var {data, error} = await supabase.from('cotizaciones').insert(cotData).select().single();
-    if (error) { console.log('Silent save error:', error.message); return; }
+    if (error) { console.log('Silent save error:', error.message); state._cotSaving = false; return; }
     
     state.editingFolio = folio;
     state._cotClienteSaved = true;
+    state._cotSaving = false;
     console.log('Prospecto registrado silenciosamente:', folio);
     
-  } catch(e) { console.log('Silent save error:', e.message); }
+  } catch(e) { console.log('Silent save error:', e.message); state._cotSaving = false; }
 }
 
 function editarDatosCliente() {
