@@ -4497,6 +4497,10 @@ function selectTemplate(tpl) {
 async function guardarRegistroSilent(d) {
   if (!supabase || !currentUser || !d || !d.nombre) return;
   var folio = generateFolio();
+  var now = new Date();
+  var fechaStr = now.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
+  var validoHasta = new Date(now.getTime() + (d.validez||7)*86400000);
+  var validoStr = validoHasta.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
   try {
     await supabase.from('cotizaciones').insert({
       folio: folio,
@@ -4506,6 +4510,8 @@ async function guardarRegistroSilent(d) {
       cliente_email: d.email,
       cliente_direccion: d.direccion,
       plan_actual_id: d.planActualId || null,
+      fecha: fechaStr,
+      valido_hasta: validoStr,
       estatus: 'enviada',
       pdf_generado: false,
       dias_validez: d.validez
@@ -4535,6 +4541,11 @@ async function guardarDatosClienteSilent() {
   var planActualId = cliPlanActual ? cliPlanActual.value : '';
   
   var folio = generateFolio();
+  var now = new Date();
+  var fechaStr = now.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
+  var diasVal = cliValidez ? parseInt(cliValidez.value)||7 : 7;
+  var validoHasta = new Date(now.getTime() + diasVal*86400000);
+  var validoStr = validoHasta.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'});
   
   try {
     var cotData = {
@@ -4545,6 +4556,8 @@ async function guardarDatosClienteSilent() {
       cliente_email: email,
       cliente_direccion: direccion,
       plan_actual_id: planActualId || null,
+      fecha: fechaStr,
+      valido_hasta: validoStr,
       estatus: 'enviada',
       pdf_generado: false,
       dias_validez: cliValidez ? parseInt(cliValidez.value) || 7 : 7
