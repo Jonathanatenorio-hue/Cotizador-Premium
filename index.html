@@ -2847,10 +2847,25 @@ function bnavUpdate(name) {
 
 function showView(name, title) {
   // Silent save if leaving cotizar with client data filled
-  if (state.currentView === 'cotizar' && name !== 'cotizar' && !state._cotClienteSaved) {
+  if (state.currentView === 'cotizar' && name !== 'cotizar' && !state._cotClienteSaved && !state.editingFolio) {
     var cNombre = document.getElementById('cliNombre');
+    var cTel = document.getElementById('cliTelefono');
+    var cEmail = document.getElementById('cliEmail');
+    var cDir = document.getElementById('cliDireccion');
+    var cPlan = document.getElementById('cliPlanActual');
+    var cVal = document.getElementById('cliValidez');
     if (cNombre && cNombre.value.trim().length >= 5) {
-      guardarDatosClienteSilent();
+      // Capture values NOW before DOM changes
+      var saveData = {
+        nombre: cNombre.value.trim(),
+        telefono: cTel ? cTel.value.trim() : '',
+        email: cEmail ? cEmail.value.trim() : '',
+        direccion: cDir ? cDir.value.trim() : '',
+        planActualId: cPlan ? cPlan.value : '',
+        validez: cVal ? parseInt(cVal.value)||7 : 7
+      };
+      // Fire and forget with captured data
+      guardarRegistroSilent(saveData);
     }
   }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -3813,12 +3828,14 @@ function searchDevices() {
     var cTelefono = document.getElementById('cliTelefono').value.trim();
     var cEmail = document.getElementById('cliEmail').value.trim();
     var cDireccion = document.getElementById('cliDireccion').value.trim();
+    var cPlanActual = document.getElementById('cliPlanActual').value;
     
     var faltan = [];
     if (!cNombre || cNombre.length < 5) faltan.push('Nombre completo');
     if (cfgIsRequired('req_telefono') && (!cTelefono || cTelefono.length !== 10)) faltan.push('Teléfono (10 dígitos)');
     if (cfgIsRequired('req_email') && !cEmail) faltan.push('Email');
     if (cfgIsRequired('req_direccion') && !cDireccion) faltan.push('Dirección');
+    if (!cPlanActual) faltan.push('Plan actual del cliente');
     
     if (faltan.length > 0) {
       container.innerHTML = '<div style="text-align:center;padding:20px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;margin-top:8px"><div style="font-size:13px;font-weight:700;color:#92400E;margin-bottom:4px">📋 Primero completa los datos del cliente</div><div style="font-size:11px;color:#92400E">Faltan: '+faltan.join(', ')+'</div></div>';
@@ -4446,6 +4463,29 @@ function selectTemplate(tpl) {
 // PDF GENERATION
 // ============================================================
 // ── REGISTRO DE PROSPECTO (invisible para el agente) ──
+async function guardarRegistroSilent(d) {
+  if (!supabase || !currentUser || !d || !d.nombre) return;
+  var folio = generateFolio();
+  var planActual = d.planActualId ? PLANS_ACTUALES.find(function(p){return p.id===d.planActualId}) : null;
+  try {
+    await supabase.from('cotizaciones').insert({
+      folio: folio,
+      agente_id: currentUser.id,
+      cliente_nombre: d.nombre,
+      cliente_telefono: d.telefono,
+      cliente_email: d.email,
+      cliente_direccion: d.direccion,
+      plan_actual: planActual ? planActual.name : '',
+      plan_actual_gb: planActual ? planActual.gb : '',
+      plan_actual_precio: planActual ? planActual.price : 0,
+      estatus: 'enviada',
+      pdf_generado: false,
+      validez_dias: d.validez
+    });
+    console.log('Registro guardado al salir:', folio);
+  } catch(e) { console.log('Save on exit error:', e.message); }
+}
+
 async function guardarDatosClienteSilent() {
   if (state._cotClienteSaved || state.editingFolio) return;
   
@@ -13122,11 +13162,15 @@ var PLANS_LITE = [
 ];
 
 function openSoloPlan() {
-  // Validate client data first
+  // Validate basic client data (no plan actual needed for solo plan)
   if (!state._cotClienteSaved) {
     var cNombre = document.getElementById('cliNombre').value.trim();
-    if (!cNombre || cNombre.length < 5) {
-      alert('Primero completa los datos del cliente');
+    var cTelefono = document.getElementById('cliTelefono').value.trim();
+    var faltan = [];
+    if (!cNombre || cNombre.length < 5) faltan.push('Nombre completo');
+    if (cfgIsRequired('req_telefono') && (!cTelefono || cTelefono.length !== 10)) faltan.push('Teléfono');
+    if (faltan.length > 0) {
+      alert('Primero completa los datos del cliente:\n• ' + faltan.join('\n• '));
       return;
     }
     guardarDatosClienteSilent();
