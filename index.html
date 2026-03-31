@@ -2615,11 +2615,22 @@ async function syncCotizacionToSupabase(cotizacion, isEdit) {
       );
     } else {
       // FIX 14: Check for duplicate by phone number
-      var { data: existingByPhone } = await supabase.from('cotizaciones').select('folio, cliente_nombre, estatus, created_at').eq('cliente_telefono', cotizacion.cliente.telefono).neq('estatus','perdida').order('created_at',{ascending:false}).limit(3);
+      var { data: existingByPhone } = await supabase.from('cotizaciones').select('folio, cliente_nombre, estatus, agente_id, created_at').eq('cliente_telefono', cotizacion.cliente.telefono).neq('estatus','perdida').order('created_at',{ascending:false}).limit(5);
       if (existingByPhone && existingByPhone.length > 0) {
-        var dupList = existingByPhone.map(function(d){ return d.folio + ' - ' + d.cliente_nombre + ' (' + d.estatus + ')'; }).join('\n');
-        if (!confirm('⚠️ POSIBLE DUPLICADO\n\nYa existen cotizaciones con este teléfono:\n\n' + dupList + '\n\n¿Deseas crear una nueva cotización de todas formas?')) {
+        var myDups = existingByPhone.filter(function(d){return d.agente_id === currentUser.id});
+        var otherDups = existingByPhone.filter(function(d){return d.agente_id !== currentUser.id});
+        
+        if (myDups.length > 0) {
+          // Agent blocked - must use existing cotización
+          var myDupList = myDups.map(function(d){ return d.folio + ' - ' + d.cliente_nombre + ' (' + d.estatus + ')'; }).join('\n');
+          alert('⚠️ Ya tienes una cotización con este teléfono:\n\n' + myDupList + '\n\nBusca la cotización existente en Historial y retómala desde ahí.');
           return;
+        }
+        
+        // Show other agent duplicates to supervisor, coordinator, admin
+        if (otherDups.length > 0 && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) {
+          var otherDupList = otherDups.map(function(d){ return d.folio + ' - ' + d.cliente_nombre + ' (' + d.estatus + ')'; }).join('\n');
+          alert('ℹ️ Otro agente ya tiene este teléfono:\n\n' + otherDupList + '\n\nLa cotización se guardará. Verifica con el agente correspondiente.');
         }
       }
       // Insert new cotizacion
@@ -4145,11 +4156,25 @@ async function checkDuplicatePhone(tel) {
   dupHint.style.display = 'none';
   if (!tel || tel.length !== 10 || !supabase) return;
   try {
-    var { data } = await supabase.from('cotizaciones').select('folio, cliente_nombre, estatus, created_at').eq('cliente_telefono', tel).neq('estatus','perdida').order('created_at',{ascending:false}).limit(3);
+    var { data } = await supabase.from('cotizaciones').select('folio, cliente_nombre, estatus, agente_id, created_at').eq('cliente_telefono', tel).neq('estatus','perdida').order('created_at',{ascending:false}).limit(5);
     if (data && data.length > 0) {
-      var lista = data.map(function(d){ return d.folio + ' · ' + d.cliente_nombre + ' (' + d.estatus + ')'; }).join('<br>');
-      dupHint.innerHTML = '⚠️ <b>Teléfono ya existe en:</b><br>' + lista;
-      dupHint.style.display = 'block';
+      var myDups = data.filter(function(d){return d.agente_id === (currentUser?currentUser.id:null)});
+      var otherDups = data.filter(function(d){return d.agente_id !== (currentUser?currentUser.id:null)});
+      var rol = currentUser ? currentUser.rol : 'agente';
+      var html = '';
+      
+      if (myDups.length > 0) {
+        var lista = myDups.map(function(d){ return d.folio + ' · ' + d.cliente_nombre + ' (' + d.estatus + ')'; }).join('<br>');
+        html += '🚫 <b>Ya tienes este teléfono — retoma desde Historial:</b><br>' + lista;
+      }
+      if (otherDups.length > 0 && (rol === 'admin' || rol === 'coordinador' || rol === 'supervisor')) {
+        var lista2 = otherDups.map(function(d){ return d.folio + ' · ' + d.cliente_nombre + ' (' + d.estatus + ')'; }).join('<br>');
+        html += (html?'<br><br>':'') + 'ℹ️ <b>Otro agente tiene este teléfono:</b><br>' + lista2;
+      }
+      if (html) {
+        dupHint.innerHTML = html;
+        dupHint.style.display = 'block';
+      }
     }
   } catch(e) {}
 }
@@ -4272,8 +4297,8 @@ function renderItems() {
             <span style="color:var(--success);font-weight:600">$${(item.planPrecioNormal - item.planPrecio).toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
           </div>` : ''}
           <div class="item-detail">
-            <span class="detail-label">Renta sin impuestos</span>
-            <span>$${Math.round(item.planPrecio * 0.837).toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+            <span class="detail-label">Llamadas y mensajes</span>
+            <span style="color:#10B981;font-weight:700">✅ Ilimitados a México, EUA y Canadá</span>
           </div>
           <div class="item-detail">
             <span class="detail-label">6 redes sociales ilimitadas</span>
@@ -4973,49 +4998,81 @@ function buildAndDownloadPDF(cot) {
   y += bH + 8;
 
   // ═══════ EQUIPMENT TABLE ═══════
+  var allSoloPlan = cot.items.every(function(it){return it.soloPlan});
   doc.setTextColor(...DARK);
   doc.setFontSize(12);
   doc.setFont('helvetica','bold');
-  doc.text('Resumen de equipos', mg, y);
+  doc.text(allSoloPlan ? 'Resumen de plan' : 'Resumen de equipos', mg, y);
   y += 3;
 
-  var tD = cot.items.map(function(it) {
-    var ah = it.precioLista - it.precioPromo;
-    var base = it.precioPromo - it.enganche;
-    var ep = calcMensualTotal(it);
-    var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
-    if (it.soloPlan) return [it.planNombre+(it.isPortabilidad?' (Port.)':''), '—', '—', '—', '—', '—', '—', it.planGb, f(it.planPrecio)];
-    return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), String(it.plazo), it.enganchePct+'%', f(it.enganche), it.planNombre, f(ep)];
-  });
+  if (allSoloPlan) {
+    // Solo Plan table
+    var spData = cot.items.map(function(it) {
+      var f = function(n){return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})};
+      var tipo = it.isPortabilidad ? 'Portabilidad' : 'Línea nueva';
+      return [it.planNombre, it.planGb, tipo, '6 apps ilimitadas', 'Llamadas y SMS\nMéxico, EUA, Canadá', 'Sin plazo forzoso', f(it.planPrecio)];
+    });
+    doc.autoTable({
+      startY: y,
+      head: [['PLAN','DATOS','TIPO','APPS','LLAMADAS Y SMS','PLAZO','COSTO/MES']],
+      body: spData,
+      margin: {left:mg, right:mg},
+      tableWidth: cW,
+      styles: {fontSize:7, cellPadding:2.5, textColor:DARK, lineColor:[220,220,220], lineWidth:0.2, overflow:'linebreak'},
+      headStyles: {fillColor:BLUE, textColor:WHT, fontStyle:'bold', fontSize:6.5, halign:'center', cellPadding:2},
+      columnStyles: {
+        0:{cellWidth:cW*0.14,fontStyle:'bold'},
+        1:{halign:'center',cellWidth:cW*0.10},
+        2:{halign:'center',cellWidth:cW*0.14},
+        3:{halign:'center',cellWidth:cW*0.16,textColor:[16,185,129]},
+        4:{halign:'center',cellWidth:cW*0.18,textColor:[16,185,129]},
+        5:{halign:'center',cellWidth:cW*0.14},
+        6:{halign:'right',cellWidth:cW*0.14,fontStyle:'bold',textColor:[0,87,184]},
+      },
+      alternateRowStyles: {fillColor:GBG},
+      theme:'grid',
+    });
+  } else {
+    // Normal equipment table
+    var tD = cot.items.map(function(it) {
+      var ah = it.precioLista - it.precioPromo;
+      var base = it.precioPromo - (it.enganche||0);
+      var ep = calcMensualTotal(it);
+      var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+      if (it.soloPlan) return [it.planNombre+(it.isPortabilidad?' (Port.)':''), '—', '—', '—', 'Sin plazo', '—', '—', it.planGb, f(it.planPrecio)];
+      return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), String(it.plazo), it.enganchePct+'%', f(it.enganche), it.planNombre, f(ep)];
+    });
 
-  var c0=cW*0.18, c1=cW*0.10, c2=cW*0.12, c3=cW*0.11, c4=cW*0.07, c5=cW*0.07, c6=cW*0.11, c7=cW*0.10;
-  var c8=cW - c0 - c1 - c2 - c3 - c4 - c5 - c6 - c7;
+    var c0=cW*0.18, c1=cW*0.10, c2=cW*0.12, c3=cW*0.11, c4=cW*0.07, c5=cW*0.07, c6=cW*0.11, c7=cW*0.10;
+    var c8=cW - c0 - c1 - c2 - c3 - c4 - c5 - c6 - c7;
 
-  doc.autoTable({
-    startY: y,
-    head: [['EQUIPO','PRECIO\nLISTA','PROMOCI\u00d3N','AHORRO','PLAZO','% ENG','ENGANCHE','PLAN','EQUIPO\n+ PLAN']],
-    body: tD,
-    margin: { left: mg, right: mg },
-    tableWidth: cW,
-    styles: { fontSize:7, cellPadding:2.5, textColor:DARK, lineColor:[220,220,220], lineWidth:0.2, overflow:'linebreak' },
-    headStyles: { fillColor:BLUE, textColor:WHT, fontStyle:'bold', fontSize:6.5, halign:'center', cellPadding:2 },
-    columnStyles: {
-      0:{cellWidth:c0},
-      1:{halign:'right',cellWidth:c1},
-      2:{halign:'right',cellWidth:c2},
-      3:{halign:'right',cellWidth:c3,fontStyle:'bold',textColor:[16,185,129],fillColor:[236,253,245]},
-      4:{halign:'center',cellWidth:c4},
-      5:{halign:'center',cellWidth:c5},
-      6:{halign:'right',cellWidth:c6},
-      7:{halign:'center',cellWidth:c7},
-      8:{halign:'right',cellWidth:c8},
-    },
-    alternateRowStyles: { fillColor: GBG },
-    theme: 'grid',
-  });
+    doc.autoTable({
+      startY: y,
+      head: [['EQUIPO','PRECIO\nLISTA','PROMOCI\u00d3N','AHORRO','PLAZO','% ENG','ENGANCHE','PLAN','EQUIPO\n+ PLAN']],
+      body: tD,
+      margin: { left: mg, right: mg },
+      tableWidth: cW,
+      styles: { fontSize:7, cellPadding:2.5, textColor:DARK, lineColor:[220,220,220], lineWidth:0.2, overflow:'linebreak' },
+      headStyles: { fillColor:BLUE, textColor:WHT, fontStyle:'bold', fontSize:6.5, halign:'center', cellPadding:2 },
+      columnStyles: {
+        0:{cellWidth:c0},
+        1:{halign:'right',cellWidth:c1},
+        2:{halign:'right',cellWidth:c2},
+        3:{halign:'right',cellWidth:c3,fontStyle:'bold',textColor:[16,185,129],fillColor:[236,253,245]},
+        4:{halign:'center',cellWidth:c4},
+        5:{halign:'center',cellWidth:c5},
+        6:{halign:'right',cellWidth:c6},
+        7:{halign:'center',cellWidth:c7},
+        8:{halign:'right',cellWidth:c8},
+      },
+      alternateRowStyles: { fillColor: GBG },
+      theme: 'grid',
+    });
+  }
   y = doc.lastAutoTable.finalY + 4;
 
-  // ═══════ ADICIONALES CONTRATADOS (tabla por equipo) ═══════
+  // ═══════ ADICIONALES CONTRATADOS (skip for solo plan) ═══════
+  if (!allSoloPlan) {
   var itemsConAdicionales = cot.items.filter(function(it){return it.adicionales && (it.adicionales.seguro || it.adicionales.control || it.adicionales.bateria || it.adicionales.pantalla)});
   if (itemsConAdicionales.length > 0) {
     doc.setFontSize(11);
@@ -5155,6 +5212,8 @@ function buildAndDownloadPDF(cot) {
     y += cardH + 5;
   }
 
+  } // end !allSoloPlan (skip adicionales, ahorro, catalogo for solo plan)
+
   // ═══════ PLAN COMPARISON (if plan actual selected) ═══════
   if (cot.planActual && cfgPdfEnabled('pdf_comparativa')) {
     y = addPlanComparison(doc, cot, mg, y, cW, H);
@@ -5234,7 +5293,7 @@ function buildAndDownloadPDF(cot) {
   doc.text('V\u00e1lido hasta: ' + cot.validoHasta, W-mg-5, H-6.5, {align:'right'});
 
   // ═══════ CATÁLOGO DE ADICIONALES (siempre al final) ═══════
-  if (cfgPdfEnabled('pdf_adicionales')) {
+  if (cfgPdfEnabled('pdf_adicionales') && !allSoloPlan) {
   // Check if need new page
   y += 10;
   if (y > H - 60) { doc.addPage(); y = 15; }
@@ -5393,37 +5452,65 @@ function buildAndDownloadPDF_v2(cot) {
   y += 23;
 
   // ===== SECTION: EQUIPOS =====
+  var allSoloPlan2 = cot.items.every(function(it){return it.soloPlan});
   doc.setFillColor(...D1);
   doc.roundedRect(mg, y, cW, 7, 1.5, 1.5, 'F');
   doc.setTextColor(...WH);
   doc.setFontSize(8);
   doc.setFont('helvetica','bold');
-  doc.text('RESUMEN DE EQUIPOS', mg+5, y+4.8);
+  doc.text(allSoloPlan2 ? 'RESUMEN DE PLAN' : 'RESUMEN DE EQUIPOS', mg+5, y+4.8);
   doc.setTextColor(...AC);
   doc.setFontSize(6);
-  doc.text(cot.items.length + ' equipo' + (cot.items.length>1?'s':''), W-mg-4, y+4.8, {align:'right'});
+  doc.text(allSoloPlan2 ? cot.items.length + ' plan' + (cot.items.length>1?'es':'') : cot.items.length + ' equipo' + (cot.items.length>1?'s':''), W-mg-4, y+4.8, {align:'right'});
   y += 10;
 
-  var tD = cot.items.map(function(it) {
-    var ah = it.precioLista - it.precioPromo;
-    var base = it.precioPromo - it.enganche;
-    var ep = calcMensualTotal(it);
-    var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
-    if (it.soloPlan) return [it.planNombre+(it.isPortabilidad?' (Port.)':''), '—', '—', '—', '—', '—', '—', it.planGb, f(it.planPrecio)];
-    return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), String(it.plazo), it.enganchePct+'%', f(it.enganche), it.planNombre, f(ep)];
-  });
+  if (allSoloPlan2) {
+    var spData2 = cot.items.map(function(it) {
+      var f = function(n){return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})};
+      var tipo = it.isPortabilidad ? 'Portabilidad' : 'Línea nueva';
+      return [it.planNombre, it.planGb, tipo, '6 apps ilimitadas', 'Llamadas y SMS\nMéxico, EUA, Canadá', 'Sin plazo', f(it.planPrecio)];
+    });
+    doc.autoTable({
+      startY: y,
+      head: [['PLAN','DATOS','TIPO','APPS','LLAMADAS Y SMS','PLAZO','COSTO/MES']],
+      body: spData2,
+      margin: {left:mg, right:mg},
+      tableWidth: cW,
+      styles: {fontSize:6.5, cellPadding:2.5, textColor:D1, lineColor:G2, lineWidth:0.15, overflow:'linebreak'},
+      headStyles: {fillColor:D2, textColor:WH, fontStyle:'bold', fontSize:6, halign:'center', cellPadding:2.5},
+      columnStyles: {
+        0:{cellWidth:cW*0.14,fontStyle:'bold'},
+        1:{halign:'center',cellWidth:cW*0.10},
+        2:{halign:'center',cellWidth:cW*0.14},
+        3:{halign:'center',cellWidth:cW*0.16,textColor:[16,185,129]},
+        4:{halign:'center',cellWidth:cW*0.18,textColor:[16,185,129]},
+        5:{halign:'center',cellWidth:cW*0.14},
+        6:{halign:'right',cellWidth:cW*0.14,fontStyle:'bold',textColor:[0,87,184]},
+      },
+      alternateRowStyles: {fillColor:G1},
+      theme:'grid',
+    });
+  } else {
+    var tD = cot.items.map(function(it) {
+      var ah = it.precioLista - it.precioPromo;
+      var base = it.precioPromo - (it.enganche||0);
+      var ep = calcMensualTotal(it);
+      var f = function(n) { return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+      if (it.soloPlan) return [it.planNombre+(it.isPortabilidad?' (Port.)':''), '—', '—', '—', 'Sin plazo', '—', '—', it.planGb, f(it.planPrecio)];
+      return [it.equipo, f(it.precioLista), f(it.precioPromo), f(ah), String(it.plazo), it.enganchePct+'%', f(it.enganche), it.planNombre, f(ep)];
+    });
 
-  var c0=cW*0.18, c1=cW*0.10, c2=cW*0.12, c3=cW*0.11, c4=cW*0.07, c5=cW*0.07, c6=cW*0.11, c7=cW*0.10;
-  var c8=cW - c0 - c1 - c2 - c3 - c4 - c5 - c6 - c7;
+    var c0=cW*0.18, c1=cW*0.10, c2=cW*0.12, c3=cW*0.11, c4=cW*0.07, c5=cW*0.07, c6=cW*0.11, c7=cW*0.10;
+    var c8=cW - c0 - c1 - c2 - c3 - c4 - c5 - c6 - c7;
 
-  doc.autoTable({
-    startY: y,
-    head: [['EQUIPO','PRECIO\nLISTA','PROMOCI\u00d3N','AHORRO','PLAZO','% ENG','ENGANCHE','PLAN','EQUIPO\n+ PLAN']],
-    body: tD,
-    margin: { left: mg, right: mg },
-    tableWidth: cW,
-    styles: { fontSize:6.5, cellPadding:2.5, textColor:D1, lineColor:G2, lineWidth:0.15, overflow:'linebreak' },
-    headStyles: { fillColor:D2, textColor:WH, fontStyle:'bold', fontSize:6, halign:'center', cellPadding:2.5 },
+    doc.autoTable({
+      startY: y,
+      head: [['EQUIPO','PRECIO\nLISTA','PROMOCI\u00d3N','AHORRO','PLAZO','% ENG','ENGANCHE','PLAN','EQUIPO\n+ PLAN']],
+      body: tD,
+      margin: { left: mg, right: mg },
+      tableWidth: cW,
+      styles: { fontSize:6.5, cellPadding:2.5, textColor:D1, lineColor:G2, lineWidth:0.15, overflow:'linebreak' },
+      headStyles: { fillColor:D2, textColor:WH, fontStyle:'bold', fontSize:6, halign:'center', cellPadding:2.5 },
     columnStyles: {
       0:{cellWidth:c0}, 1:{halign:'right',cellWidth:c1}, 2:{halign:'right',cellWidth:c2},
       3:{halign:'right',cellWidth:c3,fontStyle:'bold',textColor:[16,185,129],fillColor:[236,253,245]}, 4:{halign:'center',cellWidth:c4}, 5:{halign:'center',cellWidth:c5},
@@ -5442,6 +5529,10 @@ function buildAndDownloadPDF_v2(cot) {
     },
   });
   y = doc.lastAutoTable.finalY + 4;
+  } // end else (normal equipment table)
+
+  // Skip adicionales, ahorro, catalogo for solo plan
+  if (!allSoloPlan2) {
 
   // ═══════ ADICIONALES CONTRATADOS — Template 2 ═══════
   var itemsConAd2 = cot.items.filter(function(it){return it.adicionales && (it.adicionales.seguro || it.adicionales.control || it.adicionales.bateria || it.adicionales.pantalla)});
@@ -5588,6 +5679,8 @@ function buildAndDownloadPDF_v2(cot) {
     y += cardH + 5;
   }
 
+  } // end !allSoloPlan2 (skip adicionales, ahorro, catalogo)
+
   // ═══════ PLAN COMPARISON (if plan actual selected) ═══════
   if (cot.planActual && cfgPdfEnabled('pdf_comparativa')) {
     y = addPlanComparison(doc, cot, mg, y, cW, H);
@@ -5672,7 +5765,7 @@ function buildAndDownloadPDF_v2(cot) {
   doc.text('Hasta: ' + cot.validoHasta, W-mg-24, H-7.5, {align:'center'});
 
   // ═══════ CATÁLOGO DE ADICIONALES — Template 2 (siempre al final) ═══════
-  if (cfgPdfEnabled('pdf_adicionales')) {
+  if (cfgPdfEnabled('pdf_adicionales') && !allSoloPlan2) {
   y += 10;
   if (y > H - 60) { doc.addPage(); y = 15; }
   doc.setFontSize(9);
