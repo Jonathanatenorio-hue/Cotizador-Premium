@@ -1150,6 +1150,7 @@ body{padding-bottom:60px}
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openCompetencias()">📊 Competencias</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="verPropositos()">🔥 Ver Propósitos</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="gestionarAvisos()">📢 Avisos</button>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openBitacora()">📊 Bitácora</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="showAddUserForm()">+ Nuevo Usuario</button>
@@ -2296,6 +2297,7 @@ async function doLogin() {
       var {data:cfgData} = await supabase.from('app_config').select('key, value');
       (cfgData||[]).forEach(function(r){appConfigCache[r.key]=r.value});
     } catch(e){}
+    logActivity('login', 'Inicio de sesión');
     loadDeviceImgIndex();
     updateHome();
     // Set greeting in header
@@ -2884,6 +2886,7 @@ function showView(name, title) {
 
   state.viewStack.push(name);
   state.currentView = name;
+  logActivity('vista', name);
 
   const btnBack = document.getElementById('btnBack');
   const headerTitle = document.getElementById('headerTitle');
@@ -2932,6 +2935,7 @@ function showView(name, title) {
       state.editingFolio = null;
       state._cotClienteSaved = false;
       state._cotSaving = false;
+      state._searchLogged = false;
       renderItems();
       // Reset search
       var si = document.getElementById('searchInput');
@@ -3866,6 +3870,7 @@ function searchDevices() {
     guardarDatosClienteSilent();
   }
 
+  if (!state._searchLogged) { logActivity('buscar_equipo', term); state._searchLogged = true; }
   const vigentes = state.devices.filter(isVigente);
   var termClean = term.replace(/\s+/g, '');
   const filtered = vigentes.filter(d => {
@@ -4573,6 +4578,7 @@ async function guardarDatosClienteSilent() {
     state._cotClienteSaved = true;
     state._cotSaving = false;
     console.log('Prospecto registrado silenciosamente:', folio);
+    logActivity('nueva_cotizacion', folio + ' - ' + nombre);
     
   } catch(e) { console.log('Silent save error:', e.message); state._cotSaving = false; }
 }
@@ -5350,6 +5356,7 @@ function buildAndDownloadPDF(cot) {
       var local = state.cotizaciones.find(function(c){return c.folio===cot.folio});
       if (local) local.pdf_generado = true;
     });
+    logActivity('pdf_generado', cot.folio + ' - ' + cot.cliente.nombre);
   }
 }
 
@@ -5822,6 +5829,7 @@ function buildAndDownloadPDF_v2(cot) {
       var local = state.cotizaciones.find(function(c){return c.folio===cot.folio});
       if (local) local.pdf_generado = true;
     });
+    logActivity('pdf_generado', cot.folio + ' - ' + cot.cliente.nombre);
   }
 }
 
@@ -13466,6 +13474,164 @@ function addSoloPlan(planId, cat, tipo) {
   
   renderItems();
   document.getElementById('soloPlanOverlay').remove();
+}
+
+// ── BITÁCORA DE ACTIVIDAD ──
+var BITACORA_QUEUE = [];
+var BITACORA_FLUSH_TIMER = null;
+
+function logActivity(accion, detalle) {
+  if (!currentUser) return;
+  BITACORA_QUEUE.push({
+    user_id: currentUser.id,
+    user_nombre: currentUser.nombre,
+    user_rol: currentUser.rol,
+    accion: accion,
+    detalle: detalle || '',
+    timestamp: new Date().toISOString()
+  });
+  // Flush every 10 seconds or when queue reaches 5
+  if (BITACORA_QUEUE.length >= 5) flushBitacora();
+  if (!BITACORA_FLUSH_TIMER) BITACORA_FLUSH_TIMER = setTimeout(flushBitacora, 10000);
+}
+
+async function flushBitacora() {
+  if (BITACORA_FLUSH_TIMER) { clearTimeout(BITACORA_FLUSH_TIMER); BITACORA_FLUSH_TIMER = null; }
+  if (BITACORA_QUEUE.length === 0 || !supabase) return;
+  var batch = BITACORA_QUEUE.splice(0);
+  try {
+    await supabase.from('bitacora_actividad').insert(batch);
+  } catch(e) { console.log('Bitacora error:', e.message); }
+}
+
+// Flush on page unload
+window.addEventListener('beforeunload', function() { flushBitacora(); });
+
+// ── BITÁCORA: Dashboard de Adopción ──
+async function openBitacora() {
+  showView('config', '⚙️ Configuración');
+  if (!supabase || !currentUser || currentUser.rol !== 'admin') return;
+  
+  var hoy = new Date();
+  var hoyStr = hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0')+'-'+String(hoy.getDate()).padStart(2,'0');
+  
+  var {data} = await supabase.from('bitacora_actividad').select('*').gte('timestamp', hoyStr+'T00:00:00').order('timestamp', {ascending:false}).limit(2000);
+  var logs = data || [];
+  
+  if (hFilterUsers.length === 0) {
+    try {
+      var {data:ud} = await supabase.from('usuarios').select('*, centros(nombre, ciudad)').order('nombre');
+      hFilterUsers = (ud||[]).filter(function(u){return u.activo===true||u.activo==='true'||u.activo===1});
+      window._allUsersIncBaja = ud || [];
+    } catch(e) {}
+  }
+  
+  var supMap = {};
+  hFilterUsers.filter(function(u){return u.rol==='supervisor'}).forEach(function(u){supMap[u.id]=u.nombre});
+  
+  // Group by user
+  var byUser = {};
+  logs.forEach(function(l) {
+    if (!byUser[l.user_id]) byUser[l.user_id] = {nombre:l.user_nombre, rol:l.user_rol, acciones:[]};
+    byUser[l.user_id].acciones.push(l);
+  });
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'bitacoraOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:16px';
+  
+  var h = '<div style="background:white;border-radius:16px;padding:16px;max-width:650px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:90vh;display:flex;flex-direction:column">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-shrink:0">';
+  h += '<div><div style="font-size:16px;font-weight:900">📊 Bitácora de Actividad</div><div style="font-size:10px;color:var(--text-3)">Hoy: '+hoyStr+'</div></div>';
+  h += '<div style="display:flex;gap:6px"><button onclick="exportBitacoraExcel()" class="btn btn-primary" style="font-size:9px;padding:4px 10px">📥 Excel</button>';
+  h += '<button onclick="document.getElementById(\'bitacoraOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div></div>';
+  
+  // KPIs
+  var totalUsers = Object.keys(byUser).length;
+  var totalActions = logs.length;
+  var pdfCount = logs.filter(function(l){return l.accion==='pdf_generado'}).length;
+  var searchCount = logs.filter(function(l){return l.accion==='buscar_equipo'}).length;
+  
+  h += '<div style="display:flex;gap:6px;margin-bottom:10px;flex-shrink:0">';
+  h += '<div style="flex:1;text-align:center;padding:6px;background:#EFF6FF;border-radius:8px"><div style="font-size:18px;font-weight:900;color:var(--att-blue)">'+totalUsers+'</div><div style="font-size:8px;color:var(--text-3)">Usuarios activos</div></div>';
+  h += '<div style="flex:1;text-align:center;padding:6px;background:var(--surface-2);border-radius:8px"><div style="font-size:18px;font-weight:900">'+totalActions+'</div><div style="font-size:8px;color:var(--text-3)">Acciones</div></div>';
+  h += '<div style="flex:1;text-align:center;padding:6px;background:#ECFDF5;border-radius:8px"><div style="font-size:18px;font-weight:900;color:#10B981">'+pdfCount+'</div><div style="font-size:8px;color:#10B981">PDFs generados</div></div>';
+  h += '<div style="flex:1;text-align:center;padding:6px;background:#FEF3C7;border-radius:8px"><div style="font-size:18px;font-weight:900;color:#E6A200">'+searchCount+'</div><div style="font-size:8px;color:#E6A200">Búsquedas</div></div>';
+  h += '</div>';
+  
+  h += '<div style="overflow-y:auto;flex:1">';
+  
+  // Per user summary
+  var userList = Object.keys(byUser).map(function(uid) {
+    var u = byUser[uid];
+    var fu = hFilterUsers.find(function(x){return x.id===uid});
+    var sup = fu && fu.supervisor_id ? (supMap[fu.supervisor_id]||'') : '';
+    var accCount = {};
+    u.acciones.forEach(function(a) { accCount[a.accion] = (accCount[a.accion]||0)+1; });
+    return {uid:uid, nombre:u.nombre, rol:u.rol, sup:sup, total:u.acciones.length, accCount:accCount, firstAction:u.acciones[u.acciones.length-1], lastAction:u.acciones[0]};
+  });
+  userList.sort(function(a,b){return b.total-a.total});
+  
+  userList.forEach(function(u) {
+    var pdfs = u.accCount.pdf_generado || 0;
+    var busquedas = u.accCount.buscar_equipo || 0;
+    var logins = u.accCount.login || 0;
+    var cotizaciones = u.accCount.nueva_cotizacion || 0;
+    var firstTime = u.firstAction ? new Date(u.firstAction.timestamp).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : '';
+    var lastTime = u.lastAction ? new Date(u.lastAction.timestamp).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : '';
+    
+    var ratio = busquedas > 0 ? Math.round(pdfs/busquedas*100) : 0;
+    var ratioColor = ratio >= 50 ? '#10B981' : ratio >= 20 ? '#E6A200' : '#DC3545';
+    
+    h += '<div class="section" style="padding:10px;margin-bottom:4px">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+    h += '<div><span style="font-size:12px;font-weight:700">'+u.nombre+'</span> <span style="font-size:9px;color:var(--text-3)">'+u.rol+(u.sup?' · '+u.sup:'')+'</span></div>';
+    h += '<span style="font-size:9px;color:var(--text-3)">'+firstTime+' — '+lastTime+'</span>';
+    h += '</div>';
+    h += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
+    if (logins) h += '<span style="font-size:9px;padding:2px 6px;background:#EFF6FF;border-radius:4px">🔑 Login: '+logins+'</span>';
+    h += '<span style="font-size:9px;padding:2px 6px;background:#FEF3C7;border-radius:4px">🔍 Búsquedas: '+busquedas+'</span>';
+    if (cotizaciones) h += '<span style="font-size:9px;padding:2px 6px;background:#F5F3FF;border-radius:4px">📋 Cotizaciones: '+cotizaciones+'</span>';
+    h += '<span style="font-size:9px;padding:2px 6px;background:#ECFDF5;border-radius:4px">📄 PDFs: '+pdfs+'</span>';
+    h += '<span style="font-size:9px;padding:2px 6px;background:'+ratioColor+'22;border-radius:4px;color:'+ratioColor+';font-weight:700">Ratio: '+ratio+'%</span>';
+    h += '<span style="font-size:9px;padding:2px 6px;background:var(--surface-2);border-radius:4px">Total: '+u.total+'</span>';
+    h += '</div></div>';
+  });
+  
+  // Users who didn't log in today
+  var activeAgents = hFilterUsers.filter(function(u){return u.rol==='agente'});
+  var loggedIds = Object.keys(byUser);
+  var noLogin = activeAgents.filter(function(u){return loggedIds.indexOf(u.id)<0});
+  if (noLogin.length > 0) {
+    h += '<div style="margin-top:8px;padding:10px;background:#FEF2F2;border-radius:8px;border:1px solid #FECACA">';
+    h += '<div style="font-size:11px;font-weight:700;color:#DC3545;margin-bottom:4px">🚫 No ingresaron hoy ('+noLogin.length+')</div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+    noLogin.forEach(function(u) {
+      var sup = supMap[u.supervisor_id]||'';
+      h += '<span style="font-size:9px;padding:2px 6px;background:white;border:1px solid #FECACA;border-radius:4px">'+u.nombre+(sup?' · '+sup:'')+'</span>';
+    });
+    h += '</div></div>';
+  }
+  
+  h += '</div></div>';
+  overlay.innerHTML = h;
+  document.body.appendChild(overlay);
+  
+  window._bitacoraData = logs;
+}
+
+function exportBitacoraExcel() {
+  var logs = window._bitacoraData || [];
+  if (logs.length === 0) { alert('Sin datos'); return; }
+  var rows = [['Fecha/Hora','Usuario','Rol','Acción','Detalle']];
+  logs.forEach(function(l) {
+    rows.push([new Date(l.timestamp).toLocaleString('es-MX'), l.user_nombre, l.user_rol, l.accion, l.detalle]);
+  });
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:20},{wch:28},{wch:14},{wch:22},{wch:40}];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Bitácora');
+  XLSX.writeFile(wb, 'bitacora_'+new Date().toISOString().substring(0,10)+'.xlsx');
 }
 
 // ── INVENTARIO (Stock por Hub) ──
