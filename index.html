@@ -5848,13 +5848,9 @@ async function initHistorialFilters() {
   // Only show filters for roles that see other people's cotizaciones
   if (rol === 'agente') {
     filtersDiv.style.display = 'none';
-    // Hide PDF filter options from agents
+    // Hide sub-estatus filter and special options from agents
     var subSel = document.getElementById('hFilterSubEstatus');
-    if (subSel) {
-      for (var oi=0;oi<subSel.options.length;oi++) {
-        if (subSel.options[oi].value==='_con_pdf'||subSel.options[oi].value==='_sin_pdf'||subSel.options[oi].value==='_agentes_baja') subSel.options[oi].style.display='none';
-      }
-    }
+    if (subSel) subSel.style.display = 'none';
     populateMonthFilter();
     return;
   }
@@ -6183,7 +6179,7 @@ function renderHistorial() {
   
   // Agents don't see cotizaciones without PDF (invisible tracking)
   if (currentUser && currentUser.rol === 'agente') {
-    roleFiltered = roleFiltered.filter(function(c) { return c.pdf_generado === true || (c.items && c.items.length > 0); });
+    roleFiltered = roleFiltered.filter(function(c) { return c.pdf_generado === true; });
   }
   
   if (agentIds) {
@@ -6480,7 +6476,7 @@ function exportHistorialExcel() {
   
   // Agents don't see registros without PDF (invisible tracking)
   if (currentUser && currentUser.rol === 'agente') {
-    filtered = filtered.filter(function(c) { return c.pdf_generado === true || (c.items && c.items.length > 0); });
+    filtered = filtered.filter(function(c) { return c.pdf_generado === true; });
   }
   
   if (agentIds) filtered = filtered.filter(function(c) { return agentIds.indexOf(c.agente_id || (currentUser ? currentUser.id : null)) !== -1; });
