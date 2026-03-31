@@ -2930,6 +2930,11 @@ function showView(name, title) {
       state._cotClienteSaved = false;
       state._cotSaving = false;
       renderItems();
+      // Reset search
+      var si = document.getElementById('searchInput');
+      if (si) si.value = '';
+      var dr = document.getElementById('deviceResults');
+      if (dr) dr.innerHTML = '';
       // Show equipment section normally
       document.getElementById('cotEquipmentSection').style.display = '';
     } catch(e) {}
@@ -4503,7 +4508,7 @@ async function guardarRegistroSilent(d) {
       plan_actual_id: d.planActualId || null,
       estatus: 'enviada',
       pdf_generado: false,
-      validez_dias: d.validez
+      dias_validez: d.validez
     });
     console.log('Registro guardado al salir:', folio);
   } catch(e) { console.log('Save on exit error:', e.message); }
@@ -4542,7 +4547,7 @@ async function guardarDatosClienteSilent() {
       plan_actual_id: planActualId || null,
       estatus: 'enviada',
       pdf_generado: false,
-      validez_dias: cliValidez ? parseInt(cliValidez.value) || 7 : 7
+      dias_validez: cliValidez ? parseInt(cliValidez.value) || 7 : 7
     };
     
     var {data, error} = await supabase.from('cotizaciones').insert(cotData).select().single();
