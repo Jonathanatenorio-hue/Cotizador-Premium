@@ -4299,11 +4299,11 @@ function renderItems() {
           </div>` : ''}
           <div class="item-detail">
             <span class="detail-label">Llamadas y mensajes</span>
-            <span style="color:#10B981;font-weight:700">✅ Ilimitados a México, EUA y Canadá</span>
+            <span style="color:#10B981;font-weight:700">✅ Ilimitados${item.soloPlanCat === 'lite' ? '' : ' a México, EUA y Canadá'}</span>
           </div>
           <div class="item-detail">
-            <span class="detail-label">6 redes sociales ilimitadas</span>
-            <span style="color:#10B981;font-weight:700">✅ Incluidas</span>
+            <span class="detail-label">${item.soloPlanCat === 'lite' ? 'WhatsApp ilimitado' : '6 apps ilimitadas'}</span>
+            <span style="color:#10B981;font-weight:700">✅ ${item.soloPlanCat === 'lite' ? 'Incluido' : 'Incluidas'}</span>
           </div>
         </div>
       </div>`;
@@ -5007,7 +5007,8 @@ function buildAndDownloadPDF(cot) {
     var spData = cot.items.map(function(it) {
       var f = function(n){return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})};
       var tipo = it.isPortabilidad ? 'Portabilidad' : 'Línea nueva';
-      return [it.planNombre, it.planGb, tipo, '6 apps ilimitadas', 'Llamadas y SMS\nMéxico, EUA, Canadá', 'Sin plazo forzoso', f(it.planPrecio)];
+      var appsLabel = it.soloPlanCat === 'lite' ? 'WhatsApp ilimitado' : '6 apps ilimitadas';
+      return [it.planNombre, it.planGb, tipo, appsLabel, 'Llamadas y SMS\nMéxico, EUA, Canadá', 'Sin plazo forzoso', f(it.planPrecio)];
     });
     doc.autoTable({
       startY: y,
@@ -5465,7 +5466,8 @@ function buildAndDownloadPDF_v2(cot) {
     var spData2 = cot.items.map(function(it) {
       var f = function(n){return '$'+(Math.round(n*100)/100).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})};
       var tipo = it.isPortabilidad ? 'Portabilidad' : 'Línea nueva';
-      return [it.planNombre, it.planGb, tipo, '6 apps ilimitadas', 'Llamadas y SMS\nMéxico, EUA, Canadá', 'Sin plazo', f(it.planPrecio)];
+      var appsLabel = it.soloPlanCat === 'lite' ? 'WhatsApp ilimitado' : '6 apps ilimitadas';
+      return [it.planNombre, it.planGb, tipo, appsLabel, 'Llamadas y SMS\nMéxico, EUA, Canadá', 'Sin plazo', f(it.planPrecio)];
     });
     doc.autoTable({
       startY: y,
@@ -13338,7 +13340,7 @@ function renderSoloPlanList() {
       h += '<div style="background:var(--surface-2);border-radius:10px;padding:12px;margin-bottom:6px;border-left:4px solid #8B5CF6">';
       h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
       h += '<div><div style="font-size:14px;font-weight:800">'+p.name+'</div>';
-      h += '<div style="font-size:11px;color:var(--text-3)">'+p.gb+' · 6 redes sociales ilimitadas</div></div>';
+      h += '<div style="font-size:11px;color:var(--text-3)">'+p.gb+' · WhatsApp ilimitado</div></div>';
       h += '<div style="text-align:right">';
       h += '<div style="font-size:18px;font-weight:900;color:#8B5CF6">$'+precio+'<span style="font-size:10px;font-weight:400">/mes</span></div>';
       h += '<div style="font-size:9px;color:var(--text-3)">Renta sin imp: $'+rentaSinImp+'</div>';
