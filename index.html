@@ -5840,6 +5840,13 @@ async function initHistorialFilters() {
   // Only show filters for roles that see other people's cotizaciones
   if (rol === 'agente') {
     filtersDiv.style.display = 'none';
+    // Hide PDF filter options from agents
+    var subSel = document.getElementById('hFilterSubEstatus');
+    if (subSel) {
+      for (var oi=0;oi<subSel.options.length;oi++) {
+        if (subSel.options[oi].value==='_con_pdf'||subSel.options[oi].value==='_sin_pdf'||subSel.options[oi].value==='_agentes_baja') subSel.options[oi].style.display='none';
+      }
+    }
     populateMonthFilter();
     return;
   }
@@ -6165,6 +6172,12 @@ function renderHistorial() {
   // Apply role-based filter
   var agentIds = getFilteredAgentIds();
   var roleFiltered = state.cotizaciones;
+  
+  // Agents don't see cotizaciones without PDF (invisible tracking)
+  if (currentUser && currentUser.rol === 'agente') {
+    roleFiltered = roleFiltered.filter(function(c) { return c.pdf_generado === true || (c.items && c.items.length > 0); });
+  }
+  
   if (agentIds) {
     roleFiltered = state.cotizaciones.filter(function(c) {
       var cAgentId = c.agente_id || (currentUser ? currentUser.id : null);
@@ -6254,7 +6267,7 @@ function renderHistorial() {
         <span class="badge badge-${cot.estatus}">${{enviada:'Enviada',seguimiento:'Seguimiento',venta:'Venta Exitosa',perdida:'Perdida'}[cot.estatus]||cot.estatus}</span>
       </div>
       <div class="historial-body">
-        <span class="historial-client">${cot.cliente.nombre}${!cot.pdf_generado ? ' <span style="font-size:8px;background:#DC3545;color:white;padding:1px 5px;border-radius:3px;font-weight:700;vertical-align:middle">🚫 SIN PDF</span>' : ''}</span>
+        <span class="historial-client">${cot.cliente.nombre}${!cot.pdf_generado && currentUser && currentUser.rol !== 'agente' ? ' <span style="font-size:8px;background:#DC3545;color:white;padding:1px 5px;border-radius:3px;font-weight:700;vertical-align:middle">🚫 SIN PDF</span>' : ''}</span>
         <span class="historial-meta">${cot.cliente.telefono ? '<span onclick="event.stopPropagation();navigator.clipboard.writeText(\''+cot.cliente.telefono+'\');this.textContent=\'✅\';var _t=this;setTimeout(function(){_t.textContent=\'📋\'},800)" style="cursor:pointer;font-size:10px;margin-right:2px" title="Copiar teléfono">📋</span>' : ''}${cot.cliente.telefono || ''} · ${cot.items.length} equipo(s) · ${cot.fecha}${cot.createdAt ? ' ' + new Date(cot.createdAt).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
         <span class="historial-meta">Ejecutivo: ${cot.ejecutivo ? cot.ejecutivo.nombre : 'N/A'}${cot.supervisorNombre ? ' · Sup: ' + cot.supervisorNombre : ''}${cot.sub_estatus ? ' · ' + subEstatusLabel(cot.sub_estatus) : ''}${cot.folio_att ? ' · Folio ATT: ' + cot.folio_att : ''}${cot.sub_estatus==='aceleracion' && cot.fecha_fin_plazo ? ' · Plazo: ' + cot.fecha_fin_plazo + (new Date(cot.fecha_fin_plazo+'T00:00:00') <= new Date() ? ' 🚨 VENCIDO' : '') : ''}${cot.fecha_efectiva ? ' · <span style="color:#2E7D32;font-weight:600">📅 F.Efectiva: '+cot.fecha_efectiva+'</span>' : (cot.sub_estatus==='aceleracion' ? ' · <span style="color:#E65100;font-weight:600">⚠️ Sin fecha efectiva</span>' : '')}</span>
         ${cot.notas && cot.notas.length > 0 ? (function(){
