@@ -11561,7 +11561,8 @@ async function metasRender() {
         var supCentroKeys = Object.keys(centroSups).sort(function(a,b){return centroSups[b]-centroSups[a]});
         supCentroKeys.forEach(function(s) {
           var sv = centroSups[s];
-          var sm = metasGetMeta('supervisor', s);
+          var metaName = s === '🚫 Sin supervisor' ? 'Sin supervisor' : s;
+          var sm = metasGetMeta('supervisor', metaName);
           var sp = sm>0?Math.round(sv/sm*100):0;
           var sc = sp>=100?'#10B981': ckColor.border;
           var sDiaria = sm > 0 && workDaysTotal > 0 ? (sm / workDaysTotal) : 0;
@@ -11616,6 +11617,24 @@ async function metasRender() {
         supH += '</div>';
         supH += '<div style="font-size:12px;font-weight:700;color:'+sc+';min-width:75px;text-align:right">'+sv+'/'+sm+' ('+sp+'%)</div></div>';
       });
+      // Sin supervisor card
+      if (sinSupCount > 0) {
+        var sinSm = metasGetMeta('supervisor','Sin supervisor');
+        var sinSp = sinSm>0?Math.round(sinSupCount/sinSm*100):0;
+        var sinSc = sinSp>=100?'#10B981':sinSp>=70?'#F59E0B':'#DC3545';
+        var sinDiaria = sinSm > 0 && workDaysTotal > 0 ? (sinSm / workDaysTotal) : 0;
+        var sinEsperado = Math.round(sinDiaria * workDaysPassed * 10) / 10;
+        var sinDiff = sinSupCount - sinEsperado;
+        var sinDiffColor = sinDiff >= 0 ? '#10B981' : '#DC3545';
+        var sinDiffSign = sinDiff >= 0 ? '+' : '';
+        var sinProy = workDaysPassed > 0 ? Math.round(sinSupCount / workDaysPassed * workDaysTotal) : sinSupCount;
+        supH += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:8px 10px;background:#FEF2F2;border-radius:8px;border:1px solid #FECACA">';
+        supH += '<div style="min-width:160px"><div style="font-size:12px;font-weight:700;color:#DC3545">🚫 Sin supervisor</div></div>';
+        supH += '<div style="flex:1"><div style="height:8px;border-radius:4px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+Math.min(sinSp,100)+'%;background:'+sinSc+';border-radius:4px"></div></div>';
+        if (isCurrentMonth && sinSm > 0) supH += '<div style="font-size:8px;color:var(--text-3);margin-top:2px">Diaria:'+sinDiaria.toFixed(1)+' · Esperado:'+sinEsperado.toFixed(0)+' · <span style="color:'+sinDiffColor+'">'+sinDiffSign+Math.round(sinDiff)+'</span> · <span style="color:#8B5CF6">Proy:'+sinProy+'</span></div>';
+        supH += '</div>';
+        supH += '<div style="font-size:12px;font-weight:700;color:'+sinSc+';min-width:75px;text-align:right">'+sinSupCount+'/'+sinSm+' ('+sinSp+'%)</div></div>';
+      }
       supH += '</div>';
     }
   }
@@ -13045,6 +13064,7 @@ async function renderRachaNegativa() {
   
   // If metasVentas is empty (new month), load previous month
   var rachaVentas = metasVentas;
+  var rachaMetas = metasMetas;
   if (rachaVentas.length === 0 && supabase) {
     var prevDate = new Date();
     prevDate.setMonth(prevDate.getMonth() - 1);
@@ -13052,14 +13072,30 @@ async function renderRachaNegativa() {
     try {
       var pvr = await supabase.from('ventas_global').select('*').eq('mes', prevMes);
       rachaVentas = pvr.data || [];
+      var pmr = await supabase.from('metas').select('*').eq('mes', prevMes);
+      rachaMetas = pmr.data || [];
     } catch(e) {}
   }
   
+  // Helper to get meta from rachaMetas (may be prev month)
+  function rachaGetMeta(tipo, nombre) {
+    var m = rachaMetas.find(function(x){return x.tipo===tipo && x.nombre.toUpperCase()===nombre.toUpperCase()});
+    return m ? m.meta : 0;
+  }
+  
   agents.forEach(function(ag) {
-    // Last venta from ventas data - match by name
+    // Previous month ventas (from rachaVentas)
     var lastVentaDate = null;
-    var ventasMes = 0;
+    var ventasMesAnterior = 0;
     rachaVentas.forEach(function(v) {
+      if (!v.ejecutivo || v.ejecutivo.toUpperCase() !== ag.nombre.toUpperCase()) return;
+      ventasMesAnterior++;
+      var fd = v.fecha ? (typeof v.fecha === 'string' ? v.fecha.substring(0,10) : '') : '';
+      if (fd && (!lastVentaDate || fd > lastVentaDate)) lastVentaDate = fd;
+    });
+    // Current month ventas
+    var ventasMes = 0;
+    metasVentas.forEach(function(v) {
       if (!v.ejecutivo || v.ejecutivo.toUpperCase() !== ag.nombre.toUpperCase()) return;
       ventasMes++;
       var fd = v.fecha ? (typeof v.fecha === 'string' ? v.fecha.substring(0,10) : '') : '';
@@ -13144,6 +13180,7 @@ async function renderRachaNegativa() {
       segPendientes: segPendientes,
       enviadasSinGestion: enviadasSinGestion,
       ventasMes: ventasMes,
+      ventasMesAnterior: ventasMesAnterior,
       meta: metaAgente,
       metaPct: metaPct,
       metaFaltan: metaFaltan,
@@ -13188,6 +13225,7 @@ async function renderRachaNegativa() {
     h += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">';
     h += '<span style="font-size:9px;padding:2px 6px;background:var(--surface-2);border-radius:4px">Últ. venta: <b>'+ag.lastVenta+'</b></span>';
     h += '<span style="font-size:9px;padding:2px 6px;background:var(--surface-2);border-radius:4px">Ventas mes: <b style="color:#10B981">'+ag.ventasMes+'</b></span>';
+    h += '<span style="font-size:9px;padding:2px 6px;background:#F5F3FF;border-radius:4px">Mes anterior: <b style="color:#8B5CF6">'+ag.ventasMesAnterior+'</b></span>';
     h += '<span style="font-size:9px;padding:2px 6px;background:var(--surface-2);border-radius:4px">Cots hoy: <b>'+ag.cotsHoy+'</b> · ayer: <b>'+ag.cotsAyer+'</b></span>';
     h += '<span style="font-size:9px;padding:2px 6px;background:var(--surface-2);border-radius:4px">Seg: <b style="color:#E6A200">'+ag.segPendientes+'</b></span>';
     h += '<span style="font-size:9px;padding:2px 6px;background:var(--surface-2);border-radius:4px">Sin gestión: <b style="color:#DC3545">'+ag.enviadasSinGestion+'</b></span>';
