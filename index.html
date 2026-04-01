@@ -11494,7 +11494,7 @@ async function metasRender() {
           var centroAgents = adminUsers.filter(function(u) { return u.rol==='agente'; });
           centroAgents.forEach(function(a) {
             if (!a.supervisor_id) return;
-            var sup = adminUsers.find(function(s){return s.id===a.supervisor_id});
+            var sup = adminUsers.find(function(s){return s.id===a.supervisor_id && s.rol==='supervisor'});
             if (!sup) return;
             var aCentroName = '';
             if (adminCentros && adminCentros.length) {
