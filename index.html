@@ -1165,6 +1165,7 @@ body{padding-bottom:60px}
           <option value="coordinador">Coordinadores</option>
           <option value="supervisor">Supervisores</option>
           <option value="agente">Agentes</option>
+          <option value="capacitador">Capacitadores</option>
         </select>
         <select class="field" id="adminFilterCentro" onchange="renderAdminUsers()" style="width:auto">
           <option value="all">Todos los centros</option>
@@ -2302,7 +2303,7 @@ async function doLogin() {
     updateHome();
     // Set greeting in header
     var firstName = (state.agente.nombre||'').split(' ')[0];
-    var rolLabel = {admin:'Administrador',coordinador:'Coordinador',supervisor:'Supervisor',agente:'Ejecutivo'}[state.agente.rol]||'';
+    var rolLabel = {admin:'Administrador',coordinador:'Coordinador',capacitador:'Capacitador',supervisor:'Supervisor',agente:'Ejecutivo'}[state.agente.rol]||'';
     var greetEl = document.getElementById('headerGreeting');
     if (greetEl) {
       greetEl.textContent = 'Hola, ' + firstName + ' 👋';
@@ -2630,7 +2631,7 @@ async function syncCotizacionToSupabase(cotizacion, isEdit) {
         }
         
         // Show other agent duplicates to supervisor, coordinator, admin
-        if (otherDups.length > 0 && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) {
+        if (otherDups.length > 0 && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'capacitador' || currentUser.rol === 'supervisor')) {
           var otherDupList = otherDups.map(function(d){ return d.folio + ' - ' + d.cliente_nombre + ' (' + d.estatus + ')'; }).join('\n');
           alert('ℹ️ Otro agente ya tiene este teléfono:\n\n' + otherDupList + '\n\nLa cotización se guardará. Verifica con el agente correspondiente.');
         }
@@ -2713,7 +2714,7 @@ async function loadCotizacionesFromSupabase() {
       var { data: agentes } = await supabase.from('usuarios').select('id').eq('supervisor_id', currentUser.id);
       roleIds = (agentes || []).map(function(a) { return a.id; });
       roleIds.push(currentUser.id);
-    } else if (currentUser.rol === 'coordinador') {
+    } else if (currentUser.rol === 'coordinador' || currentUser.rol === 'capacitador') {
       var { data: users } = await supabase.from('usuarios').select('id').eq('coordinador_id', currentUser.id);
       roleIds = (users || []).map(function(u) { return u.id; });
       roleIds.push(currentUser.id);
@@ -3013,6 +3014,7 @@ async function updateHome() {
     var adminDesc = document.getElementById('adminDesc');
     if (currentUser.rol === 'supervisor') adminDesc.textContent = 'Gestionar mis agentes';
     else if (currentUser.rol === 'coordinador') adminDesc.textContent = 'Gestionar mi equipo';
+    else if (currentUser.rol === 'capacitador') adminDesc.textContent = 'Ver mi equipo (solo lectura)';
     else adminDesc.textContent = 'Gestionar todos los usuarios';
   } else {
     adminCard.style.display = 'none';
@@ -3029,7 +3031,7 @@ async function updateHome() {
   // Show informes card for admin/coordinador/supervisor
   var infCard = document.getElementById('cardInformes');
   if (infCard) {
-    infCard.style.display = (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'supervisor')) ? '' : 'none';
+    infCard.style.display = (currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'coordinador' || currentUser.rol === 'capacitador' || currentUser.rol === 'supervisor')) ? '' : 'none';
   }
 
   // Show inventario card for Puebla users only
@@ -4181,7 +4183,7 @@ async function checkDuplicatePhone(tel) {
         var lista = myDups.map(function(d){ return d.folio + ' · ' + d.cliente_nombre + ' (' + d.estatus + ')'; }).join('<br>');
         html += '🚫 <b>Ya tienes este teléfono — retoma desde Historial:</b><br>' + lista;
       }
-      if (otherDups.length > 0 && (rol === 'admin' || rol === 'coordinador' || rol === 'supervisor')) {
+      if (otherDups.length > 0 && (rol === 'admin' || rol === 'coordinador' || rol === 'capacitador' || rol === 'supervisor')) {
         var lista2 = otherDups.map(function(d){ return d.folio + ' · ' + d.cliente_nombre + ' (' + d.estatus + ')'; }).join('<br>');
         html += (html?'<br><br>':'') + 'ℹ️ <b>Otro agente tiene este teléfono:</b><br>' + lista2;
       }
@@ -5876,8 +5878,8 @@ async function initHistorialFilters() {
   // Show/hide dropdowns based on role
   centroSel.style.display = (rol === 'admin') ? '' : 'none';
   coordSel.style.display = (rol === 'admin') ? '' : 'none';
-  supWrap.style.display = (rol === 'admin' || rol === 'coordinador') ? '' : 'none';
-  agenteWrap.style.display = (rol === 'admin' || rol === 'coordinador' || rol === 'supervisor') ? '' : 'none';
+  supWrap.style.display = (rol === 'admin' || rol === 'coordinador' || rol === 'capacitador') ? '' : 'none';
+  agenteWrap.style.display = (rol === 'admin' || rol === 'coordinador' || rol === 'capacitador' || rol === 'supervisor') ? '' : 'none';
 
   // Fill centros (admin only)
   if (rol === 'admin') {
@@ -5965,7 +5967,7 @@ function populateAgenteFilter() {
     if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
     if (coordVal !== 'all' && u.coordinador_id !== coordVal) return false;
     if (selectedSups.length > 0 && selectedSups.indexOf(u.supervisor_id) === -1) return false;
-    if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
+    if ((rol === 'coordinador' || rol === 'capacitador') && u.coordinador_id !== currentUser.id) return false;
     if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
     return true;
   });
@@ -6109,7 +6111,7 @@ function getFilteredAgentIds() {
     if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
     if (coordVal !== 'all' && u.coordinador_id !== coordVal) return false;
     if (selectedSups.length > 0 && u.supervisor_id && selectedSups.indexOf(u.supervisor_id) === -1) return false;
-    if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
+    if ((rol === 'coordinador' || rol === 'capacitador') && u.coordinador_id !== currentUser.id) return false;
     if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
     return true;
   }).map(function(u) { return u.id; });
@@ -7509,7 +7511,7 @@ async function loadNotas(folio) {
     if (!notas || !notas.length) { el.innerHTML = '<div style="font-size:10px;color:var(--text-3);padding:4px 0">Sin notas aún</div>'; return; }
     
     var tipoIcons = {llamada:'📞', mensaje:'💬', nota:'📝'};
-    var rolColors = {admin:'#8B5CF6', coordinador:'#3B82F6', supervisor:'#10B981', agente:'#F59E0B'};
+    var rolColors = {admin:'#8B5CF6', coordinador:'#3B82F6', capacitador:'#F97316', supervisor:'#10B981', agente:'#F59E0B'};
     
     var h = '<div style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">';
     notas.forEach(function(n) {
@@ -7744,7 +7746,7 @@ function onDashFilterChange() {
     if (u.rol !== 'supervisor') return false;
     if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
     if (coordVal !== 'all' && u.coordinador_id !== coordVal) return false;
-    if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
+    if ((rol === 'coordinador' || rol === 'capacitador') && u.coordinador_id !== currentUser.id) return false;
     return true;
   });
   supSel.innerHTML = '<option value="all">Todos los supervisores</option>';
@@ -7756,7 +7758,7 @@ function onDashFilterChange() {
     if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
     if (coordVal !== 'all' && u.coordinador_id !== coordVal) return false;
     if (supVal !== 'all' && u.supervisor_id !== supVal) return false;
-    if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
+    if ((rol === 'coordinador' || rol === 'capacitador') && u.coordinador_id !== currentUser.id) return false;
     if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
     return true;
   });
@@ -7787,7 +7789,7 @@ function getDashFilteredCots() {
       if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
       if (coordVal !== 'all' && u.coordinador_id !== coordVal) return false;
       if (supVal !== 'all' && u.supervisor_id !== supVal) return false;
-      if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
+      if ((rol === 'coordinador' || rol === 'capacitador') && u.coordinador_id !== currentUser.id) return false;
       if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
       return true;
     }).map(function(u) { return u.id; });
@@ -8902,7 +8904,7 @@ function renderAdminUsers() {
     return true;
   });
 
-  var rolColors = { admin:'#009FDB', coordinador:'#0FA958', supervisor:'#E6A200', agente:'#8899AA' };
+  var rolColors = { admin:'#009FDB', coordinador:'#0FA958', capacitador:'#F97316', supervisor:'#E6A200', agente:'#8899AA' };
   var html = '<div style="display:flex;flex-direction:column;gap:6px">';
   list.forEach(function(u) {
     var centro = adminCentros.find(function(c){return c.id===u.centro_id;});
@@ -8972,6 +8974,7 @@ function showAddUserForm() {
   rolSel.innerHTML = '<option value="">Selecciona...</option>';
   if (currentUser.rol === 'admin') {
     rolSel.innerHTML += '<option value="coordinador">Coordinador</option>';
+    rolSel.innerHTML += '<option value="capacitador">Capacitador</option>';
     rolSel.innerHTML += '<option value="supervisor">Supervisor</option>';
     rolSel.innerHTML += '<option value="agente">Agente</option>';
   } else if (currentUser.rol === 'coordinador') {
@@ -11285,8 +11288,8 @@ async function metasRender() {
     // Supervisor sees their team
     var myName = currentUser ? currentUser.nombre : '';
     fv = metasVentas.filter(function(v) { return v.supervisor && v.supervisor.toUpperCase() === myName.toUpperCase(); });
-  } else if (rol === 'coordinador') {
-    // Coordinator sees their sups + agents
+  } else if (rol === 'coordinador' || rol === 'capacitador') {
+    // Coordinator/Capacitador sees their sups + agents
     var mySups = (adminUsers||[]).filter(function(u){ return u.coordinador_id === currentUser.id && u.rol === 'supervisor'; }).map(function(u){ return u.nombre.toUpperCase(); });
     fv = metasVentas.filter(function(v) { return v.supervisor && mySups.indexOf(v.supervisor.toUpperCase()) >= 0; });
   }
@@ -12202,7 +12205,7 @@ function renderSavedPlan(plan) {
   document.getElementById('planIASaved').innerHTML = h;
   // Annotations
   var notas = (plan.plan_trabajo_notas || []).sort(function(a,b){return new Date(a.created_at) - new Date(b.created_at)});
-  var rolColors = {admin:'#8B5CF6', coordinador:'#3B82F6', supervisor:'#10B981', agente:'#F59E0B'};
+  var rolColors = {admin:'#8B5CF6', coordinador:'#3B82F6', capacitador:'#F97316', supervisor:'#10B981', agente:'#F59E0B'};
   var aH = '<div class="section" style="padding:14px">';
   aH += '<div style="font-size:13px;font-weight:800;margin-bottom:10px">📝 Anotaciones sobre el Plan</div>';
   aH += '<div style="max-height:250px;overflow-y:auto;margin-bottom:10px">';
@@ -13504,15 +13507,41 @@ async function flushBitacora() {
 window.addEventListener('beforeunload', function() { flushBitacora(); });
 
 // ── BITÁCORA: Dashboard de Adopción ──
+
 async function openBitacora() {
-  showView('config', '⚙️ Configuración');
-  if (!supabase || !currentUser || currentUser.rol !== 'admin') return;
+  var overlay = document.createElement('div');
+  overlay.id = 'bitacoraOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:12px';
   
-  var hoy = new Date();
-  var hoyStr = hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0')+'-'+String(hoy.getDate()).padStart(2,'0');
+  var hoy = new Date().toISOString().substring(0,10);
   
-  var {data} = await supabase.from('bitacora_actividad').select('*').gte('timestamp', hoyStr+'T00:00:00').order('timestamp', {ascending:false}).limit(2000);
-  var logs = data || [];
+  overlay.innerHTML = '<div style="background:white;border-radius:16px;padding:16px;max-width:650px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:95vh;display:flex;flex-direction:column">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-shrink:0">' +
+    '<div style="font-size:16px;font-weight:900">📊 Bitácora de Actividad</div>' +
+    '<button onclick="document.getElementById(\'bitacoraOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div>' +
+    '<div style="display:flex;gap:6px;margin-bottom:10px;flex-shrink:0;flex-wrap:wrap;align-items:center">' +
+    '<input type="date" class="field" id="bitFecha" value="'+hoy+'" onchange="bitacoraLoadDay()" style="font-size:11px;padding:5px 8px;width:auto">' +
+    '<input class="field" id="bitSearch" placeholder="🔍 Buscar agente..." oninput="bitacoraFilterUsers()" style="font-size:11px;padding:5px 8px;flex:1;min-width:150px">' +
+    '<button onclick="bitacoraExport()" class="btn btn-primary" style="font-size:9px;padding:5px 10px">📥 Excel</button>' +
+    '</div>' +
+    '<div id="bitKPIs" style="flex-shrink:0;margin-bottom:8px"></div>' +
+    '<div id="bitContent" style="overflow-y:auto;flex:1"></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  
+  window._bitAllLogs = [];
+  window._bitByUser = {};
+  window._bitSelectedUser = null;
+  
+  bitacoraLoadDay();
+}
+
+async function bitacoraLoadDay() {
+  var fecha = document.getElementById('bitFecha').value;
+  if (!fecha || !supabase) return;
+  
+  var el = document.getElementById('bitContent');
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3)">Cargando...</div>';
   
   if (hFilterUsers.length === 0) {
     try {
@@ -13522,112 +13551,213 @@ async function openBitacora() {
     } catch(e) {}
   }
   
+  var {data} = await supabase.from('bitacora_actividad').select('*').gte('timestamp', fecha+'T00:00:00').lte('timestamp', fecha+'T23:59:59').order('timestamp', {ascending:false}).limit(5000);
+  window._bitAllLogs = data || [];
+  
   var supMap = {};
   hFilterUsers.filter(function(u){return u.rol==='supervisor'}).forEach(function(u){supMap[u.id]=u.nombre});
+  window._bitSupMap = supMap;
   
   // Group by user
-  var byUser = {};
-  logs.forEach(function(l) {
-    if (!byUser[l.user_id]) byUser[l.user_id] = {nombre:l.user_nombre, rol:l.user_rol, acciones:[]};
-    byUser[l.user_id].acciones.push(l);
+  window._bitByUser = {};
+  window._bitAllLogs.forEach(function(l) {
+    if (!window._bitByUser[l.user_id]) window._bitByUser[l.user_id] = {nombre:l.user_nombre, rol:l.user_rol, logs:[]};
+    window._bitByUser[l.user_id].logs.push(l);
   });
   
-  var overlay = document.createElement('div');
-  overlay.id = 'bitacoraOverlay';
-  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:16px';
+  window._bitSelectedUser = null;
+  document.getElementById('bitSearch').value = '';
+  bitacoraRenderKPIs();
+  bitacoraRenderUserList();
+}
+
+function bitacoraRenderKPIs() {
+  var logs = window._bitAllLogs;
+  var users = Object.keys(window._bitByUser).length;
+  var pdfs = logs.filter(function(l){return l.accion==='pdf_generado'}).length;
+  var searches = logs.filter(function(l){return l.accion==='buscar_equipo'}).length;
+  var cots = logs.filter(function(l){return l.accion==='nueva_cotizacion'}).length;
+  var logins = logs.filter(function(l){return l.accion==='login'}).length;
   
-  var h = '<div style="background:white;border-radius:16px;padding:16px;max-width:650px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:90vh;display:flex;flex-direction:column">';
-  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-shrink:0">';
-  h += '<div><div style="font-size:16px;font-weight:900">📊 Bitácora de Actividad</div><div style="font-size:10px;color:var(--text-3)">Hoy: '+hoyStr+'</div></div>';
-  h += '<div style="display:flex;gap:6px"><button onclick="exportBitacoraExcel()" class="btn btn-primary" style="font-size:9px;padding:4px 10px">📥 Excel</button>';
-  h += '<button onclick="document.getElementById(\'bitacoraOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div></div>';
+  var activeAgents = hFilterUsers.filter(function(u){return u.rol==='agente'});
+  var noLogin = activeAgents.filter(function(u){return !window._bitByUser[u.id]});
   
-  // KPIs
-  var totalUsers = Object.keys(byUser).length;
-  var totalActions = logs.length;
-  var pdfCount = logs.filter(function(l){return l.accion==='pdf_generado'}).length;
-  var searchCount = logs.filter(function(l){return l.accion==='buscar_equipo'}).length;
-  
-  h += '<div style="display:flex;gap:6px;margin-bottom:10px;flex-shrink:0">';
-  h += '<div style="flex:1;text-align:center;padding:6px;background:#EFF6FF;border-radius:8px"><div style="font-size:18px;font-weight:900;color:var(--att-blue)">'+totalUsers+'</div><div style="font-size:8px;color:var(--text-3)">Usuarios activos</div></div>';
-  h += '<div style="flex:1;text-align:center;padding:6px;background:var(--surface-2);border-radius:8px"><div style="font-size:18px;font-weight:900">'+totalActions+'</div><div style="font-size:8px;color:var(--text-3)">Acciones</div></div>';
-  h += '<div style="flex:1;text-align:center;padding:6px;background:#ECFDF5;border-radius:8px"><div style="font-size:18px;font-weight:900;color:#10B981">'+pdfCount+'</div><div style="font-size:8px;color:#10B981">PDFs generados</div></div>';
-  h += '<div style="flex:1;text-align:center;padding:6px;background:#FEF3C7;border-radius:8px"><div style="font-size:18px;font-weight:900;color:#E6A200">'+searchCount+'</div><div style="font-size:8px;color:#E6A200">Búsquedas</div></div>';
+  var h = '<div style="display:flex;gap:4px;flex-wrap:wrap">';
+  h += '<div style="flex:1;min-width:60px;text-align:center;padding:5px;background:#EFF6FF;border-radius:6px"><div style="font-size:16px;font-weight:900;color:var(--att-blue)">'+logins+'</div><div style="font-size:7px">Logins</div></div>';
+  h += '<div style="flex:1;min-width:60px;text-align:center;padding:5px;background:#FEF3C7;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#E6A200">'+searches+'</div><div style="font-size:7px">Búsquedas</div></div>';
+  h += '<div style="flex:1;min-width:60px;text-align:center;padding:5px;background:#F5F3FF;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#8B5CF6">'+cots+'</div><div style="font-size:7px">Registros</div></div>';
+  h += '<div style="flex:1;min-width:60px;text-align:center;padding:5px;background:#ECFDF5;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#10B981">'+pdfs+'</div><div style="font-size:7px">PDFs</div></div>';
+  h += '<div style="flex:1;min-width:60px;text-align:center;padding:5px;background:#FEF2F2;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#DC3545">'+noLogin.length+'</div><div style="font-size:7px">No entraron</div></div>';
   h += '</div>';
+  document.getElementById('bitKPIs').innerHTML = h;
+}
+
+function bitacoraFilterUsers() {
+  window._bitSelectedUser = null;
+  bitacoraRenderUserList();
+}
+
+function bitacoraRenderUserList() {
+  var el = document.getElementById('bitContent');
+  var search = (document.getElementById('bitSearch').value || '').toLowerCase().trim();
+  var supMap = window._bitSupMap || {};
   
-  h += '<div style="overflow-y:auto;flex:1">';
+  // If a user is selected, show their detail
+  if (window._bitSelectedUser) {
+    bitacoraRenderUserDetail(window._bitSelectedUser);
+    return;
+  }
   
-  // Per user summary
-  var userList = Object.keys(byUser).map(function(uid) {
-    var u = byUser[uid];
+  var userList = Object.keys(window._bitByUser).map(function(uid) {
+    var u = window._bitByUser[uid];
     var fu = hFilterUsers.find(function(x){return x.id===uid});
     var sup = fu && fu.supervisor_id ? (supMap[fu.supervisor_id]||'') : '';
+    var centro = fu && fu.centros ? fu.centros.nombre : '';
     var accCount = {};
-    u.acciones.forEach(function(a) { accCount[a.accion] = (accCount[a.accion]||0)+1; });
-    return {uid:uid, nombre:u.nombre, rol:u.rol, sup:sup, total:u.acciones.length, accCount:accCount, firstAction:u.acciones[u.acciones.length-1], lastAction:u.acciones[0]};
+    u.logs.forEach(function(a){accCount[a.accion]=(accCount[a.accion]||0)+1});
+    var first = u.logs[u.logs.length-1];
+    var last = u.logs[0];
+    return {uid:uid, nombre:u.nombre, rol:u.rol, sup:sup, centro:centro, total:u.logs.length, accCount:accCount,
+      firstTime: first ? new Date(first.timestamp).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : '',
+      lastTime: last ? new Date(last.timestamp).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : ''
+    };
   });
+  
+  // Filter by search
+  if (search) {
+    userList = userList.filter(function(u) {
+      return u.nombre.toLowerCase().indexOf(search) >= 0 || u.sup.toLowerCase().indexOf(search) >= 0 || u.centro.toLowerCase().indexOf(search) >= 0;
+    });
+  }
+  
   userList.sort(function(a,b){return b.total-a.total});
+  
+  var h = '';
+  
+  if (userList.length === 0 && !search) {
+    h = '<div style="text-align:center;padding:30px;color:var(--text-3)">Sin actividad este día</div>';
+  } else if (userList.length === 0) {
+    h = '<div style="text-align:center;padding:20px;color:var(--text-3)">Sin resultados para "'+search+'"</div>';
+  }
   
   userList.forEach(function(u) {
     var pdfs = u.accCount.pdf_generado || 0;
     var busquedas = u.accCount.buscar_equipo || 0;
-    var logins = u.accCount.login || 0;
-    var cotizaciones = u.accCount.nueva_cotizacion || 0;
-    var firstTime = u.firstAction ? new Date(u.firstAction.timestamp).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : '';
-    var lastTime = u.lastAction ? new Date(u.lastAction.timestamp).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}) : '';
-    
-    var ratio = busquedas > 0 ? Math.round(pdfs/busquedas*100) : 0;
+    var ratio = busquedas > 0 ? Math.round(pdfs/busquedas*100) : (pdfs > 0 ? 100 : 0);
     var ratioColor = ratio >= 50 ? '#10B981' : ratio >= 20 ? '#E6A200' : '#DC3545';
+    var rolColors = {admin:'#009FDB',coordinador:'#0FA958',supervisor:'#E6A200',agente:'#8899AA'};
     
-    h += '<div class="section" style="padding:10px;margin-bottom:4px">';
+    h += '<div onclick="window._bitSelectedUser=\''+u.uid+'\';bitacoraRenderUserList()" style="cursor:pointer;padding:10px;margin-bottom:4px;border-radius:8px;border:1px solid var(--border);transition:background 0.15s" onmouseover="this.style.background=\'var(--surface-2)\'" onmouseout="this.style.background=\'white\'">';
     h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
-    h += '<div><span style="font-size:12px;font-weight:700">'+u.nombre+'</span> <span style="font-size:9px;color:var(--text-3)">'+u.rol+(u.sup?' · '+u.sup:'')+'</span></div>';
-    h += '<span style="font-size:9px;color:var(--text-3)">'+firstTime+' — '+lastTime+'</span>';
-    h += '</div>';
+    h += '<div><span style="font-size:12px;font-weight:700">'+u.nombre+'</span> <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:'+(rolColors[u.rol]||'#999')+';color:white">'+u.rol+'</span></div>';
+    h += '<span style="font-size:9px;color:var(--text-3)">'+u.firstTime+' → '+u.lastTime+'</span></div>';
+    h += '<div style="font-size:9px;color:var(--text-3);margin-bottom:4px">'+(u.sup?u.sup+' · ':'')+u.centro+'</div>';
     h += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
-    if (logins) h += '<span style="font-size:9px;padding:2px 6px;background:#EFF6FF;border-radius:4px">🔑 Login: '+logins+'</span>';
-    h += '<span style="font-size:9px;padding:2px 6px;background:#FEF3C7;border-radius:4px">🔍 Búsquedas: '+busquedas+'</span>';
-    if (cotizaciones) h += '<span style="font-size:9px;padding:2px 6px;background:#F5F3FF;border-radius:4px">📋 Cotizaciones: '+cotizaciones+'</span>';
-    h += '<span style="font-size:9px;padding:2px 6px;background:#ECFDF5;border-radius:4px">📄 PDFs: '+pdfs+'</span>';
-    h += '<span style="font-size:9px;padding:2px 6px;background:'+ratioColor+'22;border-radius:4px;color:'+ratioColor+';font-weight:700">Ratio: '+ratio+'%</span>';
-    h += '<span style="font-size:9px;padding:2px 6px;background:var(--surface-2);border-radius:4px">Total: '+u.total+'</span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#FEF3C7;border-radius:3px">🔍 '+busquedas+'</span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#ECFDF5;border-radius:3px">📄 '+pdfs+'</span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:'+ratioColor+'22;border-radius:3px;color:'+ratioColor+';font-weight:700">Ratio: '+ratio+'%</span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:var(--surface-2);border-radius:3px">'+u.total+' acciones</span>';
     h += '</div></div>';
   });
   
-  // Users who didn't log in today
+  // No login section
   var activeAgents = hFilterUsers.filter(function(u){return u.rol==='agente'});
-  var loggedIds = Object.keys(byUser);
+  var loggedIds = Object.keys(window._bitByUser);
   var noLogin = activeAgents.filter(function(u){return loggedIds.indexOf(u.id)<0});
-  if (noLogin.length > 0) {
-    h += '<div style="margin-top:8px;padding:10px;background:#FEF2F2;border-radius:8px;border:1px solid #FECACA">';
-    h += '<div style="font-size:11px;font-weight:700;color:#DC3545;margin-bottom:4px">🚫 No ingresaron hoy ('+noLogin.length+')</div>';
-    h += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+  if (search) noLogin = noLogin.filter(function(u){return u.nombre.toLowerCase().indexOf(search)>=0});
+  
+  if (noLogin.length > 0 && !search) {
+    h += '<div style="margin-top:8px;padding:8px 10px;background:#FEF2F2;border-radius:8px;border:1px solid #FECACA">';
+    h += '<div style="font-size:10px;font-weight:700;color:#DC3545;margin-bottom:4px">🚫 No ingresaron ('+noLogin.length+')</div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:3px">';
     noLogin.forEach(function(u) {
       var sup = supMap[u.supervisor_id]||'';
-      h += '<span style="font-size:9px;padding:2px 6px;background:white;border:1px solid #FECACA;border-radius:4px">'+u.nombre+(sup?' · '+sup:'')+'</span>';
+      h += '<span style="font-size:8px;padding:2px 5px;background:white;border:1px solid #FECACA;border-radius:3px">'+u.nombre+(sup?' · '+sup:'')+'</span>';
     });
     h += '</div></div>';
   }
   
-  h += '</div></div>';
-  overlay.innerHTML = h;
-  document.body.appendChild(overlay);
-  
-  window._bitacoraData = logs;
+  el.innerHTML = h;
 }
 
-function exportBitacoraExcel() {
-  var logs = window._bitacoraData || [];
+function bitacoraRenderUserDetail(uid) {
+  var el = document.getElementById('bitContent');
+  var userData = window._bitByUser[uid];
+  if (!userData) { el.innerHTML = 'Usuario no encontrado'; return; }
+  
+  var supMap = window._bitSupMap || {};
+  var fu = hFilterUsers.find(function(x){return x.id===uid});
+  var sup = fu && fu.supervisor_id ? (supMap[fu.supervisor_id]||'') : '';
+  var centro = fu && fu.centros ? fu.centros.nombre : '';
+  
+  var logs = userData.logs; // already sorted desc
+  
+  var accionIcons = {
+    login:'🔑', vista:'👁️', buscar_equipo:'🔍', nueva_cotizacion:'📋',
+    pdf_generado:'📄', estatus_change:'🏷️', nota_agregada:'📝', llamada:'📞'
+  };
+  var accionColors = {
+    login:'#0057B8', vista:'#8899AA', buscar_equipo:'#E6A200', nueva_cotizacion:'#8B5CF6',
+    pdf_generado:'#10B981', estatus_change:'#EA580C', nota_agregada:'#009FDB', llamada:'#10B981'
+  };
+  
+  var h = '';
+  // Back button
+  h += '<div onclick="window._bitSelectedUser=null;bitacoraRenderUserList()" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--att-blue);font-weight:700;margin-bottom:8px;padding:4px 8px;background:#EFF6FF;border-radius:6px">← Volver a lista</div>';
+  
+  // User header
+  h += '<div style="padding:10px;background:var(--surface-2);border-radius:10px;margin-bottom:10px">';
+  h += '<div style="font-size:15px;font-weight:900">'+userData.nombre+'</div>';
+  h += '<div style="font-size:10px;color:var(--text-3)">'+userData.rol+(sup?' · Sup: '+sup:'')+' · '+centro+'</div>';
+  
+  // User KPIs
+  var accCount = {};
+  logs.forEach(function(a){accCount[a.accion]=(accCount[a.accion]||0)+1});
+  var pdfs = accCount.pdf_generado||0;
+  var busq = accCount.buscar_equipo||0;
+  var cots = accCount.nueva_cotizacion||0;
+  var vistas = accCount.vista||0;
+  
+  h += '<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">';
+  h += '<span style="font-size:9px;padding:2px 6px;background:white;border-radius:4px">🔍 Búsquedas: <b>'+busq+'</b></span>';
+  h += '<span style="font-size:9px;padding:2px 6px;background:white;border-radius:4px">📋 Registros: <b>'+cots+'</b></span>';
+  h += '<span style="font-size:9px;padding:2px 6px;background:white;border-radius:4px">📄 PDFs: <b>'+pdfs+'</b></span>';
+  h += '<span style="font-size:9px;padding:2px 6px;background:white;border-radius:4px">👁️ Vistas: <b>'+vistas+'</b></span>';
+  h += '<span style="font-size:9px;padding:2px 6px;background:white;border-radius:4px">Total: <b>'+logs.length+'</b></span>';
+  h += '</div></div>';
+  
+  // Timeline
+  h += '<div style="font-size:11px;font-weight:700;margin-bottom:6px">Línea de tiempo</div>';
+  logs.forEach(function(l) {
+    var time = new Date(l.timestamp).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    var icon = accionIcons[l.accion] || '📌';
+    var color = accionColors[l.accion] || '#666';
+    var label = l.accion.replace(/_/g,' ');
+    
+    h += '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:3px;padding:4px 6px;border-radius:4px;border-left:3px solid '+color+'">';
+    h += '<span style="font-size:9px;color:var(--text-3);white-space:nowrap;min-width:55px">'+time+'</span>';
+    h += '<span style="font-size:12px">'+icon+'</span>';
+    h += '<div style="flex:1"><span style="font-size:10px;font-weight:600;color:'+color+'">'+label+'</span>';
+    if (l.detalle) h += ' <span style="font-size:9px;color:var(--text-3)">'+l.detalle+'</span>';
+    h += '</div></div>';
+  });
+  
+  el.innerHTML = h;
+}
+
+function bitacoraExport() {
+  var logs = window._bitAllLogs || [];
   if (logs.length === 0) { alert('Sin datos'); return; }
   var rows = [['Fecha/Hora','Usuario','Rol','Acción','Detalle']];
   logs.forEach(function(l) {
-    rows.push([new Date(l.timestamp).toLocaleString('es-MX'), l.user_nombre, l.user_rol, l.accion, l.detalle]);
+    rows.push([new Date(l.timestamp).toLocaleString('es-MX'), l.user_nombre, l.user_rol, l.accion, l.detalle||'']);
   });
   var ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = [{wch:20},{wch:28},{wch:14},{wch:22},{wch:40}];
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Bitácora');
-  XLSX.writeFile(wb, 'bitacora_'+new Date().toISOString().substring(0,10)+'.xlsx');
+  var fecha = document.getElementById('bitFecha').value || new Date().toISOString().substring(0,10);
+  XLSX.writeFile(wb, 'bitacora_'+fecha+'.xlsx');
 }
 
 // ── INVENTARIO (Stock por Hub) ──
@@ -16674,7 +16804,7 @@ async function trLoadMetrics() {
   if (rol === 'admin' || rol === 'coordinador') {
     var sups = trMetricsUsers.filter(function(u) {
       if (u.rol !== 'supervisor') return false;
-      if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
+      if ((rol === 'coordinador' || rol === 'capacitador') && u.coordinador_id !== currentUser.id) return false;
       return true;
     });
     filtersHtml += '<select class="field" id="trMetFilterSup" onchange="trRenderMetrics()" style="width:auto;font-size:11px;padding:5px 6px"><option value="all">Todos los supervisores</option>';
@@ -16685,7 +16815,7 @@ async function trLoadMetrics() {
     var agents = trMetricsUsers.filter(function(u) {
       if (u.rol !== 'agente') return false;
       if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
-      if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
+      if ((rol === 'coordinador' || rol === 'capacitador') && u.coordinador_id !== currentUser.id) return false;
       return true;
     });
     filtersHtml += '<select class="field" id="trMetFilterAgent" onchange="trRenderMetrics()" style="width:auto;font-size:11px;padding:5px 6px"><option value="all">Todos los agentes</option>';
@@ -16722,7 +16852,7 @@ async function trRenderMetrics() {
         if (u.rol !== 'agente') return false;
         if (supVal !== 'all' && u.supervisor_id !== supVal) return false;
         if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
-        if (rol === 'coordinador' && u.coordinador_id !== currentUser.id) return false;
+        if ((rol === 'coordinador' || rol === 'capacitador') && u.coordinador_id !== currentUser.id) return false;
         return true;
       }).map(function(u) { return u.id; });
     }
