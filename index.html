@@ -5993,7 +5993,14 @@ function populateAgenteFilter() {
     if (u.rol !== 'agente') return false;
     if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
     if (coordVal !== 'all' && u.coordinador_id !== coordVal) return false;
-    if (selectedSups.length > 0 && selectedSups.indexOf(u.supervisor_id) === -1) return false;
+    if (selectedSups.length > 0) {
+      var hasSinSup = selectedSups.indexOf('_sin_sup') >= 0;
+      var realSups = selectedSups.filter(function(s){return s !== '_sin_sup'});
+      var match = false;
+      if (hasSinSup && !u.supervisor_id) match = true;
+      if (realSups.length > 0 && realSups.indexOf(u.supervisor_id) >= 0) match = true;
+      if (!match) return false;
+    }
     if ((rol === 'coordinador' || rol === 'capacitador') && u.coordinador_id !== currentUser.id) return false;
     if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
     return true;
@@ -13015,7 +13022,7 @@ function rachaFilterChanged() {
   renderRachaNegativa();
 }
 
-function renderRachaNegativa() {
+async function renderRachaNegativa() {
   var el = document.getElementById('rachaList');
   if (!el) return;
   var supVals = getMultiSelectValues('rachaFilterSup');
@@ -13036,11 +13043,23 @@ function renderRachaNegativa() {
   
   window._rachaAgents = [];
   
+  // If metasVentas is empty (new month), load previous month
+  var rachaVentas = metasVentas;
+  if (rachaVentas.length === 0 && supabase) {
+    var prevDate = new Date();
+    prevDate.setMonth(prevDate.getMonth() - 1);
+    var prevMes = prevDate.getFullYear() + '-' + String(prevDate.getMonth()+1).padStart(2,'0');
+    try {
+      var pvr = await supabase.from('ventas_global').select('*').eq('mes', prevMes);
+      rachaVentas = pvr.data || [];
+    } catch(e) {}
+  }
+  
   agents.forEach(function(ag) {
-    // Last venta from metasVentas (uploaded Excel) - match by name
+    // Last venta from ventas data - match by name
     var lastVentaDate = null;
     var ventasMes = 0;
-    metasVentas.forEach(function(v) {
+    rachaVentas.forEach(function(v) {
       if (!v.ejecutivo || v.ejecutivo.toUpperCase() !== ag.nombre.toUpperCase()) return;
       ventasMes++;
       var fd = v.fecha ? (typeof v.fecha === 'string' ? v.fecha.substring(0,10) : '') : '';
