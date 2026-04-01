@@ -1151,6 +1151,7 @@ body{padding-bottom:60px}
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="verPropositos()">🔥 Ver Propósitos</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="gestionarAvisos()">📢 Avisos</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openBitacora()">📊 Bitácora</button>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openGestionEquipos()">🔄 Gestionar Equipos</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="showAddUserForm()">+ Nuevo Usuario</button>
@@ -13473,6 +13474,169 @@ function addSoloPlan(planId, cat, tipo) {
   
   renderItems();
   document.getElementById('soloPlanOverlay').remove();
+}
+
+// ── GESTIONAR EQUIPOS (reasignar agentes entre supervisores) ──
+async function openGestionEquipos() {
+  if (!supabase || !currentUser) return;
+  
+  var {data: users} = await supabase.from('usuarios').select('id, nombre, rol, supervisor_id, coordinador_id, centro_id, activo');
+  var {data: centros} = await supabase.from('centros').select('id, nombre');
+  users = users || []; centros = centros || [];
+  
+  var centroMap = {}; centros.forEach(function(c){centroMap[c.id]=c.nombre});
+  var supMap = {}; users.filter(function(u){return u.rol==='supervisor'&&u.activo!==false}).forEach(function(u){supMap[u.id]=u.nombre});
+  var coordMap = {}; users.filter(function(u){return u.rol==='coordinador'&&u.activo!==false}).forEach(function(u){coordMap[u.id]=u.nombre});
+  
+  window._geUsers = users;
+  window._geCentroMap = centroMap;
+  window._geSupMap = supMap;
+  window._geCoordMap = coordMap;
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'gestionEquiposOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:12px';
+  
+  // Build supervisor options
+  var supOpts = '<option value="">Selecciona supervisor...</option>';
+  Object.keys(supMap).sort(function(a,b){return supMap[a].localeCompare(supMap[b])}).forEach(function(id){
+    supOpts += '<option value="'+id+'">'+supMap[id]+'</option>';
+  });
+  // Add coordinadores as option too
+  Object.keys(coordMap).sort(function(a,b){return coordMap[a].localeCompare(coordMap[b])}).forEach(function(id){
+    supOpts += '<option value="'+id+'">'+coordMap[id]+' (Coord)</option>';
+  });
+  
+  var h = '<div style="background:white;border-radius:16px;padding:16px;max-width:650px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:95vh;display:flex;flex-direction:column">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-shrink:0">';
+  h += '<div><div style="font-size:16px;font-weight:900">🔄 Gestionar Equipos</div><div style="font-size:10px;color:var(--text-3)">Reasigna agentes entre supervisores</div></div>';
+  h += '<button onclick="document.getElementById(\'gestionEquiposOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div>';
+  
+  // View by supervisor
+  h += '<div style="margin-bottom:10px;flex-shrink:0"><select class="field" id="geSupSelect" onchange="renderGestionEquipo()" style="font-size:12px;padding:6px 8px;width:100%">'+supOpts+'</select></div>';
+  h += '<div id="geContent" style="overflow-y:auto;flex:1"></div>';
+  h += '</div>';
+  
+  overlay.innerHTML = h;
+  document.body.appendChild(overlay);
+}
+
+function renderGestionEquipo() {
+  var el = document.getElementById('geContent');
+  var supId = document.getElementById('geSupSelect').value;
+  if (!supId) { el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3)">Selecciona un supervisor para ver su equipo</div>'; return; }
+  
+  var users = window._geUsers;
+  var centroMap = window._geCentroMap;
+  var supMap = window._geSupMap;
+  var coordMap = window._geCoordMap;
+  
+  var supNombre = supMap[supId] || coordMap[supId] || 'Desconocido';
+  var agentes = users.filter(function(u){return u.supervisor_id===supId && u.rol==='agente'});
+  var activos = agentes.filter(function(u){return u.activo!==false});
+  var inactivos = agentes.filter(function(u){return u.activo===false});
+  
+  // Build target supervisor options (exclude current)
+  var targetOpts = '<option value="">Mover a...</option>';
+  Object.keys(supMap).sort(function(a,b){return supMap[a].localeCompare(supMap[b])}).forEach(function(id){
+    if (id !== supId) targetOpts += '<option value="'+id+'">'+supMap[id]+'</option>';
+  });
+  Object.keys(coordMap).sort(function(a,b){return coordMap[a].localeCompare(coordMap[b])}).forEach(function(id){
+    if (id !== supId) targetOpts += '<option value="'+id+'">'+coordMap[id]+' (Coord)</option>';
+  });
+  
+  var h = '';
+  h += '<div style="padding:10px;background:var(--surface-2);border-radius:10px;margin-bottom:10px">';
+  h += '<div style="font-size:14px;font-weight:800">👤 '+supNombre+'</div>';
+  h += '<div style="font-size:10px;color:var(--text-3)">'+activos.length+' agentes activos'+(inactivos.length?' · '+inactivos.length+' inactivos':'')+'</div>';
+  h += '</div>';
+  
+  // Bulk move
+  h += '<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center;flex-wrap:wrap">';
+  h += '<label style="font-size:10px;font-weight:700">Mover seleccionados a:</label>';
+  h += '<select class="field" id="geTargetSup" style="font-size:11px;padding:5px 8px;width:auto;min-width:180px">'+targetOpts+'</select>';
+  h += '<button onclick="geMoverSeleccionados()" class="btn btn-primary" style="font-size:10px;padding:5px 12px;background:#8B5CF6">🔄 Mover</button>';
+  h += '<button onclick="geSelectAll()" style="font-size:9px;padding:4px 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;cursor:pointer">☑️ Todos</button>';
+  h += '</div>';
+  
+  // Agent list with checkboxes
+  if (activos.length === 0) {
+    h += '<div style="text-align:center;padding:20px;color:var(--text-3)">Sin agentes activos</div>';
+  }
+  
+  activos.sort(function(a,b){return a.nombre.localeCompare(b.nombre)});
+  activos.forEach(function(u) {
+    var centro = centroMap[u.centro_id] || '';
+    h += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:3px;border-radius:6px;border:1px solid var(--border)">';
+    h += '<input type="checkbox" class="geAgentCheck" value="'+u.id+'" style="width:16px;height:16px">';
+    h += '<div style="flex:1"><div style="font-size:11px;font-weight:700">'+u.nombre+'</div><div style="font-size:9px;color:var(--text-3)">'+centro+'</div></div>';
+    h += '<select class="field geIndividualTarget" data-uid="'+u.id+'" style="font-size:9px;padding:3px 5px;width:auto;min-width:130px">'+targetOpts+'</select>';
+    h += '<button onclick="geMoverIndividual(\''+u.id+'\')" style="font-size:8px;padding:3px 8px;background:#8B5CF6;color:white;border:none;border-radius:4px;cursor:pointer">Mover</button>';
+    h += '</div>';
+  });
+  
+  if (inactivos.length > 0) {
+    h += '<div style="margin-top:10px;font-size:10px;font-weight:700;color:#DC3545;margin-bottom:4px">Inactivos ('+inactivos.length+')</div>';
+    inactivos.forEach(function(u) {
+      h += '<div style="padding:4px 10px;font-size:10px;color:var(--text-3);opacity:0.5">'+u.nombre+'</div>';
+    });
+  }
+  
+  el.innerHTML = h;
+}
+
+function geSelectAll() {
+  var checks = document.querySelectorAll('.geAgentCheck');
+  var allChecked = true;
+  checks.forEach(function(c){if(!c.checked) allChecked=false});
+  checks.forEach(function(c){c.checked=!allChecked});
+}
+
+async function geMoverSeleccionados() {
+  var targetId = document.getElementById('geTargetSup').value;
+  if (!targetId) { alert('Selecciona a dónde mover'); return; }
+  
+  var checks = document.querySelectorAll('.geAgentCheck:checked');
+  if (checks.length === 0) { alert('Selecciona al menos un agente'); return; }
+  
+  var targetName = window._geSupMap[targetId] || window._geCoordMap[targetId] || '';
+  var ids = [];
+  checks.forEach(function(c){ids.push(c.value)});
+  
+  if (!confirm('¿Mover '+ids.length+' agente(s) a '+targetName+'?')) return;
+  
+  var ok = 0;
+  for (var i=0; i<ids.length; i++) {
+    var {error} = await supabase.from('usuarios').update({supervisor_id: targetId}).eq('id', ids[i]);
+    if (!error) {
+      ok++;
+      var u = window._geUsers.find(function(x){return x.id===ids[i]});
+      if (u) u.supervisor_id = targetId;
+    }
+  }
+  
+  alert('✅ '+ok+' agente(s) movidos a '+targetName);
+  renderGestionEquipo();
+}
+
+async function geMoverIndividual(agentId) {
+  var sel = document.querySelector('.geIndividualTarget[data-uid="'+agentId+'"]');
+  if (!sel) return;
+  var targetId = sel.value;
+  if (!targetId) { alert('Selecciona a dónde mover'); return; }
+  
+  var targetName = window._geSupMap[targetId] || window._geCoordMap[targetId] || '';
+  var agent = window._geUsers.find(function(u){return u.id===agentId});
+  if (!agent) return;
+  
+  if (!confirm('¿Mover a '+agent.nombre+' con '+targetName+'?')) return;
+  
+  var {error} = await supabase.from('usuarios').update({supervisor_id: targetId}).eq('id', agentId);
+  if (error) { alert('Error: '+error.message); return; }
+  
+  agent.supervisor_id = targetId;
+  alert('✅ '+agent.nombre+' movido a '+targetName);
+  renderGestionEquipo();
 }
 
 // ── BITÁCORA DE ACTIVIDAD ──
