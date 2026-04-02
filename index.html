@@ -11141,6 +11141,23 @@ async function metasLoadData() {
     metasVentas = vr.data || [];
     var mr = await supabase.from('metas').select('*').eq('mes', mes);
     metasMetas = mr.data || [];
+    
+    // Override supervisor from Excel with real supervisor from DB
+    if (metasVentas.length > 0 && hFilterUsers.length > 0) {
+      var supNames = {};
+      hFilterUsers.forEach(function(u){if(u.rol==='supervisor')supNames[u.id]=u.nombre});
+      metasVentas.forEach(function(v) {
+        if (!v.ejecutivo) return;
+        var agent = hFilterUsers.find(function(u){return u.rol==='agente'&&u.nombre.toUpperCase()===v.ejecutivo.toUpperCase()});
+        if (agent) {
+          if (agent.supervisor_id && supNames[agent.supervisor_id]) {
+            v.supervisor = supNames[agent.supervisor_id];
+          } else if (!agent.supervisor_id) {
+            v.supervisor = '';
+          }
+        }
+      });
+    }
   } catch(e) { metasVentas = []; metasMetas = []; }
 }
 
