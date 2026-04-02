@@ -12332,8 +12332,20 @@ async function generatePlanIA() {
   var target = document.getElementById('planIATarget').value;
   var mes = document.getElementById('metasFilterMes').value;
   var rol = currentUser ? currentUser.rol : 'agente';
+  
+  // Pre-load previous month data for comparison
+  var prevDate = new Date(mes+'-01T12:00:00');
+  prevDate.setMonth(prevDate.getMonth()-1);
+  var prevMes = prevDate.getFullYear()+'-'+String(prevDate.getMonth()+1).padStart(2,'0');
+  try {
+    var pvr = await supabase.from('ventas_global').select('*').eq('mes', prevMes);
+    window._planIAPrevVentas = pvr.data || [];
+    var pmr = await supabase.from('metas').select('*').eq('mes', prevMes);
+    window._planIAPrevMetas = pmr.data || [];
+  } catch(e) { window._planIAPrevVentas = []; window._planIAPrevMetas = []; }
+  
   var dataContext = buildPlanIAContext(target, mes, rol);
-  planIASystemPrompt = 'Eres un coach de ventas experto para ExpertCell, distribuidor autorizado AT&T México. Generas planes de trabajo accionables.\n\nREGLAS:\n1. Sé específico y accionable.\n2. Basa todo en los datos.\n3. Identifica patrones y agentes que necesitan coaching.\n4. Incluye: diagnóstico, prioridades, acciones, metas.\n5. Usa **negritas** para destacar.\n6. Máximo 500 palabras. Directo.\n7. Español siempre.\n\n' + dataContext;
+  planIASystemPrompt = 'Eres un coach de ventas experto para ExpertCell, distribuidor autorizado AT&T México. Generas planes de trabajo accionables basados en datos reales de ventas.\n\nREGLAS:\n1. Sé específico y accionable — nombra agentes y acciones concretas.\n2. Basa TODO en los datos de ventas reales del mes anterior y la meta actual.\n3. Identifica: quién cumplió y quién no el mes anterior, tendencias semanales, días fuertes/débiles.\n4. Para cada agente con bajo rendimiento, recomienda acciones usando las herramientas del CRM (Cotizador, Seguimientos, Mi Día, Sales Academy, WhatsApp).\n5. Para agentes que cumplieron, recomienda mantener ritmo y subir nivel.\n6. Incluye: diagnóstico breve, prioridades top 3, acciones por agente, meta semanal sugerida.\n7. Usa **negritas** para destacar nombres y números clave.\n8. Máximo 600 palabras. Directo y sin relleno.\n9. Español siempre.\n\n' + dataContext;
   planIAMsgs = [{role:'user', content:'Genera el plan de trabajo.'}];
   try {
     var response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -12438,7 +12450,7 @@ function formatPlanIAContent(text) {
 }
 
 function buildPlanIAContext(target, mes, rol) {
-  var ctx = 'DATOS DEL MES: ' + mes + '\n';
+  var ctx = 'DATOS DEL MES ACTUAL: ' + mes + '\n';
   var now = new Date();
   var mesDate = new Date(mes + '-01T12:00:00');
   var isCurrentMonth = now.getFullYear() === mesDate.getFullYear() && now.getMonth() === mesDate.getMonth();
@@ -12447,6 +12459,13 @@ function buildPlanIAContext(target, mes, rol) {
   var dayOfMonth = isCurrentMonth ? now.getDate() : daysInMonth;
   var workDaysPassed = isCurrentMonth ? countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, dayOfMonth) : workDaysTotal;
   ctx += 'Día hábil ' + workDaysPassed + ' de ' + workDaysTotal + ' (' + Math.round(workDaysPassed/workDaysTotal*100) + '% del mes)\n\n';
+  
+  // Load previous month ventas for comparison
+  var prevMesDate = new Date(mesDate);
+  prevMesDate.setMonth(prevMesDate.getMonth()-1);
+  var prevMes = prevMesDate.getFullYear()+'-'+String(prevMesDate.getMonth()+1).padStart(2,'0');
+  var prevVentas = window._planIAPrevVentas || [];
+  
   var targetAgents = [], targetSup = '';
   if (target === 'equipo') {
     if (rol === 'agente') { targetAgents = [currentUser ? currentUser.nombre : '']; }
@@ -12464,25 +12483,66 @@ function buildPlanIAContext(target, mes, rol) {
     ctx += 'SUPERVISOR: ' + targetSup + '\n\n';
   } else if (target.indexOf('agent:') === 0) { targetAgents = [target.substring(6)]; }
   if (targetAgents.length > 20) targetAgents = targetAgents.slice(0, 20);
-  ctx += 'AGENTES:\n';
+  
+  ctx += 'AGENTES (meta actual + ventas reales mes anterior + ventas mes actual):\n';
   targetAgents.forEach(function(agName) {
     var meta = 0;
     metasMetas.forEach(function(m) { if (m.tipo === 'agente' && m.nombre === agName) meta = m.meta || 0; });
-    var ventas = metasVentas.filter(function(v){return v.ejecutivo && v.ejecutivo.toUpperCase() === agName.toUpperCase()});
-    var totalVentas = ventas.length;
-    var pctMeta = meta > 0 ? Math.round(totalVentas/meta*100) : 0;
+    
+    // Current month ventas
+    var ventasActual = metasVentas.filter(function(v){return v.ejecutivo && v.ejecutivo.toUpperCase() === agName.toUpperCase()});
+    var totalActual = ventasActual.length;
+    
+    // Previous month ventas (REAL sales data)
+    var ventasPrev = prevVentas.filter(function(v){return v.ejecutivo && v.ejecutivo.toUpperCase() === agName.toUpperCase()});
+    var totalPrev = ventasPrev.length;
+    var metaPrev = 0;
+    // Try to get prev month meta
+    var prevMetaArr = window._planIAPrevMetas || [];
+    prevMetaArr.forEach(function(m){if(m.tipo==='agente'&&m.nombre===agName) metaPrev=m.meta||0});
+    var prevPct = metaPrev > 0 ? Math.round(totalPrev/metaPrev*100) : 0;
+    var cumplioMesAnterior = metaPrev > 0 && totalPrev >= metaPrev;
+    
+    var pctMeta = meta > 0 ? Math.round(totalActual/meta*100) : 0;
+    var proyeccion = workDaysPassed > 0 ? Math.round(totalActual/workDaysPassed*workDaysTotal) : 0;
+    
+    // Weekly trend previous month
     var byWeek = {};
-    ventas.forEach(function(v) { if (!v.fecha) return; var fd = new Date(typeof v.fecha==='string'?v.fecha.substring(0,10)+'T12:00:00':v.fecha); byWeek[Math.ceil(fd.getDate()/7)] = (byWeek[Math.ceil(fd.getDate()/7)]||0) + 1; });
+    ventasPrev.forEach(function(v) { if (!v.fecha) return; var fd = new Date(typeof v.fecha==='string'?v.fecha.substring(0,10)+'T12:00:00':v.fecha); byWeek[Math.ceil(fd.getDate()/7)] = (byWeek[Math.ceil(fd.getDate()/7)]||0) + 1; });
     var weekTrend = []; for (var w=1;w<=5;w++) { if (byWeek[w]!==undefined) weekTrend.push('S'+w+':'+byWeek[w]); }
+    
+    // Best/worst day previous month
     var byDay = [0,0,0,0,0,0,0];
-    ventas.forEach(function(v) { if (!v.fecha) return; var fd = new Date(typeof v.fecha==='string'?v.fecha.substring(0,10)+'T12:00:00':v.fecha); byDay[fd.getDay()]++; });
+    ventasPrev.forEach(function(v) { if (!v.fecha) return; var fd = new Date(typeof v.fecha==='string'?v.fecha.substring(0,10)+'T12:00:00':v.fecha); byDay[fd.getDay()]++; });
     var dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
     var bestDay='',worstDay='',bestV=0,worstV=Infinity;
     for (var di=1;di<=6;di++) { if(byDay[di]>bestV){bestV=byDay[di];bestDay=dayNames[di]} if(byDay[di]<worstV&&di<6){worstV=byDay[di];worstDay=dayNames[di]} }
-    var proyeccion = workDaysPassed > 0 ? Math.round(totalVentas/workDaysPassed*workDaysTotal) : 0;
-    ctx += '\n'+agName+':\n  Meta:'+meta+' | Ventas:'+totalVentas+' ('+pctMeta+'%) | Proy:'+proyeccion+'\n  Semanal: '+(weekTrend.length?weekTrend.join(','):'Sin datos')+'\n  Mejor:'+bestDay+'('+bestV+') Peor:'+worstDay+'('+worstV+') Prom:'+(workDaysPassed>0?(totalVentas/workDaysPassed).toFixed(1):'0')+'/día\n';
+    
+    // Cotizaciones info
+    var agCots = (state.cotizaciones||[]).filter(function(c){return c.ejecutivo && c.ejecutivo.nombre && c.ejecutivo.nombre.toUpperCase()===agName.toUpperCase()});
+    var cotsSeg = agCots.filter(function(c){return c.estatus==='seguimiento'}).length;
+    var cotsEnv = agCots.filter(function(c){return c.estatus==='enviada'}).length;
+    var cotsVenta = agCots.filter(function(c){return c.estatus==='venta'}).length;
+    var cotsPerdida = agCots.filter(function(c){return c.estatus==='perdida'}).length;
+    var tasaConversion = (cotsVenta+cotsSeg+cotsEnv+cotsPerdida)>0 ? Math.round(cotsVenta/(cotsVenta+cotsSeg+cotsEnv+cotsPerdida)*100) : 0;
+    
+    ctx += '\n'+agName+':\n';
+    ctx += '  META ABRIL: '+meta+' | Ventas abril: '+totalActual+' ('+pctMeta+'%) | Proy: '+proyeccion+'\n';
+    ctx += '  MES ANTERIOR ('+prevMes+'): '+totalPrev+' ventas reales'+(metaPrev>0?' de meta '+metaPrev+' ('+prevPct+'%)':'')+(cumplioMesAnterior?' ✅ CUMPLIÓ':metaPrev>0?' ❌ NO CUMPLIÓ':'')+'\n';
+    ctx += '  Tendencia semanal (mes ant): '+(weekTrend.length?weekTrend.join(','):'Sin datos')+'\n';
+    ctx += '  Mejor día: '+bestDay+'('+bestV+') Peor: '+worstDay+'('+worstV+') Prom: '+(totalPrev>0?(totalPrev/20).toFixed(1):'0')+'/día\n';
+    ctx += '  Cotizaciones: Seg:'+cotsSeg+' Env:'+cotsEnv+' Venta:'+cotsVenta+' Perdida:'+cotsPerdida+' | Tasa conversión: '+tasaConversion+'%\n';
   });
-  try { if(state&&state.cotizaciones&&state.cotizaciones.length){var cs={};state.cotizaciones.forEach(function(c){var s=c.estatus||'p';cs[s]=(cs[s]||0)+1});ctx+='\nCOTIZACIONES: '+Object.keys(cs).map(function(s){return s+':'+cs[s]}).join(', ')+'\n';} } catch(e){}
+  
+  ctx += '\nHERRAMIENTAS DISPONIBLES EN EL CRM:\n';
+  ctx += '1. COTIZADOR: Genera PDFs profesionales con precios y planes AT&T. Cada cotización queda registrada.\n';
+  ctx += '2. SEGUIMIENTOS: Cada cotización tiene estatus (enviada→seguimiento→venta/perdida). Los agentes deben dar seguimiento a cotizaciones abiertas.\n';
+  ctx += '3. MI DÍA (Agenda): Los agentes agendan contactos con fecha/hora. Aparecen urgentes y pendientes.\n';
+  ctx += '4. SALES ACADEMY: Entrenamiento virtual con módulos de objeciones, técnicas de cierre, speech de portabilidad.\n';
+  ctx += '5. GENERADOR WHATSAPP: Templates personalizados para mensajes de seguimiento, portabilidad, renovación.\n';
+  ctx += '6. PROPÓSITO DIARIO: Cada agente escribe su propósito de ventas al inicio del día.\n';
+  ctx += '\nEn tu plan, recomienda acciones específicas usando estas herramientas. Ejemplo: "Carlos tiene 15 cotizaciones en seguimiento sin gestionar → debe usar Mi Día para agendar llamadas" o "Ana no cumplió meta el mes anterior → entrenar objeciones en Sales Academy".\n';
+  
   return ctx;
 }
 // ── AVISOS / ANUNCIOS ──
