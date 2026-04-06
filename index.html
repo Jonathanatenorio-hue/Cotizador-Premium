@@ -15698,11 +15698,13 @@ async function trIncUsage(type) {
 }
 function trCanUse() {
   if (state.agente && state.agente.rol === 'admin') return true;
+  if (currentUser && currentUser.modo_experto === true) return true;
   if (TR_DAILY_LIMIT === 0) return true;
   return TR_USAGE_TODAY < TR_DAILY_LIMIT;
 }
 function trRemaining() {
   if (state.agente && state.agente.rol === 'admin') return '∞';
+  if (currentUser && currentUser.modo_experto === true) return '∞';
   if (TR_DAILY_LIMIT === 0) return '∞';
   return Math.max(0, TR_DAILY_LIMIT - TR_USAGE_TODAY);
 }
@@ -17112,8 +17114,8 @@ function trStartSessionTimer() {
     if (elapsedMin >= TR_SESSION_LIMIT) {
       if (timerBar) { timerBar.style.background = '#FEE2E2'; timerBar.style.borderColor = '#EF4444'; }
       if (el) el.style.color = '#DC3545';
-      // Block ONLY for agente role
-      if (state.agente && state.agente.rol === 'agente') {
+      // Block ONLY for agente role (not modo experto)
+      if (state.agente && state.agente.rol === 'agente' && !(currentUser && currentUser.modo_experto === true)) {
         trBlockSession();
       }
     }
