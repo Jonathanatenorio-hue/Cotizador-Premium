@@ -3867,8 +3867,9 @@ function searchDevices() {
 
   if (term.length < 2) { container.innerHTML = ''; return; }
   
-  // Validate client data before showing equipment
-  if (!state._cotClienteSaved) {
+  // Validate client data before showing equipment (skip for modo experto)
+  var isModoExperto = currentUser && currentUser.modo_experto === true;
+  if (!state._cotClienteSaved && !isModoExperto) {
     var cNombre = document.getElementById('cliNombre').value.trim();
     var cTelefono = document.getElementById('cliTelefono').value.trim();
     var cEmail = document.getElementById('cliEmail').value.trim();
@@ -8983,10 +8984,12 @@ function renderAdminUsers() {
           html += '<button class="btn btn-primary" style="font-size:10px;padding:3px 8px" onclick="reactivarUsuario(\''+u.id+'\')">Reactivar</button>';
         }
       }
-      // Forzar PDF toggle + Eliminar - ONLY admin
+      // Forzar PDF toggle + Modo Experto + Eliminar - ONLY admin
       if (currentUser.rol === 'admin') {
         var fpActive = u.forzar_pdf === true;
+        var meActive = u.modo_experto === true;
         html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;color:'+(fpActive?'#DC3545':'#8B5CF6')+';border-color:'+(fpActive?'#DC3545':'#8B5CF6')+'" onclick="toggleForzarPDF(\''+u.id+'\','+(!fpActive)+')">'+(fpActive?'🔓 PDF libre':'🔒 Forzar PDF')+'</button>';
+        html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;color:'+(meActive?'#10B981':'#8899AA')+';border-color:'+(meActive?'#10B981':'#8899AA')+'" onclick="toggleModoExperto(\''+u.id+'\','+(!meActive)+')">'+(meActive?'⭐ Experto ON':'⭐ Experto')+'</button>';
         html += '<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;color:#DC3545;border-color:#DC3545" onclick="eliminarUsuario(\''+u.id+'\',\''+u.nombre.replace(/'/g,"\\'")+'\')">🗑️</button>';
       }
     }
@@ -10148,6 +10151,17 @@ async function toggleForzarPDF(userId, enable) {
     if (u) u.forzar_pdf = enable;
     renderAdminUsers();
     alert(enable ? '🔒 Modo Forzar PDF activado' : '🔓 Modo Forzar PDF desactivado');
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function toggleModoExperto(userId, enable) {
+  if (!supabase || !currentUser || currentUser.rol !== 'admin') return;
+  try {
+    await supabase.from('usuarios').update({modo_experto: enable}).eq('id', userId);
+    var u = adminUsers.find(function(x){return x.id===userId});
+    if (u) u.modo_experto = enable;
+    renderAdminUsers();
+    alert(enable ? '⭐ Modo Experto activado — puede buscar equipos sin datos del cliente' : '⭐ Modo Experto desactivado');
   } catch(e) { alert('Error: ' + e.message); }
 }
 
@@ -13139,18 +13153,16 @@ async function renderRachaNegativa() {
   
   window._rachaAgents = [];
   
-  // If metasVentas is empty (new month), load previous month
-  var rachaVentas = metasVentas;
+  // Always load previous month ventas for comparison and last venta date
+  var rachaVentasPrev = [];
   var rachaMetas = metasMetas;
-  if (rachaVentas.length === 0 && supabase) {
-    var prevDate = new Date();
-    prevDate.setMonth(prevDate.getMonth() - 1);
-    var prevMes = prevDate.getFullYear() + '-' + String(prevDate.getMonth()+1).padStart(2,'0');
+  var prevDate = new Date();
+  prevDate.setMonth(prevDate.getMonth() - 1);
+  var prevMes = prevDate.getFullYear() + '-' + String(prevDate.getMonth()+1).padStart(2,'0');
+  if (supabase) {
     try {
       var pvr = await supabase.from('ventas_global').select('*').eq('mes', prevMes);
-      rachaVentas = pvr.data || [];
-      var pmr = await supabase.from('metas').select('*').eq('mes', prevMes);
-      rachaMetas = pmr.data || [];
+      rachaVentasPrev = pvr.data || [];
     } catch(e) {}
   }
   
@@ -13161,10 +13173,10 @@ async function renderRachaNegativa() {
   }
   
   agents.forEach(function(ag) {
-    // Previous month ventas (from rachaVentas)
+    // Previous month ventas
     var lastVentaDate = null;
     var ventasMesAnterior = 0;
-    rachaVentas.forEach(function(v) {
+    rachaVentasPrev.forEach(function(v) {
       if (!v.ejecutivo || v.ejecutivo.toUpperCase() !== ag.nombre.toUpperCase()) return;
       ventasMesAnterior++;
       var fd = v.fecha ? (typeof v.fecha === 'string' ? v.fecha.substring(0,10) : '') : '';
