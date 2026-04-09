@@ -1152,6 +1152,8 @@ body{padding-bottom:60px}
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="gestionarAvisos()">📢 Avisos</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openBitacora()">📊 Bitácora</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openGestionEquipos()">🔄 Gestionar Equipos</button>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openInformeExpertos()">⭐ Informe Expertos</button>
+        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px;background:linear-gradient(135deg,#F5F3FF,#E9D5FF);border-color:#8B5CF6;color:#6D28D9;font-weight:700" onclick="openCentroExpertos()">⭐ Centro Expertos</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="showAddUserForm()">+ Nuevo Usuario</button>
@@ -13666,6 +13668,444 @@ function addSoloPlan(planId, cat, tipo) {
   
   renderItems();
   document.getElementById('soloPlanOverlay').remove();
+}
+
+// ── CENTRO EXPERTOS (Dashboard completo del grupo élite) ──
+async function openCentroExpertos() {
+  if (!supabase || !currentUser) return;
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'centroExpertosOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:12px';
+  
+  overlay.innerHTML = '<div style="background:white;border-radius:16px;padding:16px;max-width:700px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:95vh;display:flex;flex-direction:column">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-shrink:0">' +
+    '<div><div style="font-size:16px;font-weight:900;background:linear-gradient(135deg,#8B5CF6,#6D28D9);-webkit-background-clip:text;-webkit-text-fill-color:transparent">⭐ Centro Expertos</div><div style="font-size:10px;color:var(--text-3)">Dashboard del grupo élite</div></div>' +
+    '<button onclick="document.getElementById(\'centroExpertosOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div>' +
+    '<div style="display:flex;gap:4px;margin-bottom:10px;flex-shrink:0;overflow-x:auto">' +
+    '<button id="ceTabResumen" onclick="centroExpertosTab(\'resumen\')" class="btn btn-primary" style="font-size:10px;padding:5px 10px;background:#8B5CF6;white-space:nowrap">📊 Resumen</button>' +
+    '<button id="ceTabMetas" onclick="centroExpertosTab(\'metas\')" class="btn btn-secondary" style="font-size:10px;padding:5px 10px;white-space:nowrap">🎯 Metas</button>' +
+    '<button id="ceTabCots" onclick="centroExpertosTab(\'cots\')" class="btn btn-secondary" style="font-size:10px;padding:5px 10px;white-space:nowrap">📋 Cotizaciones</button>' +
+    '<button id="ceTabSinVenta" onclick="centroExpertosTab(\'sinventa\')" class="btn btn-secondary" style="font-size:10px;padding:5px 10px;white-space:nowrap">🚨 Sin Venta</button>' +
+    '<button id="ceTabIA" onclick="centroExpertosTab(\'ia\')" class="btn btn-secondary" style="font-size:10px;padding:5px 10px;white-space:nowrap">🤖 Uso IA</button>' +
+    '</div>' +
+    '<div id="ceContent" style="overflow-y:auto;flex:1"></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  
+  // Load experts and their data
+  var {data: expertos} = await supabase.from('usuarios').select('*, centros(nombre)').eq('modo_experto', true).eq('activo', true);
+  window._ceExpertos = expertos || [];
+  window._ceCurrentTab = 'resumen';
+  
+  centroExpertosTab('resumen');
+}
+
+function centroExpertosTab(tab) {
+  window._ceCurrentTab = tab;
+  ['resumen','metas','cots','sinventa','ia'].forEach(function(t) {
+    var btn = document.getElementById('ceTab'+t.charAt(0).toUpperCase()+t.slice(1));
+    if (btn) {
+      btn.className = (t===tab) ? 'btn btn-primary' : 'btn btn-secondary';
+      btn.style.background = (t===tab) ? '#8B5CF6' : '';
+    }
+  });
+  if (tab==='resumen') renderCeResumen();
+  else if (tab==='metas') renderCeMetas();
+  else if (tab==='cots') renderCeCots();
+  else if (tab==='sinventa') renderCeSinVenta();
+  else if (tab==='ia') renderCeIA();
+}
+
+function renderCeResumen() {
+  var el = document.getElementById('ceContent');
+  var expertos = window._ceExpertos || [];
+  if (expertos.length === 0) { el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3)">No hay agentes con modo experto activado</div>'; return; }
+  
+  var expertoIds = expertos.map(function(e){return e.id});
+  var expertoNames = expertos.map(function(e){return e.nombre.toUpperCase()});
+  
+  // Global metrics
+  var totalMeta = 0, totalVentas = 0, totalCots = 0, totalPDFs = 0, totalSeg = 0;
+  
+  expertos.forEach(function(e) {
+    var meta = metasGetMeta('agente', e.nombre);
+    if (!meta) meta = metasGetMeta('agente', e.nombre.toUpperCase());
+    totalMeta += meta;
+  });
+  
+  metasVentas.forEach(function(v) {
+    if (v.ejecutivo && expertoNames.indexOf(v.ejecutivo.toUpperCase()) >= 0) totalVentas++;
+  });
+  
+  (state.cotizaciones||[]).forEach(function(c) {
+    if (expertoIds.indexOf(c.agente_id) >= 0) {
+      totalCots++;
+      if (c.pdf_generado) totalPDFs++;
+      if (c.estatus === 'seguimiento') totalSeg++;
+    }
+  });
+  
+  var pct = totalMeta > 0 ? Math.round(totalVentas/totalMeta*100) : 0;
+  var pctColor = pct >= 100 ? '#10B981' : pct >= 70 ? '#E6A200' : '#DC3545';
+  var ratioPDF = totalCots > 0 ? Math.round(totalPDFs/totalCots*100) : 0;
+  
+  var h = '';
+  h += '<div style="padding:12px;background:linear-gradient(135deg,#F5F3FF,#E9D5FF);border-radius:12px;margin-bottom:10px">';
+  h += '<div style="font-size:11px;color:#6D28D9;font-weight:700;margin-bottom:6px">👥 '+expertos.length+' agentes expertos</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
+  h += '<div style="background:white;padding:8px;border-radius:8px"><div style="font-size:9px;color:var(--text-3)">Meta del grupo</div><div style="font-size:18px;font-weight:900;color:#8B5CF6">'+totalMeta+'</div></div>';
+  h += '<div style="background:white;padding:8px;border-radius:8px"><div style="font-size:9px;color:var(--text-3)">Ventas reales</div><div style="font-size:18px;font-weight:900;color:'+pctColor+'">'+totalVentas+' <span style="font-size:10px">('+pct+'%)</span></div></div>';
+  h += '<div style="background:white;padding:8px;border-radius:8px"><div style="font-size:9px;color:var(--text-3)">Cotizaciones</div><div style="font-size:18px;font-weight:900;color:#0057B8">'+totalCots+'</div></div>';
+  h += '<div style="background:white;padding:8px;border-radius:8px"><div style="font-size:9px;color:var(--text-3)">Seguimientos pendientes</div><div style="font-size:18px;font-weight:900;color:#E6A200">'+totalSeg+'</div></div>';
+  h += '</div></div>';
+  
+  // Per agent summary cards
+  h += '<div style="font-size:11px;font-weight:700;margin-bottom:6px">Agentes</div>';
+  expertos.forEach(function(e) {
+    var meta = metasGetMeta('agente', e.nombre) || metasGetMeta('agente', e.nombre.toUpperCase());
+    var ventas = metasVentas.filter(function(v){return v.ejecutivo && v.ejecutivo.toUpperCase()===e.nombre.toUpperCase()}).length;
+    var agCots = (state.cotizaciones||[]).filter(function(c){return c.agente_id===e.id});
+    var cotsSeg = agCots.filter(function(c){return c.estatus==='seguimiento'}).length;
+    var cotsVenta = agCots.filter(function(c){return c.estatus==='venta'}).length;
+    var aPct = meta > 0 ? Math.round(ventas/meta*100) : 0;
+    var aColor = aPct >= 100 ? '#10B981' : aPct >= 70 ? '#E6A200' : '#DC3545';
+    
+    h += '<div style="padding:10px;margin-bottom:4px;border-radius:8px;border:1px solid var(--border);border-left:4px solid '+aColor+'">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+    h += '<span style="font-size:12px;font-weight:700">'+e.nombre+'</span>';
+    h += '<span style="font-size:11px;font-weight:800;color:'+aColor+'">'+ventas+'/'+meta+' ('+aPct+'%)</span></div>';
+    h += '<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:4px"><div style="height:100%;width:'+Math.min(aPct,100)+'%;background:'+aColor+'"></div></div>';
+    h += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
+    h += '<span style="font-size:8px;padding:2px 5px;background:var(--surface-2);border-radius:3px">📋 Cots: <b>'+agCots.length+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#FEF3C7;border-radius:3px">🟡 Seg: <b>'+cotsSeg+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#ECFDF5;border-radius:3px">✅ Ventas: <b>'+cotsVenta+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:var(--surface-2);border-radius:3px">'+(e.centros?e.centros.nombre:'')+'</span>';
+    h += '</div></div>';
+  });
+  
+  el.innerHTML = h;
+}
+
+function renderCeMetas() {
+  var el = document.getElementById('ceContent');
+  var expertos = window._ceExpertos || [];
+  var now = new Date();
+  var mes = document.getElementById('metasFilterMes') ? document.getElementById('metasFilterMes').value : (now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'));
+  var mesDate = new Date(mes+'-01T12:00:00');
+  var daysInMonth = new Date(mesDate.getFullYear(), mesDate.getMonth()+1, 0).getDate();
+  var workDaysTotal = countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, daysInMonth);
+  var dayOfMonth = now.getDate();
+  var workDaysPassed = countWorkDaysGlobal(mesDate.getFullYear(), mesDate.getMonth(), 1, dayOfMonth);
+  
+  var h = '<div style="font-size:11px;color:var(--text-3);margin-bottom:8px">Mes: <b>'+mes+'</b> · Día hábil '+workDaysPassed+'/'+workDaysTotal+'</div>';
+  
+  expertos.forEach(function(e) {
+    var meta = metasGetMeta('agente', e.nombre) || metasGetMeta('agente', e.nombre.toUpperCase());
+    var ventas = metasVentas.filter(function(v){return v.ejecutivo && v.ejecutivo.toUpperCase()===e.nombre.toUpperCase()}).length;
+    var aPct = meta > 0 ? Math.round(ventas/meta*100) : 0;
+    var aColor = aPct >= 100 ? '#10B981' : aPct >= 70 ? '#E6A200' : '#DC3545';
+    var diaria = meta > 0 && workDaysTotal > 0 ? (meta/workDaysTotal) : 0;
+    var esperado = Math.round(diaria * workDaysPassed * 10) / 10;
+    var diff = ventas - esperado;
+    var diffColor = diff >= 0 ? '#10B981' : '#DC3545';
+    var proy = workDaysPassed > 0 ? Math.round(ventas/workDaysPassed*workDaysTotal) : 0;
+    
+    h += '<div style="padding:10px;margin-bottom:6px;border-radius:8px;background:var(--surface-2)">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+    h += '<span style="font-size:12px;font-weight:700">'+e.nombre+'</span>';
+    h += '<span style="font-size:12px;font-weight:800;color:'+aColor+'">'+ventas+'/'+meta+' ('+aPct+'%)</span></div>';
+    h += '<div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:4px"><div style="height:100%;width:'+Math.min(aPct,100)+'%;background:'+aColor+'"></div></div>';
+    h += '<div style="font-size:9px;color:var(--text-3)">Diaria: <b>'+diaria.toFixed(1)+'</b> · Esperado hoy: <b>'+esperado+'</b> · <span style="color:'+diffColor+'">'+(diff>=0?'+':'')+Math.round(diff)+'</span> · Proyección: <b style="color:#8B5CF6">'+proy+'</b></div>';
+    h += '</div>';
+  });
+  
+  el.innerHTML = h;
+}
+
+function renderCeCots() {
+  var el = document.getElementById('ceContent');
+  var expertos = window._ceExpertos || [];
+  var expertoIds = expertos.map(function(e){return e.id});
+  var cots = (state.cotizaciones||[]).filter(function(c){return expertoIds.indexOf(c.agente_id) >= 0});
+  
+  // Group by estatus
+  var byStatus = {enviada:0, seguimiento:0, venta:0, perdida:0};
+  cots.forEach(function(c){if(byStatus[c.estatus]!==undefined)byStatus[c.estatus]++});
+  
+  var h = '<div style="display:flex;gap:4px;margin-bottom:10px">';
+  h += '<div style="flex:1;text-align:center;padding:6px;background:#EFF6FF;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#0057B8">'+byStatus.enviada+'</div><div style="font-size:8px">Enviadas</div></div>';
+  h += '<div style="flex:1;text-align:center;padding:6px;background:#FEF3C7;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#E6A200">'+byStatus.seguimiento+'</div><div style="font-size:8px">Seguimiento</div></div>';
+  h += '<div style="flex:1;text-align:center;padding:6px;background:#ECFDF5;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#10B981">'+byStatus.venta+'</div><div style="font-size:8px">Venta</div></div>';
+  h += '<div style="flex:1;text-align:center;padding:6px;background:#FEF2F2;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#DC3545">'+byStatus.perdida+'</div><div style="font-size:8px">Perdida</div></div>';
+  h += '</div>';
+  
+  // Per agent breakdown
+  expertos.forEach(function(e) {
+    var agCots = cots.filter(function(c){return c.agente_id===e.id});
+    var ag = {enviada:0, seguimiento:0, venta:0, perdida:0, pdf:0, sinPdf:0};
+    agCots.forEach(function(c){
+      if (ag[c.estatus]!==undefined) ag[c.estatus]++;
+      if (c.pdf_generado) ag.pdf++; else ag.sinPdf++;
+    });
+    var tasa = (ag.enviada+ag.seguimiento+ag.venta+ag.perdida) > 0 ? Math.round(ag.venta/(ag.enviada+ag.seguimiento+ag.venta+ag.perdida)*100) : 0;
+    
+    h += '<div style="padding:10px;margin-bottom:4px;border-radius:8px;border:1px solid var(--border)">';
+    h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:12px;font-weight:700">'+e.nombre+'</span><span style="font-size:10px;color:var(--text-3)">Conversión: <b style="color:#10B981">'+tasa+'%</b></span></div>';
+    h += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#EFF6FF;border-radius:3px">Env: <b>'+ag.enviada+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#FEF3C7;border-radius:3px">Seg: <b>'+ag.seguimiento+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#ECFDF5;border-radius:3px">Vta: <b>'+ag.venta+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#FEF2F2;border-radius:3px">Per: <b>'+ag.perdida+'</b></span>';
+    if (ag.sinPdf > 0) h += '<span style="font-size:8px;padding:2px 5px;background:#FEE2E2;border-radius:3px;color:#DC3545">🚫 Sin PDF: <b>'+ag.sinPdf+'</b></span>';
+    h += '</div></div>';
+  });
+  
+  el.innerHTML = h;
+}
+
+async function renderCeSinVenta() {
+  var el = document.getElementById('ceContent');
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3)">Analizando...</div>';
+  
+  var expertos = window._ceExpertos || [];
+  var expertoNames = expertos.map(function(e){return e.nombre.toUpperCase()});
+  
+  // Load previous month
+  var prevDate = new Date();
+  prevDate.setMonth(prevDate.getMonth()-1);
+  var prevMes = prevDate.getFullYear()+'-'+String(prevDate.getMonth()+1).padStart(2,'0');
+  var {data: prevVentas} = await supabase.from('ventas_global').select('*').eq('mes', prevMes);
+  prevVentas = prevVentas || [];
+  
+  var hoy = new Date();
+  hoy.setHours(12,0,0,0);
+  
+  var rows = expertos.map(function(e) {
+    var lastDate = null;
+    prevVentas.forEach(function(v) {
+      if (!v.ejecutivo || v.ejecutivo.toUpperCase() !== e.nombre.toUpperCase()) return;
+      var fd = v.fecha ? (typeof v.fecha === 'string' ? v.fecha.substring(0,10) : '') : '';
+      if (fd && (!lastDate || fd > lastDate)) lastDate = fd;
+    });
+    metasVentas.forEach(function(v) {
+      if (!v.ejecutivo || v.ejecutivo.toUpperCase() !== e.nombre.toUpperCase()) return;
+      var fd = v.fecha ? (typeof v.fecha === 'string' ? v.fecha.substring(0,10) : '') : '';
+      if (fd && (!lastDate || fd > lastDate)) lastDate = fd;
+    });
+    
+    var dias = 0;
+    if (lastDate) {
+      var t = new Date(lastDate+'T12:00:00');
+      t.setDate(t.getDate()+1);
+      while (t < hoy) { if (t.getDay() !== 0) dias++; t.setDate(t.getDate()+1); }
+    } else dias = 99;
+    
+    return {nombre:e.nombre, lastDate:lastDate, dias:dias, centro:e.centros?e.centros.nombre:''};
+  });
+  
+  rows.sort(function(a,b){return b.dias-a.dias});
+  
+  var h = '';
+  rows.forEach(function(r) {
+    var color = r.dias === 0 ? '#10B981' : r.dias <= 1 ? '#E6A200' : r.dias <= 2 ? '#F59E0B' : '#DC3545';
+    var label = r.dias === 0 ? '✅ Vendió hoy/ayer' : r.dias + (r.dias === 1 ? ' día' : ' días') + ' sin vender';
+    h += '<div style="padding:10px;margin-bottom:4px;border-radius:8px;border:1px solid var(--border);border-left:4px solid '+color+'">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center">';
+    h += '<div><div style="font-size:12px;font-weight:700">'+r.nombre+'</div><div style="font-size:9px;color:var(--text-3)">'+r.centro+' · Última venta: '+(r.lastDate||'Sin registro')+'</div></div>';
+    h += '<span style="font-size:11px;font-weight:800;color:'+color+'">'+label+'</span>';
+    h += '</div></div>';
+  });
+  
+  el.innerHTML = h;
+}
+
+async function renderCeIA() {
+  var el = document.getElementById('ceContent');
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3)">Cargando...</div>';
+  
+  var expertos = window._ceExpertos || [];
+  var expertoIds = expertos.map(function(e){return e.id});
+  var hoy = new Date().toISOString().substring(0,10);
+  var hace7 = new Date(Date.now()-7*86400000).toISOString().substring(0,10);
+  
+  var {data: usage} = await supabase.from('training_usage').select('*').in('agent_id', expertoIds).gte('date', hace7).lte('date', hoy);
+  usage = usage || [];
+  
+  var h = '<div style="font-size:10px;color:var(--text-3);margin-bottom:8px">Últimos 7 días</div>';
+  
+  expertos.forEach(function(e) {
+    var agUsage = usage.filter(function(u){return u.agent_id===e.id});
+    var chats = 0, rps = 0, total = 0, diasActivo = 0;
+    agUsage.forEach(function(u){
+      chats += u.chat_count||0;
+      rps += u.roleplay_count||0;
+      total += u.total_count||0;
+      if (u.total_count > 0) diasActivo++;
+    });
+    
+    var statusColor = total >= 10 ? '#10B981' : total >= 3 ? '#E6A200' : '#DC3545';
+    var statusLabel = total >= 10 ? 'Activo' : total >= 3 ? 'Bajo uso' : 'Sin uso';
+    
+    h += '<div style="padding:10px;margin-bottom:4px;border-radius:8px;border:1px solid var(--border);border-left:4px solid '+statusColor+'">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+    h += '<span style="font-size:12px;font-weight:700">'+e.nombre+'</span>';
+    h += '<span style="font-size:9px;padding:2px 5px;border-radius:3px;background:'+statusColor+';color:white">'+statusLabel+'</span></div>';
+    h += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#EFF6FF;border-radius:3px">💬 Chats: <b>'+chats+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#ECFDF5;border-radius:3px">🎭 Roleplay: <b>'+rps+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#F5F3FF;border-radius:3px">Total: <b>'+total+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:var(--surface-2);border-radius:3px">Días activos: <b>'+diasActivo+'/7</b></span>';
+    h += '</div></div>';
+  });
+  
+  el.innerHTML = h;
+}
+
+// ── INFORME EXPERTOS (uso de IA por agentes modo experto) ──
+async function openInformeExpertos() {
+  if (!supabase || !currentUser) return;
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'informeExpertosOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:12px';
+  
+  var hoy = new Date().toISOString().substring(0,10);
+  var hace7 = new Date(Date.now()-7*86400000).toISOString().substring(0,10);
+  
+  overlay.innerHTML = '<div style="background:white;border-radius:16px;padding:16px;max-width:650px;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:95vh;display:flex;flex-direction:column">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-shrink:0">' +
+    '<div><div style="font-size:16px;font-weight:900">⭐ Informe Agentes Expertos</div><div style="font-size:10px;color:var(--text-3)">Uso de IA y Sales Academy</div></div>' +
+    '<button onclick="document.getElementById(\'informeExpertosOverlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button></div>' +
+    '<div style="display:flex;gap:6px;margin-bottom:10px;flex-shrink:0;align-items:center">' +
+    '<label style="font-size:10px">Desde:</label><input type="date" class="field" id="ieDesde" value="'+hace7+'" onchange="loadInformeExpertos()" style="font-size:11px;padding:5px 8px;width:auto">' +
+    '<label style="font-size:10px">Hasta:</label><input type="date" class="field" id="ieHasta" value="'+hoy+'" onchange="loadInformeExpertos()" style="font-size:11px;padding:5px 8px;width:auto">' +
+    '</div>' +
+    '<div id="ieContent" style="overflow-y:auto;flex:1"><div style="text-align:center;padding:20px;color:var(--text-3)">Cargando...</div></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  loadInformeExpertos();
+}
+
+async function loadInformeExpertos() {
+  var el = document.getElementById('ieContent');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-3)">Cargando...</div>';
+  
+  var desde = document.getElementById('ieDesde').value;
+  var hasta = document.getElementById('ieHasta').value;
+  
+  // Get experto users
+  var {data: expertos} = await supabase.from('usuarios').select('id, nombre, supervisor_id, centro_id').eq('modo_experto', true).eq('activo', true);
+  expertos = expertos || [];
+  
+  if (expertos.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3)">No hay agentes con modo experto activado</div>';
+    return;
+  }
+  
+  var expertoIds = expertos.map(function(e){return e.id});
+  
+  // Get training usage
+  var {data: usage} = await supabase.from('training_usage').select('*').in('agent_id', expertoIds).gte('date', desde).lte('date', hasta).order('date', {ascending: false});
+  usage = usage || [];
+  
+  // Get bitacora for AI-related actions
+  var {data: bitLogs} = await supabase.from('bitacora_actividad').select('*').in('user_id', expertoIds).gte('timestamp', desde+'T00:00:00').lte('timestamp', hasta+'T23:59:59').order('timestamp', {ascending: false});
+  bitLogs = bitLogs || [];
+  
+  // Get supervisor names
+  var supMap = {};
+  if (hFilterUsers.length > 0) {
+    hFilterUsers.forEach(function(u){if(u.rol==='supervisor')supMap[u.id]=u.nombre});
+  }
+  
+  // KPIs
+  var totalChats = 0, totalRoleplays = 0, totalUsage = 0;
+  usage.forEach(function(u){ totalChats += (u.chat_count||0); totalRoleplays += (u.roleplay_count||0); totalUsage += (u.total_count||0); });
+  
+  var totalSearches = bitLogs.filter(function(l){return l.accion==='buscar_equipo'}).length;
+  var totalPDFs = bitLogs.filter(function(l){return l.accion==='pdf_generado'}).length;
+  var totalLogins = bitLogs.filter(function(l){return l.accion==='login'}).length;
+  var diasRango = Math.max(1, Math.round((new Date(hasta) - new Date(desde)) / 86400000) + 1);
+  
+  var h = '';
+  h += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">';
+  h += '<div style="flex:1;min-width:55px;text-align:center;padding:5px;background:#F5F3FF;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#8B5CF6">'+expertos.length+'</div><div style="font-size:7px">Expertos</div></div>';
+  h += '<div style="flex:1;min-width:55px;text-align:center;padding:5px;background:#EFF6FF;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#0057B8">'+totalChats+'</div><div style="font-size:7px">Chats IA</div></div>';
+  h += '<div style="flex:1;min-width:55px;text-align:center;padding:5px;background:#ECFDF5;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#10B981">'+totalRoleplays+'</div><div style="font-size:7px">Roleplays</div></div>';
+  h += '<div style="flex:1;min-width:55px;text-align:center;padding:5px;background:#FEF3C7;border-radius:6px"><div style="font-size:16px;font-weight:900;color:#E6A200">'+totalPDFs+'</div><div style="font-size:7px">PDFs</div></div>';
+  h += '<div style="flex:1;min-width:55px;text-align:center;padding:5px;background:var(--surface-2);border-radius:6px"><div style="font-size:16px;font-weight:900">'+diasRango+'</div><div style="font-size:7px">Días</div></div>';
+  h += '</div>';
+  
+  // Per agent
+  expertos.forEach(function(exp) {
+    var supNombre = supMap[exp.supervisor_id] || 'Sin supervisor';
+    var agUsage = usage.filter(function(u){return u.agent_id===exp.id});
+    var agLogs = bitLogs.filter(function(l){return l.user_id===exp.id});
+    
+    var chats = 0, roleplays = 0, totalU = 0, diasActivo = 0;
+    var byDate = {};
+    agUsage.forEach(function(u){
+      chats += (u.chat_count||0);
+      roleplays += (u.roleplay_count||0);
+      totalU += (u.total_count||0);
+      if (u.total_count > 0) diasActivo++;
+      byDate[u.date] = u;
+    });
+    
+    var searches = agLogs.filter(function(l){return l.accion==='buscar_equipo'}).length;
+    var pdfs = agLogs.filter(function(l){return l.accion==='pdf_generado'}).length;
+    var logins = agLogs.filter(function(l){return l.accion==='login'}).length;
+    var vistas = agLogs.filter(function(l){return l.accion==='vista' && l.detalle==='training'}).length;
+    
+    var promDiario = diasActivo > 0 ? (totalU / diasActivo).toFixed(1) : '0';
+    var usaIA = totalU > 0;
+    var statusColor = totalU >= 10 ? '#10B981' : totalU >= 3 ? '#E6A200' : '#DC3545';
+    var statusLabel = totalU >= 10 ? 'Activo' : totalU >= 3 ? 'Bajo uso' : 'Sin uso';
+    
+    h += '<div style="padding:10px;margin-bottom:4px;border-radius:8px;border:1px solid var(--border);border-left:4px solid '+statusColor+'">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+    h += '<div><span style="font-size:12px;font-weight:700">'+exp.nombre+'</span> <span style="font-size:8px;padding:1px 5px;border-radius:3px;background:'+statusColor+';color:white">'+statusLabel+'</span></div>';
+    h += '<span style="font-size:9px;color:var(--text-3)">'+supNombre+'</span></div>';
+    
+    h += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#EFF6FF;border-radius:3px">💬 Chats: <b>'+chats+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#ECFDF5;border-radius:3px">🎭 Roleplay: <b>'+roleplays+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#F5F3FF;border-radius:3px">📚 Entró Academy: <b>'+vistas+'x</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#FEF3C7;border-radius:3px">🔍 Búsquedas: <b>'+searches+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:#ECFDF5;border-radius:3px">📄 PDFs: <b>'+pdfs+'</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:var(--surface-2);border-radius:3px">Prom: <b>'+promDiario+'/día</b></span>';
+    h += '<span style="font-size:8px;padding:2px 5px;background:var(--surface-2);border-radius:3px">Días activo: <b>'+diasActivo+'/'+diasRango+'</b></span>';
+    h += '</div>';
+    
+    // Daily breakdown mini chart
+    if (agUsage.length > 0) {
+      h += '<div style="display:flex;gap:2px;align-items:flex-end;height:25px">';
+      var maxV = 1;
+      agUsage.forEach(function(u){if(u.total_count>maxV)maxV=u.total_count});
+      // Show last 7 days or range
+      var dates = [];
+      var d = new Date(desde);
+      while (d <= new Date(hasta)) { dates.push(d.toISOString().substring(0,10)); d.setDate(d.getDate()+1); }
+      if (dates.length > 14) dates = dates.slice(-14);
+      dates.forEach(function(dt) {
+        var du = byDate[dt];
+        var val = du ? du.total_count : 0;
+        var pct = Math.max(2, Math.round(val/maxV*100));
+        var dayName = new Date(dt+'T12:00:00').toLocaleDateString('es-MX',{weekday:'narrow'});
+        h += '<div title="'+dt+': '+val+' consultas" style="flex:1;min-width:8px;max-width:20px;display:flex;flex-direction:column;align-items:center">';
+        h += '<div style="width:100%;height:'+pct+'%;min-height:2px;background:'+(val>0?'#8B5CF6':'#E5E7EB')+';border-radius:2px"></div>';
+        h += '<div style="font-size:6px;color:var(--text-3);margin-top:1px">'+dayName+'</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+    }
+    
+    h += '</div>';
+  });
+  
+  el.innerHTML = h;
 }
 
 // ── GESTIONAR EQUIPOS (reasignar agentes entre supervisores) ──
