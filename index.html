@@ -1153,7 +1153,6 @@ body{padding-bottom:60px}
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openBitacora()">📊 Bitácora</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openGestionEquipos()">🔄 Gestionar Equipos</button>
         <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px" onclick="openInformeExpertos()">⭐ Informe Expertos</button>
-        <button class="btn btn-secondary" style="font-size:10px;padding:4px 10px;background:linear-gradient(135deg,#F5F3FF,#E9D5FF);border-color:#8B5CF6;color:#6D28D9;font-weight:700" onclick="openCentroExpertos()">⭐ Centro Expertos</button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="showAddUserForm()">+ Nuevo Usuario</button>
@@ -6012,8 +6011,11 @@ function populateAgenteFilter() {
   window._hAgentesList = agentes;
   var drop = document.getElementById('hFilterAgenteDrop');
   drop.innerHTML = '<label style="display:flex;align-items:center;gap:6px;padding:4px 12px;cursor:pointer;font-size:11px;font-weight:700;border-bottom:1px solid var(--border);margin-bottom:2px"><input type="checkbox" id="hAgenteAll" onchange="hMultiToggleAll(\'agente\')" style="accent-color:#8B5CF6"> Todos</label>';
+  // Solo Expertos option
+  drop.innerHTML += '<label style="display:flex;align-items:center;gap:6px;padding:3px 12px;cursor:pointer;font-size:11px;white-space:nowrap;color:#8B5CF6;font-weight:700;border-bottom:1px solid var(--border);margin-bottom:2px"><input type="checkbox" class="hAgenteCb" value="_expertos" onchange="onHMultiAgenteChange()" style="accent-color:#8B5CF6"> ⭐ Solo Expertos</label>';
   agentes.forEach(function(u) {
-    drop.innerHTML += '<label style="display:flex;align-items:center;gap:6px;padding:3px 12px;cursor:pointer;font-size:11px;white-space:nowrap"><input type="checkbox" class="hAgenteCb" value="'+u.id+'" onchange="onHMultiAgenteChange()" style="accent-color:#8B5CF6"> '+u.nombre+'</label>';
+    var isExp = u.modo_experto === true;
+    drop.innerHTML += '<label style="display:flex;align-items:center;gap:6px;padding:3px 12px;cursor:pointer;font-size:11px;white-space:nowrap"><input type="checkbox" class="hAgenteCb" value="'+u.id+'" onchange="onHMultiAgenteChange()" style="accent-color:#8B5CF6"> '+u.nombre+(isExp?' ⭐':'')+'</label>';
   });
   document.getElementById('hFilterAgenteBtn').textContent = 'Todos los agentes ▾';
   renderHistorial();
@@ -6134,6 +6136,16 @@ function getFilteredAgentIds() {
   var coordVal = document.getElementById('hFilterCoord').value;
   var selectedSups = getSelectedMulti('sup');
   var selectedAgentes = getSelectedMulti('agente');
+  
+  // If "_expertos" is selected, expand to all expert agent IDs
+  if (selectedAgentes.indexOf('_expertos') >= 0) {
+    var expertIds = hFilterUsers.filter(function(u){return u.rol==='agente' && u.modo_experto === true}).map(function(u){return u.id});
+    var realAgentes = selectedAgentes.filter(function(a){return a !== '_expertos'});
+    selectedAgentes = expertIds.concat(realAgentes);
+    // Dedupe
+    var seen = {};
+    selectedAgentes = selectedAgentes.filter(function(id){if(seen[id])return false;seen[id]=true;return true});
+  }
 
   // If specific agents selected, use those directly
   if (selectedAgentes.length > 0) return selectedAgentes;
@@ -11323,7 +11335,11 @@ function metasPopulateAgents() {
     agents[c.ejecutivo.nombre] = true;
   });
   agSel.innerHTML = '<option value="all">Todos los agentes</option>';
-  Object.keys(agents).sort().forEach(function(a) { agSel.innerHTML += '<option value="'+a+'">'+a+'</option>'; });
+  agSel.innerHTML += '<option value="_expertos">⭐ Solo Expertos</option>';
+  Object.keys(agents).sort().forEach(function(a) {
+    var isExp = hFilterUsers.some(function(u){return u.nombre===a && u.modo_experto===true});
+    agSel.innerHTML += '<option value="'+a+'">'+a+(isExp?' ⭐':'')+'</option>';
+  });
 }
 
 function metasPopulateSups() {
@@ -11384,7 +11400,13 @@ async function metasRender() {
     });
   }
   // Agent filter applies to all roles (supervisor, admin, coord)
-  if (agentVal !== 'all') {
+  if (agentVal === '_expertos') {
+    var expertNames = hFilterUsers.filter(function(u){return u.rol==='agente'&&u.modo_experto===true}).map(function(u){return u.nombre.toUpperCase()});
+    fv = fv.filter(function(v) {
+      var name = (v.ejecutivo||v.agente||'').toUpperCase();
+      return expertNames.indexOf(name) >= 0;
+    });
+  } else if (agentVal !== 'all') {
     fv = fv.filter(function(v) { return v.ejecutivo === agentVal || v.agente === agentVal; });
   }
 
@@ -11411,6 +11433,10 @@ async function metasRender() {
     totalMeta = metasGetMeta('agente', currentUser ? currentUser.nombre : '');
   } else if (rol === 'supervisor') {
     totalMeta = metasGetMeta('supervisor', currentUser ? currentUser.nombre : '');
+  } else if (agentVal === '_expertos') {
+    // Sum metas of all expert agents
+    var expertNames = hFilterUsers.filter(function(u){return u.rol==='agente'&&u.modo_experto===true}).map(function(u){return u.nombre});
+    expertNames.forEach(function(n){totalMeta += metasGetMeta('agente', n)});
   } else if (agentVal !== 'all') { totalMeta = metasGetMeta('agente', agentVal); }
   else if (supVal !== 'all') { totalMeta = metasGetMeta('supervisor', supVal); }
   else if (centroVal !== 'all') { totalMeta = metasGetMeta('centro', centroVal); }
@@ -13127,8 +13153,9 @@ function rachaFilterChanged() {
   });
   
   var ha = '<option value="all" selected>Todos</option>';
+  ha += '<option value="_expertos">⭐ Solo Expertos</option>';
   agents.sort(function(a,b){return a.nombre.localeCompare(b.nombre)}).forEach(function(a){
-    ha += '<option value="'+a.id+'">'+a.nombre+'</option>';
+    ha += '<option value="'+a.id+'">'+a.nombre+(a.modo_experto?' ⭐':'')+'</option>';
   });
   agSel.innerHTML = ha;
   renderRachaNegativa();
@@ -13145,7 +13172,11 @@ async function renderRachaNegativa() {
   var agents = (hFilterUsers||[]).filter(function(u){return u.rol==='agente' && (u.activo===true||u.activo==='true')});
   if (supVals[0] !== 'all') agents = agents.filter(function(u){return supVals.indexOf(u.supervisor_id)>=0});
   if (centroVals[0] !== 'all') agents = agents.filter(function(u){return u.centros && centroVals.indexOf(u.centros.nombre)>=0});
-  if (agentVals[0] !== 'all') agents = agents.filter(function(u){return agentVals.indexOf(u.id)>=0});
+  if (agentVals.indexOf('_expertos') >= 0) {
+    agents = agents.filter(function(u){return u.modo_experto === true});
+  } else if (agentVals[0] !== 'all') {
+    agents = agents.filter(function(u){return agentVals.indexOf(u.id)>=0});
+  }
   
   var supMap = {};
   var _sm3=getSupMapFromUsers(hFilterUsers);for(var _k3 in _sm3)supMap[_k3]=_sm3[_k3];
