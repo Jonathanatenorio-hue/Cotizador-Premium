@@ -2741,14 +2741,14 @@ async function loadCotizacionesFromSupabase() {
     }
     // admin: roleIds stays null = no filter
     
-    // Paginated fetch - 1000 per page
+    // Paginated fetch - 500 per page (reduced to avoid timeout)
     var allData = [];
-    var pageSize = 1000;
+    var pageSize = 500;
     var page = 0;
     var hasMore = true;
     
     while (hasMore) {
-      var query = supabase.from('cotizaciones').select('*, cotizacion_items(*), cotizacion_notas(*)');
+      var query = supabase.from('cotizaciones').select('*');
       if (roleIds) query = query.in('agente_id', roleIds);
       query = query.order('created_at', { ascending: false }).range(page * pageSize, (page + 1) * pageSize - 1);
       
@@ -2764,6 +2764,32 @@ async function loadCotizacionesFromSupabase() {
     var data = allData;
     if (!data.length) { console.log('loadCots: no data returned'); state.cotizaciones = []; return; }
     console.log('loadCots: got ' + data.length + ' from Supabase (' + page + ' pages)');
+    
+    // Load items and notas in batches separately
+    var cotIds = data.map(function(c){return c.id});
+    var itemsByCotId = {};
+    var notasByCotId = {};
+    var batchSize = 200;
+    for (var bi = 0; bi < cotIds.length; bi += batchSize) {
+      var batchIds = cotIds.slice(bi, bi + batchSize);
+      try {
+        var ir = await supabase.from('cotizacion_items').select('*').in('cotizacion_id', batchIds);
+        (ir.data||[]).forEach(function(it){
+          if(!itemsByCotId[it.cotizacion_id])itemsByCotId[it.cotizacion_id]=[];
+          itemsByCotId[it.cotizacion_id].push(it);
+        });
+        var nr = await supabase.from('cotizacion_notas').select('*').in('cotizacion_id', batchIds);
+        (nr.data||[]).forEach(function(n){
+          if(!notasByCotId[n.cotizacion_id])notasByCotId[n.cotizacion_id]=[];
+          notasByCotId[n.cotizacion_id].push(n);
+        });
+      } catch(e) { console.log('Batch items/notas error:', e.message); }
+    }
+    // Attach to cotizaciones
+    data.forEach(function(c) {
+      c.cotizacion_items = itemsByCotId[c.id] || [];
+      c.cotizacion_notas = notasByCotId[c.id] || [];
+    });
 
     // Load agent names separately
     var agentIds = [...new Set(data.map(function(c) { return c.agente_id; }))];
