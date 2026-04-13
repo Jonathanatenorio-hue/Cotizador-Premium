@@ -1114,11 +1114,36 @@ body{padding-bottom:60px}
   <div class="container">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div>
-        <div style="font-size:18px;font-weight:900">📋 Mi Día</div>
+        <div style="font-size:18px;font-weight:900">📋 Mi Agenda</div>
         <div id="midiaDate" style="font-size:11px;color:var(--text-3)"></div>
       </div>
-      <div id="midiaResumen" style="display:flex;gap:8px"></div>
+      <div style="display:flex;gap:4px">
+        <button id="midiaTabCal" onclick="midiaSetView('cal')" class="btn btn-primary" style="font-size:10px;padding:5px 10px">📅 Calendario</button>
+        <button id="midiaTabList" onclick="midiaSetView('list')" class="btn btn-secondary" style="font-size:10px;padding:5px 10px">📋 Lista</button>
+      </div>
     </div>
+    <div id="midiaResumen" style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap"></div>
+    
+    <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+      <input class="field" id="midiaSearch" placeholder="🔍 Cliente o teléfono..." oninput="midiaRefresh()" style="flex:1;min-width:140px;font-size:11px;padding:5px 8px">
+      <select class="field" id="midiaFilterTipo" onchange="midiaRefresh()" style="font-size:11px;padding:5px 8px;width:auto">
+        <option value="all">Todos los tipos</option>
+        <option value="contacto">⏰ Próximo contacto</option>
+        <option value="aceleracion">🚨 Aceleración</option>
+        <option value="adeudo">💰 Adeudo</option>
+        <option value="seguimiento">🟠 Sin contacto</option>
+      </select>
+      <select class="field" id="midiaFilterPeriodo" onchange="midiaRefresh()" style="font-size:11px;padding:5px 8px;width:auto">
+        <option value="all">Todos los períodos</option>
+        <option value="vencidas">⚠️ Vencidas</option>
+        <option value="hoy">📅 Hoy</option>
+        <option value="manana">🌅 Mañana</option>
+        <option value="semana">📆 Esta semana</option>
+        <option value="proximas">⏭️ Próximas</option>
+      </select>
+    </div>
+    
+    <div id="midiaCalView"></div>
     <div id="midiaList"></div>
   </div>
 </div>
@@ -15064,168 +15089,311 @@ async function eliminarBuzon(postId) {
   } catch(e) { alert('Error: ' + e.message); }
 }
 
-// ── MI DÍA — AGENDA INTELIGENTE ──
+
+// ── MI AGENDA INTELIGENTE ──
+var midiaView = 'cal'; // 'cal' or 'list'
+var midiaCalDate = new Date();
+var midiaSelectedDay = null;
+
 function openMiDia() {
-  showView('midia', 'Mi Día');
+  showView('midia', 'Mi Agenda');
+  midiaCalDate = new Date();
+  midiaSelectedDay = new Date().toISOString().substring(0,10);
   renderMiDia();
 }
 
-function renderMiDia() {
-  var hoy = new Date();
-  var hoyStr = hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0')+'-'+String(hoy.getDate()).padStart(2,'0');
-  var meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  var dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-  document.getElementById('midiaDate').textContent = dias[hoy.getDay()] + ' ' + hoy.getDate() + ' de ' + meses[hoy.getMonth()];
+function midiaSetView(v) {
+  midiaView = v;
+  document.getElementById('midiaTabCal').className = v==='cal' ? 'btn btn-primary' : 'btn btn-secondary';
+  document.getElementById('midiaTabList').className = v==='list' ? 'btn btn-primary' : 'btn btn-secondary';
+  renderMiDia();
+}
 
-  // Get my cotizaciones (agent sees own, sup sees team, admin/coord sees all)
+function midiaRefresh() { renderMiDia(); }
+
+function midiaGetItems() {
+  // Get cotizaciones with any kind of pending action
   var myCots = state.cotizaciones.filter(function(c) {
     if (c.estatus === 'venta' || c.estatus === 'perdida') return false;
     return true;
   });
-
-  // If agent, filter to own
   if (currentUser && currentUser.rol === 'agente') {
     myCots = myCots.filter(function(c) { return c.agente_id === currentUser.id; });
   }
-
-  var urgentes = [], programadas = [], calientes = [], frias = [];
-
+  
+  var items = [];
   myCots.forEach(function(c) {
     var lastNotaDate = (c.notas && c.notas.length > 0) ? new Date(c.notas[0].created_at) : null;
+    var hoy = new Date(); hoy.setHours(0,0,0,0);
     var diasSinContacto = lastNotaDate ? Math.floor((hoy - lastNotaDate) / 86400000) : 999;
-    var createdDate = c.createdAt ? new Date(c.createdAt) : null;
-    var diasDesdeCreacion = createdDate ? Math.floor((hoy - createdDate) / 86400000) : 999;
+    
+    // Próximo contacto
+    if (c.proximo_contacto) {
+      var pcDate = c.proximo_contacto.substring(0,10);
+      var pcTime = c.proximo_contacto.length > 10 ? c.proximo_contacto.substring(11,16) : '';
+      items.push({cot:c, fecha:pcDate, hora:pcTime, tipo:'contacto', icon:'⏰', color:'#0057B8', label:'Próximo contacto'});
+    }
+    // Aceleración
+    if (c.sub_estatus === 'aceleracion' && c.fecha_fin_plazo) {
+      items.push({cot:c, fecha:c.fecha_fin_plazo, hora:'', tipo:'aceleracion', icon:'🚨', color:'#DC3545', label:'Aceleración vence'});
+    }
+    // Adeudo
+    if (c.sub_estatus === 'adeudo_pendiente' && c.adeudo_fecha_compromiso) {
+      items.push({cot:c, fecha:c.adeudo_fecha_compromiso, hora:'', tipo:'adeudo', icon:'💰', color:'#E6A200', label:'Adeudo vence'});
+    }
+    // Sin contacto reciente (seguimientos)
+    if (!c.proximo_contacto && c.estatus === 'seguimiento' && diasSinContacto >= 3) {
+      items.push({cot:c, fecha:'_pendiente', hora:'', tipo:'seguimiento', icon:'🟠', color:'#E65100', label:'Sin contacto '+diasSinContacto+'d', diasSinContacto:diasSinContacto});
+    }
+  });
+  return items;
+}
 
-    var item = {
-      cot: c,
-      diasSinContacto: diasSinContacto,
-      diasDesdeCreacion: diasDesdeCreacion,
-      lastNota: lastNotaDate,
-      prioridad: '',
-      razon: ''
-    };
-
-    // 🔴 URGENTES
-    // Aceleraciones vencidas
-    if (c.sub_estatus === 'aceleracion' && c.fecha_fin_plazo && c.fecha_fin_plazo <= hoyStr) {
-      item.prioridad = 'urgente'; item.razon = '🚨 Aceleración vencida'; urgentes.push(item); return;
+function midiaFilterItems(items) {
+  var search = (document.getElementById('midiaSearch')?document.getElementById('midiaSearch').value:'').toLowerCase().trim();
+  var tipo = document.getElementById('midiaFilterTipo')?document.getElementById('midiaFilterTipo').value:'all';
+  var periodo = document.getElementById('midiaFilterPeriodo')?document.getElementById('midiaFilterPeriodo').value:'all';
+  var hoyStr = new Date().toISOString().substring(0,10);
+  var manana = new Date(Date.now()+86400000).toISOString().substring(0,10);
+  var semFin = new Date(Date.now()+7*86400000).toISOString().substring(0,10);
+  
+  return items.filter(function(it) {
+    if (search) {
+      var nm = (it.cot.cliente.nombre||'').toLowerCase();
+      var tel = (it.cot.cliente.telefono||'').toLowerCase();
+      if (nm.indexOf(search)<0 && tel.indexOf(search)<0) return false;
     }
-    // Adeudos con fecha compromiso hoy o vencida
-    if (c.sub_estatus === 'adeudo_pendiente' && c.adeudo_fecha_compromiso && c.adeudo_fecha_compromiso <= hoyStr) {
-      item.prioridad = 'urgente'; item.razon = '💰 Adeudo vence hoy'; urgentes.push(item); return;
-    }
-    // Próximo contacto para hoy
-    var proxDateStr = c.proximo_contacto ? c.proximo_contacto.substring(0,10) : '';
-    var proxTimeStr = c.proximo_contacto && c.proximo_contacto.length > 10 ? c.proximo_contacto.substring(11,16) : '';
-    if (proxDateStr === hoyStr) {
-      item.prioridad = 'urgente'; item.razon = '⏰ Contacto hoy' + (proxTimeStr ? ' a las ' + proxTimeStr : ''); urgentes.push(item); return;
-    }
-    // Próximo contacto vencido
-    if (proxDateStr && proxDateStr < hoyStr) {
-      item.prioridad = 'urgente'; item.razon = '⚠️ Contacto atrasado (' + proxDateStr + (proxTimeStr ? ' ' + proxTimeStr : '') + ')'; urgentes.push(item); return;
-    }
-
-    // 🟡 PROGRAMADAS - próximo contacto futuro (próximos 3 días)
-    if (proxDateStr && proxDateStr > hoyStr) {
-      var proxDate = new Date(proxDateStr + 'T12:00:00');
-      var diasHasta = Math.floor((proxDate - hoy) / 86400000);
-      if (diasHasta <= 3) {
-        item.prioridad = 'programada'; item.razon = '📅 Contacto en ' + diasHasta + ' día' + (diasHasta>1?'s':''); programadas.push(item); return;
+    if (tipo !== 'all' && it.tipo !== tipo) return false;
+    if (periodo !== 'all') {
+      if (it.fecha === '_pendiente') {
+        if (periodo !== 'vencidas') return false;
+      } else {
+        if (periodo === 'vencidas' && it.fecha >= hoyStr) return false;
+        if (periodo === 'hoy' && it.fecha !== hoyStr) return false;
+        if (periodo === 'manana' && it.fecha !== manana) return false;
+        if (periodo === 'semana' && (it.fecha < hoyStr || it.fecha > semFin)) return false;
+        if (periodo === 'proximas' && it.fecha <= hoyStr) return false;
       }
     }
-
-    // 🟠 CALIENTES - enviadas recientes sin seguimiento
-    if (c.estatus === 'enviada' && diasDesdeCreacion <= 2 && diasSinContacto > 0) {
-      item.prioridad = 'caliente'; item.razon = '🔥 Enviada hace ' + diasDesdeCreacion + 'd, sin seguimiento'; calientes.push(item); return;
-    }
-    // Seguimiento sin contacto hace 3+ días
-    if (c.estatus === 'seguimiento' && diasSinContacto >= 3) {
-      item.prioridad = 'caliente'; item.razon = '📞 Sin contacto hace ' + diasSinContacto + ' días'; calientes.push(item); return;
-    }
-
-    // 🟢 FRÍAS - enviadas viejas
-    if (c.estatus === 'enviada' && diasDesdeCreacion >= 3 && diasDesdeCreacion <= 7) {
-      item.prioridad = 'fria'; item.razon = '📩 Enviada hace ' + diasDesdeCreacion + ' días sin respuesta'; frias.push(item); return;
-    }
+    return true;
   });
-
-  // Sort urgentes: contacts for today sorted by time first, then overdue, then others
-  urgentes.sort(function(a,b) {
-    var aTime = a.cot.proximo_contacto && a.cot.proximo_contacto.length > 10 ? a.cot.proximo_contacto.substring(11,16) : '99:99';
-    var bTime = b.cot.proximo_contacto && b.cot.proximo_contacto.length > 10 ? b.cot.proximo_contacto.substring(11,16) : '99:99';
-    var aIsToday = a.razon.indexOf('Contacto hoy') >= 0 ? 0 : 1;
-    var bIsToday = b.razon.indexOf('Contacto hoy') >= 0 ? 0 : 1;
-    if (aIsToday !== bIsToday) return aIsToday - bIsToday;
-    if (aIsToday === 0 && bIsToday === 0) return aTime.localeCompare(bTime);
-    return b.diasSinContacto - a.diasSinContacto;
-  });
-  calientes.sort(function(a,b) { return b.diasSinContacto - a.diasSinContacto; });
-  frias.sort(function(a,b) { return b.diasSinContacto - a.diasSinContacto; });
-
-  var total = urgentes.length + programadas.length + calientes.length + frias.length;
-
-  // Resumen KPIs
-  var resHtml = '';
-  resHtml += '<div style="text-align:center;padding:4px 10px;background:#FEF2F2;border-radius:8px;min-width:45px"><div style="font-size:16px;font-weight:900;color:#DC3545">'+urgentes.length+'</div><div style="font-size:7px;color:#DC3545">Urgentes</div></div>';
-  resHtml += '<div style="text-align:center;padding:4px 10px;background:#FFF8E1;border-radius:8px;min-width:45px"><div style="font-size:16px;font-weight:900;color:#E6A200">'+programadas.length+'</div><div style="font-size:7px;color:#E6A200">Programadas</div></div>';
-  resHtml += '<div style="text-align:center;padding:4px 10px;background:#FFF3E0;border-radius:8px;min-width:45px"><div style="font-size:16px;font-weight:900;color:#E65100">'+calientes.length+'</div><div style="font-size:7px;color:#E65100">Calientes</div></div>';
-  resHtml += '<div style="text-align:center;padding:4px 10px;background:#E8F5E9;border-radius:8px;min-width:45px"><div style="font-size:16px;font-weight:900;color:#2E7D32">'+frias.length+'</div><div style="font-size:7px;color:#2E7D32">Oportunidad</div></div>';
-  document.getElementById('midiaResumen').innerHTML = resHtml;
-
-  // Render list
-  var html = '';
-
-  if (total === 0) {
-    html = '<div style="text-align:center;padding:40px 20px"><div style="font-size:48px;margin-bottom:12px">🎉</div><div style="font-size:16px;font-weight:800;color:var(--text-1)">¡Todo al día!</div><div style="font-size:12px;color:var(--text-3);margin-top:6px">No tienes pendientes por ahora. Buen trabajo.</div></div>';
-  } else {
-    var renderSection = function(title, color, bgColor, items) {
-      if (items.length === 0) return '';
-      var s = '<div style="margin-bottom:14px">';
-      s += '<div style="font-size:13px;font-weight:800;color:'+color+';margin-bottom:6px">'+title+' ('+items.length+')</div>';
-      items.forEach(function(item) {
-        var c = item.cot;
-        var equipos = (c.items||[]).map(function(it){return it.equipo}).join(', ');
-        var ultimaNota = c.notas && c.notas.length > 0 ? c.notas[0] : null;
-        s += '<div style="background:'+bgColor+';border-radius:10px;padding:10px 12px;margin-bottom:6px;border-left:4px solid '+color+'">';
-        // Header
-        s += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
-        s += '<div style="font-size:13px;font-weight:700">'+c.cliente.nombre+'</div>';
-        s += '<span style="font-size:9px;padding:2px 8px;border-radius:10px;background:'+color+'22;color:'+color+';font-weight:700">'+item.razon+'</span>';
-        s += '</div>';
-        // Info
-        s += '<div style="font-size:10px;color:var(--text-2);margin-bottom:4px">';
-        if (c.cliente.telefono) s += '<span onclick="event.stopPropagation();navigator.clipboard.writeText(\''+c.cliente.telefono+'\');this.textContent=\'✅ Copiado\';var _t=this;setTimeout(function(){_t.textContent=\'📋 '+c.cliente.telefono+'\'},800)" style="cursor:pointer;color:var(--att-blue);font-weight:600">📋 '+c.cliente.telefono+'</span> · ';
-        if (equipos) s += equipos + ' · ';
-        s += (c.ejecutivo ? c.ejecutivo.nombre : '');
-        s += '</div>';
-        // Última nota
-        if (ultimaNota) {
-          var nd = new Date(ultimaNota.created_at);
-          var ndStr = nd.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
-          s += '<div style="font-size:9px;color:var(--text-3);margin-bottom:6px">Última nota ('+ndStr+'): '+ultimaNota.texto.substring(0,60)+(ultimaNota.texto.length>60?'...':'')+'</div>';
-        } else {
-          s += '<div style="font-size:9px;color:#DC3545;margin-bottom:6px">Sin notas de seguimiento</div>';
-        }
-        // Actions
-        s += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
-        s += '<button onclick="showDetalle(\''+c.folio+'\')" style="font-size:9px;padding:3px 10px;background:var(--att-blue);color:white;border:none;border-radius:6px;cursor:pointer">📄 Ver lead</button>';
-        s += '<button onclick="midiaNotaRapida(\''+c.folio+'\')" style="font-size:9px;padding:3px 10px;background:#10B981;color:white;border:none;border-radius:6px;cursor:pointer">✅ Contacté</button>';
-        s += '<button onclick="midiaReagendar(\''+c.folio+'\')" style="font-size:9px;padding:3px 10px;background:#F59E0B;color:white;border:none;border-radius:6px;cursor:pointer">⏰ Reagendar</button>';
-        if (c.cliente.telefono) s += '<a href="https://wa.me/52'+c.cliente.telefono+'" target="_blank" style="font-size:9px;padding:3px 10px;background:#25D366;color:white;border:none;border-radius:6px;cursor:pointer;text-decoration:none">💬 WhatsApp</a>';
-        s += '</div></div>';
-      });
-      s += '</div>';
-      return s;
-    };
-
-    html += renderSection('🔴 Urgentes', '#DC3545', '#FEF2F2', urgentes);
-    html += renderSection('🟡 Programadas', '#E6A200', '#FFFBEB', programadas);
-    html += renderSection('🟠 Calientes', '#E65100', '#FFF3E0', calientes);
-    html += renderSection('🟢 Oportunidades', '#2E7D32', '#F0FFF4', frias);
-  }
-
-  document.getElementById('midiaList').innerHTML = html;
 }
+
+function renderMiDia() {
+  var hoy = new Date();
+  var meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  document.getElementById('midiaDate').textContent = dias[hoy.getDay()] + ' ' + hoy.getDate() + ' de ' + meses[hoy.getMonth()];
+  
+  var allItems = midiaGetItems();
+  var items = midiaFilterItems(allItems);
+  
+  // KPIs
+  var hoyStr = new Date().toISOString().substring(0,10);
+  var mananaStr = new Date(Date.now()+86400000).toISOString().substring(0,10);
+  var hoyCount = allItems.filter(function(i){return i.fecha===hoyStr}).length;
+  var vencCount = allItems.filter(function(i){return i.fecha!=='_pendiente' && i.fecha<hoyStr}).length;
+  var mananaCount = allItems.filter(function(i){return i.fecha===mananaStr}).length;
+  var pendCount = allItems.filter(function(i){return i.fecha==='_pendiente'}).length;
+  
+  var resHtml = '';
+  resHtml += '<div style="text-align:center;padding:5px 10px;background:#FEF2F2;border-radius:8px;cursor:pointer" onclick="midiaQuickFilter(\'vencidas\')"><div style="font-size:16px;font-weight:900;color:#DC3545">'+vencCount+'</div><div style="font-size:8px;color:#DC3545">Vencidas</div></div>';
+  resHtml += '<div style="text-align:center;padding:5px 10px;background:#FFFBEB;border-radius:8px;cursor:pointer" onclick="midiaQuickFilter(\'hoy\')"><div style="font-size:16px;font-weight:900;color:#E6A200">'+hoyCount+'</div><div style="font-size:8px;color:#E6A200">Hoy</div></div>';
+  resHtml += '<div style="text-align:center;padding:5px 10px;background:#EFF6FF;border-radius:8px;cursor:pointer" onclick="midiaQuickFilter(\'manana\')"><div style="font-size:16px;font-weight:900;color:#0057B8">'+mananaCount+'</div><div style="font-size:8px;color:#0057B8">Mañana</div></div>';
+  resHtml += '<div style="text-align:center;padding:5px 10px;background:#FFF3E0;border-radius:8px"><div style="font-size:16px;font-weight:900;color:#E65100">'+pendCount+'</div><div style="font-size:8px;color:#E65100">Pendientes</div></div>';
+  document.getElementById('midiaResumen').innerHTML = resHtml;
+  
+  if (midiaView === 'cal') {
+    document.getElementById('midiaCalView').style.display = '';
+    renderMidiaCalendar(allItems);
+    renderMidiaDayList(items);
+  } else {
+    document.getElementById('midiaCalView').style.display = 'none';
+    renderMidiaList(items);
+  }
+}
+
+function midiaQuickFilter(periodo) {
+  document.getElementById('midiaFilterPeriodo').value = periodo;
+  midiaRefresh();
+}
+
+function renderMidiaCalendar(allItems) {
+  var el = document.getElementById('midiaCalView');
+  var year = midiaCalDate.getFullYear();
+  var month = midiaCalDate.getMonth();
+  var firstDay = new Date(year, month, 1);
+  var lastDay = new Date(year, month+1, 0);
+  var startWeekDay = firstDay.getDay();
+  var daysInMonth = lastDay.getDate();
+  var meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var hoyStr = new Date().toISOString().substring(0,10);
+  
+  // Group items by date
+  var byDate = {};
+  allItems.forEach(function(it) {
+    if (it.fecha === '_pendiente') return;
+    if (!byDate[it.fecha]) byDate[it.fecha] = [];
+    byDate[it.fecha].push(it);
+  });
+  
+  var h = '<div class="section" style="padding:10px;margin-bottom:8px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+  h += '<button onclick="midiaCalNav(-1)" style="background:var(--surface-2);border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px">‹</button>';
+  h += '<div style="font-size:13px;font-weight:800">'+meses[month]+' '+year+'</div>';
+  h += '<button onclick="midiaCalNav(1)" style="background:var(--surface-2);border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px">›</button>';
+  h += '</div>';
+  
+  // Day headers
+  h += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px">';
+  ['D','L','M','M','J','V','S'].forEach(function(d){
+    h += '<div style="text-align:center;font-size:9px;font-weight:700;color:var(--text-3);padding:2px">'+d+'</div>';
+  });
+  h += '</div>';
+  
+  // Days grid
+  h += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">';
+  // Empty cells before first day
+  for (var i=0; i<startWeekDay; i++) h += '<div></div>';
+  for (var d=1; d<=daysInMonth; d++) {
+    var dStr = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var dayItems = byDate[dStr] || [];
+    var isHoy = dStr === hoyStr;
+    var isPast = dStr < hoyStr;
+    var isSelected = dStr === midiaSelectedDay;
+    var bg = isSelected ? '#8B5CF6' : isHoy ? '#FFFBEB' : 'var(--bg-card)';
+    var color = isSelected ? 'white' : isHoy ? '#E6A200' : (isPast ? 'var(--text-3)' : 'var(--text-1)');
+    var border = isSelected ? '#8B5CF6' : isHoy ? '#FCD34D' : 'var(--border)';
+    
+    h += '<div onclick="midiaSelectDay(\''+dStr+'\')" style="cursor:pointer;background:'+bg+';border:1px solid '+border+';border-radius:5px;padding:3px;min-height:38px;display:flex;flex-direction:column;align-items:center;font-size:10px;color:'+color+'">';
+    h += '<div style="font-weight:'+(isHoy||isSelected?'800':'500')+'">'+d+'</div>';
+    if (dayItems.length > 0) {
+      // Show colored dots for each type
+      var types = {};
+      dayItems.forEach(function(it){types[it.tipo]=it.color});
+      h += '<div style="display:flex;gap:1px;margin-top:1px;flex-wrap:wrap;justify-content:center">';
+      Object.keys(types).slice(0,3).forEach(function(t){
+        h += '<div style="width:5px;height:5px;border-radius:50%;background:'+(isSelected?'white':types[t])+'"></div>';
+      });
+      h += '</div>';
+      h += '<div style="font-size:8px;font-weight:700;color:'+(isSelected?'white':'var(--text-2)')+';margin-top:1px">'+dayItems.length+'</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div></div>';
+  
+  el.innerHTML = h;
+}
+
+function midiaCalNav(dir) {
+  midiaCalDate.setMonth(midiaCalDate.getMonth() + dir);
+  renderMiDia();
+}
+
+function midiaSelectDay(dStr) {
+  midiaSelectedDay = dStr;
+  renderMiDia();
+}
+
+function renderMidiaDayList(filteredItems) {
+  var el = document.getElementById('midiaList');
+  var dayItems = filteredItems.filter(function(it){
+    return it.fecha === midiaSelectedDay || (midiaSelectedDay === new Date().toISOString().substring(0,10) && it.fecha === '_pendiente');
+  });
+  
+  var dayDate = new Date(midiaSelectedDay+'T12:00:00');
+  var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  var diasNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  var dayLabel = diasNames[dayDate.getDay()] + ' ' + dayDate.getDate() + ' ' + meses[dayDate.getMonth()];
+  
+  var h = '<div style="font-size:13px;font-weight:800;margin-bottom:8px;padding:0 4px">'+dayLabel+(dayItems.length?' ('+dayItems.length+')':'')+'</div>';
+  
+  if (dayItems.length === 0) {
+    h += '<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">Sin pendientes este día</div>';
+  } else {
+    // Sort by hora
+    dayItems.sort(function(a,b){
+      var ah = a.hora || '00:00';
+      var bh = b.hora || '00:00';
+      return ah.localeCompare(bh);
+    });
+    dayItems.forEach(function(it){ h += renderMidiaItem(it); });
+  }
+  
+  el.innerHTML = h;
+}
+
+function renderMidiaList(filteredItems) {
+  var el = document.getElementById('midiaList');
+  if (filteredItems.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:40px 20px"><div style="font-size:48px;margin-bottom:12px">🎉</div><div style="font-size:14px;color:var(--text-3)">Sin pendientes con estos filtros</div></div>';
+    return;
+  }
+  // Group by fecha
+  filteredItems.sort(function(a,b){
+    var af = a.fecha === '_pendiente' ? '9999' : a.fecha;
+    var bf = b.fecha === '_pendiente' ? '9999' : b.fecha;
+    if (af !== bf) return af.localeCompare(bf);
+    return (a.hora||'').localeCompare(b.hora||'');
+  });
+  var byDate = {};
+  filteredItems.forEach(function(it){
+    var k = it.fecha;
+    if(!byDate[k])byDate[k]=[];
+    byDate[k].push(it);
+  });
+  var hoyStr = new Date().toISOString().substring(0,10);
+  var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  var diasNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  
+  var h = '';
+  Object.keys(byDate).forEach(function(k){
+    var label;
+    if (k === '_pendiente') label = '⏳ Sin fecha programada';
+    else {
+      var d = new Date(k+'T12:00:00');
+      label = diasNames[d.getDay()] + ' ' + d.getDate() + ' ' + meses[d.getMonth()];
+      if (k === hoyStr) label += ' (Hoy)';
+      else if (k < hoyStr) label += ' ⚠️ Vencido';
+    }
+    h += '<div style="font-size:12px;font-weight:800;margin:10px 4px 6px;padding:4px 8px;background:var(--surface-2);border-radius:6px">'+label+' ('+byDate[k].length+')</div>';
+    byDate[k].forEach(function(it){ h += renderMidiaItem(it); });
+  });
+  el.innerHTML = h;
+}
+
+function renderMidiaItem(it) {
+  var c = it.cot;
+  var equipos = (c.items||[]).map(function(it){return it.equipo}).join(', ');
+  var ultimaNota = c.notas && c.notas.length > 0 ? c.notas[0] : null;
+  var hoyStr = new Date().toISOString().substring(0,10);
+  var isVencido = it.fecha !== '_pendiente' && it.fecha < hoyStr;
+  var bgColor = isVencido ? '#FEF2F2' : it.color+'11';
+  
+  var s = '<div style="background:'+bgColor+';border-radius:10px;padding:10px 12px;margin-bottom:6px;border-left:4px solid '+it.color+'">';
+  s += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+  s += '<div style="font-size:13px;font-weight:700">'+c.cliente.nombre+'</div>';
+  s += '<span style="font-size:9px;padding:2px 8px;border-radius:10px;background:'+it.color+';color:white;font-weight:700">'+it.icon+' '+(it.hora||it.label)+'</span>';
+  s += '</div>';
+  s += '<div style="font-size:10px;color:var(--text-2);margin-bottom:4px">';
+  if (c.cliente.telefono) s += '<span onclick="event.stopPropagation();navigator.clipboard.writeText(\''+c.cliente.telefono+'\');this.textContent=\'✅ Copiado\';var _t=this;setTimeout(function(){_t.textContent=\'📋 '+c.cliente.telefono+'\'},800)" style="cursor:pointer;color:var(--att-blue);font-weight:600">📋 '+c.cliente.telefono+'</span> · ';
+  if (equipos) s += equipos.substring(0,40) + ' · ';
+  s += (c.ejecutivo ? c.ejecutivo.nombre : '');
+  s += '</div>';
+  if (ultimaNota) {
+    var nd = new Date(ultimaNota.created_at);
+    var ndStr = nd.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+    s += '<div style="font-size:9px;color:var(--text-3);margin-bottom:6px">📝 ('+ndStr+'): '+ultimaNota.texto.substring(0,70)+(ultimaNota.texto.length>70?'...':'')+'</div>';
+  }
+  s += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+  s += '<button onclick="showDetalle(\''+c.folio+'\')" style="font-size:9px;padding:3px 10px;background:var(--att-blue);color:white;border:none;border-radius:6px;cursor:pointer">📄 Ver</button>';
+  s += '<button onclick="midiaNotaRapida(\''+c.folio+'\')" style="font-size:9px;padding:3px 10px;background:#10B981;color:white;border:none;border-radius:6px;cursor:pointer">✅ Contacté</button>';
+  s += '<button onclick="midiaReagendar(\''+c.folio+'\')" style="font-size:9px;padding:3px 10px;background:#F59E0B;color:white;border:none;border-radius:6px;cursor:pointer">⏰ Reagendar</button>';
+  if (c.cliente.telefono) s += '<a href="https://wa.me/52'+c.cliente.telefono+'" target="_blank" style="font-size:9px;padding:3px 10px;background:#25D366;color:white;border:none;border-radius:6px;cursor:pointer;text-decoration:none">💬 WA</a>';
+  s += '</div></div>';
+  return s;
+}
+
 
 function midiaNotaRapida(folio) {
   var overlay = document.createElement('div');
