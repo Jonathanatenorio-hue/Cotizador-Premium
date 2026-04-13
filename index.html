@@ -1143,6 +1143,8 @@ body{padding-bottom:60px}
       </select>
     </div>
     
+    <div id="midiaRoleFilters" style="display:none;gap:6px;margin-bottom:8px;flex-wrap:wrap"></div>
+    
     <div id="midiaCalView"></div>
     <div id="midiaList"></div>
   </div>
@@ -15099,7 +15101,79 @@ function openMiDia() {
   showView('midia', 'Mi Agenda');
   midiaCalDate = new Date();
   midiaSelectedDay = new Date().toISOString().substring(0,10);
+  midiaInitRoleFilters();
   renderMiDia();
+}
+
+function midiaInitRoleFilters() {
+  var rol = currentUser ? currentUser.rol : 'agente';
+  var wrap = document.getElementById('midiaRoleFilters');
+  if (!wrap) return;
+  
+  // Agentes don't get filters
+  if (rol === 'agente') { wrap.style.display = 'none'; return; }
+  
+  wrap.style.display = 'flex';
+  var h = '';
+  
+  // Build supervisor list (includes coordinadores with direct agents)
+  var supMap = getSupMapFromUsers(hFilterUsers);
+  var sups = Object.keys(supMap).map(function(id){return {id:id, nombre:supMap[id]}}).sort(function(a,b){return a.nombre.localeCompare(b.nombre)});
+  
+  // Centro filter (admin only)
+  if (rol === 'admin') {
+    var centros = {};
+    (hFilterUsers||[]).forEach(function(u){if(u.centros)centros[u.centro_id]=u.centros.nombre});
+    h += '<select class="field" id="midiaFilterCentro" onchange="midiaPopulateAgents();midiaRefresh()" style="font-size:11px;padding:5px 8px;width:auto"><option value="all">Todos los centros</option>';
+    Object.keys(centros).sort(function(a,b){return centros[a].localeCompare(centros[b])}).forEach(function(id){
+      h += '<option value="'+id+'">'+centros[id]+'</option>';
+    });
+    h += '</select>';
+  }
+  
+  // Supervisor filter (admin + coordinador + capacitador)
+  if (rol === 'admin' || rol === 'coordinador' || rol === 'capacitador') {
+    h += '<select class="field" id="midiaFilterSup" onchange="midiaPopulateAgents();midiaRefresh()" style="font-size:11px;padding:5px 8px;width:auto"><option value="all">Todos los supervisores</option>';
+    h += '<option value="_sin_sup">🚫 Sin supervisor</option>';
+    sups.forEach(function(s){ h += '<option value="'+s.id+'">'+s.nombre+'</option>'; });
+    h += '</select>';
+  }
+  
+  // Agent filter (admin + coordinador + capacitador + supervisor)
+  h += '<select class="field" id="midiaFilterAgent" onchange="midiaRefresh()" style="font-size:11px;padding:5px 8px;width:auto"><option value="all">Todos los agentes</option><option value="_expertos">⭐ Solo Expertos</option></select>';
+  
+  wrap.innerHTML = h;
+  midiaPopulateAgents();
+}
+
+function midiaPopulateAgents() {
+  var rol = currentUser.rol;
+  var supSel = document.getElementById('midiaFilterSup');
+  var centroSel = document.getElementById('midiaFilterCentro');
+  var agSel = document.getElementById('midiaFilterAgent');
+  if (!agSel) return;
+  
+  var supVal = supSel ? supSel.value : 'all';
+  var centroVal = centroSel ? centroSel.value : 'all';
+  
+  var agents = (hFilterUsers||[]).filter(function(u){
+    if (u.rol !== 'agente') return false;
+    if (rol === 'supervisor' && u.supervisor_id !== currentUser.id) return false;
+    if ((rol === 'coordinador' || rol === 'capacitador') && u.coordinador_id !== currentUser.id) return false;
+    if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
+    if (supVal !== 'all') {
+      if (supVal === '_sin_sup') { if (u.supervisor_id) return false; }
+      else if (u.supervisor_id !== supVal) return false;
+    }
+    return true;
+  });
+  agents.sort(function(a,b){return a.nombre.localeCompare(b.nombre)});
+  
+  var h = '<option value="all">Todos los agentes</option><option value="_expertos">⭐ Solo Expertos</option>';
+  agents.forEach(function(a){
+    h += '<option value="'+a.id+'">'+a.nombre+(a.modo_experto?' ⭐':'')+'</option>';
+  });
+  agSel.innerHTML = h;
 }
 
 function midiaSetView(v) {
@@ -15112,13 +15186,50 @@ function midiaSetView(v) {
 function midiaRefresh() { renderMiDia(); }
 
 function midiaGetItems() {
-  // Get cotizaciones with any kind of pending action
+  var rol = currentUser ? currentUser.rol : 'agente';
   var myCots = state.cotizaciones.filter(function(c) {
     if (c.estatus === 'venta' || c.estatus === 'perdida') return false;
     return true;
   });
-  if (currentUser && currentUser.rol === 'agente') {
+  
+  // Role-based filtering
+  if (rol === 'agente') {
     myCots = myCots.filter(function(c) { return c.agente_id === currentUser.id; });
+  } else if (rol === 'supervisor') {
+    var myAgIds = (hFilterUsers||[]).filter(function(u){return u.supervisor_id===currentUser.id}).map(function(u){return u.id});
+    myAgIds.push(currentUser.id);
+    myCots = myCots.filter(function(c){return myAgIds.indexOf(c.agente_id)>=0});
+  } else if (rol === 'coordinador' || rol === 'capacitador') {
+    var mySups = (hFilterUsers||[]).filter(function(u){return u.coordinador_id===currentUser.id && u.rol==='supervisor'}).map(function(u){return u.id});
+    var myCoordIds = (hFilterUsers||[]).filter(function(u){
+      if (u.coordinador_id === currentUser.id) return true;
+      if (mySups.indexOf(u.supervisor_id) >= 0) return true;
+      return false;
+    }).map(function(u){return u.id});
+    myCoordIds.push(currentUser.id);
+    myCots = myCots.filter(function(c){return myCoordIds.indexOf(c.agente_id)>=0});
+  }
+  
+  // Apply UI filters (centro, sup, agent)
+  var centroVal = document.getElementById('midiaFilterCentro') ? document.getElementById('midiaFilterCentro').value : 'all';
+  var supVal = document.getElementById('midiaFilterSup') ? document.getElementById('midiaFilterSup').value : 'all';
+  var agentVal = document.getElementById('midiaFilterAgent') ? document.getElementById('midiaFilterAgent').value : 'all';
+  
+  if (centroVal !== 'all' || supVal !== 'all' || (agentVal !== 'all' && agentVal !== '_expertos')) {
+    var validIds = (hFilterUsers||[]).filter(function(u){
+      if (u.rol !== 'agente') return false;
+      if (centroVal !== 'all' && u.centro_id !== parseInt(centroVal)) return false;
+      if (supVal === '_sin_sup') { if (u.supervisor_id) return false; }
+      else if (supVal !== 'all' && u.supervisor_id !== supVal) return false;
+      if (agentVal !== 'all' && agentVal !== '_expertos' && u.id !== agentVal) return false;
+      return true;
+    }).map(function(u){return u.id});
+    myCots = myCots.filter(function(c){return validIds.indexOf(c.agente_id)>=0});
+  }
+  
+  if (agentVal === '_expertos') {
+    var expertIds = (hFilterUsers||[]).filter(function(u){return u.rol==='agente'&&u.modo_experto===true}).map(function(u){return u.id});
+    myCots = myCots.filter(function(c){return expertIds.indexOf(c.agente_id)>=0});
   }
   
   var items = [];
@@ -15127,21 +15238,17 @@ function midiaGetItems() {
     var hoy = new Date(); hoy.setHours(0,0,0,0);
     var diasSinContacto = lastNotaDate ? Math.floor((hoy - lastNotaDate) / 86400000) : 999;
     
-    // Próximo contacto
     if (c.proximo_contacto) {
       var pcDate = c.proximo_contacto.substring(0,10);
       var pcTime = c.proximo_contacto.length > 10 ? c.proximo_contacto.substring(11,16) : '';
       items.push({cot:c, fecha:pcDate, hora:pcTime, tipo:'contacto', icon:'⏰', color:'#0057B8', label:'Próximo contacto'});
     }
-    // Aceleración
     if (c.sub_estatus === 'aceleracion' && c.fecha_fin_plazo) {
       items.push({cot:c, fecha:c.fecha_fin_plazo, hora:'', tipo:'aceleracion', icon:'🚨', color:'#DC3545', label:'Aceleración vence'});
     }
-    // Adeudo
     if (c.sub_estatus === 'adeudo_pendiente' && c.adeudo_fecha_compromiso) {
       items.push({cot:c, fecha:c.adeudo_fecha_compromiso, hora:'', tipo:'adeudo', icon:'💰', color:'#E6A200', label:'Adeudo vence'});
     }
-    // Sin contacto reciente (seguimientos)
     if (!c.proximo_contacto && c.estatus === 'seguimiento' && diasSinContacto >= 3) {
       items.push({cot:c, fecha:'_pendiente', hora:'', tipo:'seguimiento', icon:'🟠', color:'#E65100', label:'Sin contacto '+diasSinContacto+'d', diasSinContacto:diasSinContacto});
     }
