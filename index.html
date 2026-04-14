@@ -2330,6 +2330,8 @@ async function doLogin() {
     logActivity('login', 'Inicio de sesión');
     loadDeviceImgIndex();
     updateHome();
+    // Check pending tipifications (only for agentes)
+    setTimeout(function(){checkPendingTipificaciones()}, 1500);
     // Set greeting in header
     var firstName = (state.agente.nombre||'').split(' ')[0];
     var rolLabel = {admin:'Administrador',coordinador:'Coordinador',capacitador:'Capacitador',supervisor:'Supervisor',agente:'Ejecutivo'}[state.agente.rol]||'';
@@ -4938,14 +4940,347 @@ function showSuccessModal(action, folio, waUrl, tel) {
     '<div style="font-size:48px;margin-bottom:8px">✅</div>' +
     '<div style="font-size:16px;font-weight:700;color:#1B5E20;margin-bottom:4px">Cotización ' + action + '</div>' +
     '<div style="font-size:13px;color:var(--text-3);margin-bottom:16px">' + folio + '</div>' +
-    (tel ? '<a href="' + waUrl + '" target="_blank" style="display:block;background:#25D366;color:white;font-weight:700;padding:12px;border-radius:10px;text-decoration:none;font-size:14px;margin-bottom:8px" onclick="closeSuccessModal()">💬 Enviar por WhatsApp al cliente</a>' : '') +
-    '<button onclick="closeSuccessModal()" style="background:var(--surface-2);border:none;color:var(--text-2);font-weight:600;padding:10px;border-radius:10px;width:100%;font-size:13px;cursor:pointer">Cerrar</button>' +
+    (tel ? '<a href="' + waUrl + '" target="_blank" style="display:block;background:#25D366;color:white;font-weight:700;padding:12px;border-radius:10px;text-decoration:none;font-size:14px;margin-bottom:8px">💬 Enviar por WhatsApp al cliente</a>' : '') +
+    '<button onclick="closeSuccessAndTipificar(\''+folio+'\')" style="background:linear-gradient(135deg,#0057B8,#0070D4);border:none;color:white;font-weight:700;padding:14px;border-radius:10px;width:100%;font-size:14px;cursor:pointer;margin-bottom:6px">📝 Tipificar y agregar nota</button>' +
+    '<div style="font-size:9px;color:var(--text-3);margin-top:6px">Completa la tipificación para mantener tu pipeline al día</div>' +
     '</div>';
   document.body.appendChild(overlay);
 }
 function closeSuccessModal() {
   var el = document.getElementById('successOverlay');
   if (el) el.remove();
+}
+function closeSuccessAndTipificar(folio) {
+  closeSuccessModal();
+  openTipificacionRapida(folio);
+}
+
+function openTipificacionRapida(folio) {
+  var cot = state.cotizaciones.find(function(c){return c.folio===folio});
+  if (!cot) return;
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'tipOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10001;display:flex;align-items:center;justify-content:center;padding:12px;overflow-y:auto';
+  
+  var manana = new Date();
+  manana.setDate(manana.getDate()+1);
+  manana.setHours(10,0,0,0);
+  var mananaStr = manana.toISOString().substring(0,16);
+  
+  var h = '<div style="background:white;border-radius:16px;padding:18px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:95vh;overflow-y:auto">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+  h += '<div style="font-size:14px;font-weight:900">📝 Tipificar ' + folio + '</div></div>';
+  h += '<div style="font-size:10px;color:var(--text-3);margin-bottom:12px">Cliente: <b>'+cot.cliente.nombre+'</b></div>';
+  
+  // Estatus
+  h += '<div style="margin-bottom:10px">';
+  h += '<div style="font-size:10px;font-weight:700;margin-bottom:4px">¿Cómo terminó la llamada?</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">';
+  h += '<button onclick="tipSetEstatus(\'seguimiento\')" id="tipBtnSeg" class="tipEstBtn" style="padding:8px;border:2px solid var(--border);background:white;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700">🟡 Seguimiento</button>';
+  h += '<button onclick="tipSetEstatus(\'venta\')" id="tipBtnVta" class="tipEstBtn" style="padding:8px;border:2px solid var(--border);background:white;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700">✅ Venta</button>';
+  h += '<button onclick="tipSetEstatus(\'perdida\')" id="tipBtnPer" class="tipEstBtn" style="padding:8px;border:2px solid var(--border);background:white;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700">❌ Perdida</button>';
+  h += '<button onclick="tipSetEstatus(\'enviada\')" id="tipBtnEnv" class="tipEstBtn" style="padding:8px;border:2px solid var(--border);background:white;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700">📤 Sin contactar aún</button>';
+  h += '</div></div>';
+  
+  // Sub-tipificación dinámica
+  h += '<div id="tipSubBox" style="margin-bottom:10px;display:none"></div>';
+  
+  // Nota objetiva
+  h += '<div style="margin-bottom:10px">';
+  h += '<div style="font-size:10px;font-weight:700;margin-bottom:4px">📝 ¿Qué pasó? (sé específico, no escribas "le marqué")</div>';
+  h += '<textarea id="tipNota" placeholder="Ej: Le interesa el iPhone 17, pero quiere comparar con Samsung. Le dije que mañana le confirmo precio con descuento por antigüedad..." style="width:100%;min-height:70px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:11px;font-family:inherit"></textarea>';
+  h += '<div id="tipNotaHint" style="font-size:9px;color:var(--text-3);margin-top:3px"></div>';
+  h += '</div>';
+  
+  // Próximo contacto
+  h += '<div id="tipProxBox" style="margin-bottom:10px">';
+  h += '<div style="font-size:10px;font-weight:700;margin-bottom:4px">⏰ ¿Cuándo le vuelves a contactar?</div>';
+  h += '<input type="datetime-local" id="tipProx" value="'+mananaStr+'" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:11px">';
+  h += '</div>';
+  
+  // Action buttons
+  h += '<div style="display:flex;gap:6px;margin-top:14px">';
+  h += '<button onclick="tipSkip()" style="flex:1;padding:10px;background:var(--surface-2);border:none;border-radius:8px;cursor:pointer;font-size:11px;color:var(--text-3)">Más tarde</button>';
+  h += '<button onclick="tipGuardar(\''+folio+'\')" id="tipGuardarBtn" style="flex:2;padding:10px;background:linear-gradient(135deg,#10B981,#059669);color:white;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700">✅ Guardar tipificación</button>';
+  h += '</div>';
+  h += '</div>';
+  
+  overlay.innerHTML = h;
+  document.body.appendChild(overlay);
+  
+  window._tipEstatus = '';
+  window._tipSubEst = '';
+  
+  // Listen to nota for vague keywords
+  setTimeout(function(){
+    var nta = document.getElementById('tipNota');
+    if (nta) nta.addEventListener('input', tipValidateNota);
+  }, 100);
+}
+
+function tipSetEstatus(est) {
+  window._tipEstatus = est;
+  ['Seg','Vta','Per','Env'].forEach(function(s){
+    var btn = document.getElementById('tipBtn'+s);
+    if (btn) { btn.style.borderColor = 'var(--border)'; btn.style.background = 'white'; btn.style.color = 'var(--text-1)'; }
+  });
+  var map = {seguimiento:['Seg','#E6A200'], venta:['Vta','#10B981'], perdida:['Per','#DC3545'], enviada:['Env','#0057B8']};
+  var m = map[est];
+  if (m) {
+    var b = document.getElementById('tipBtn'+m[0]);
+    if (b) { b.style.borderColor = m[1]; b.style.background = m[1]; b.style.color = 'white'; }
+  }
+  
+  // Show sub-tipificacion based on estatus
+  var sub = document.getElementById('tipSubBox');
+  var prox = document.getElementById('tipProxBox');
+  if (est === 'seguimiento') {
+    sub.style.display = '';
+    sub.innerHTML = '<div style="font-size:10px;font-weight:700;margin-bottom:4px">Tipo de seguimiento</div>' +
+      '<select id="tipSubSel" onchange="window._tipSubEst=this.value" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:11px">' +
+      '<option value="">Selecciona...</option>' +
+      '<option value="aceleracion">🚀 Aceleración (cierre próximo)</option>' +
+      '<option value="adeudo_pendiente">💰 Tiene adeudo</option>' +
+      '<option value="documentos_pendientes">📄 Le faltan documentos</option>' +
+      '<option value="comparando">🤔 Está comparando con otra opción</option>' +
+      '<option value="quiere_pensar">⏳ Quiere pensarlo</option>' +
+      '<option value="esperando_respuesta">📲 Esperando que me responda</option>' +
+      '</select>';
+    prox.style.display = '';
+  } else if (est === 'perdida') {
+    sub.style.display = '';
+    sub.innerHTML = '<div style="font-size:10px;font-weight:700;margin-bottom:4px">¿Por qué se perdió?</div>' +
+      '<select id="tipSubSel" onchange="window._tipSubEst=this.value" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:11px">' +
+      '<option value="">Selecciona...</option>' +
+      '<option value="precio">💵 Precio caro</option>' +
+      '<option value="competencia">📱 Se fue con la competencia</option>' +
+      '<option value="no_interesado">🚫 No le interesó</option>' +
+      '<option value="adeudo">⛔ Adeudo no resuelto</option>' +
+      '<option value="documentos">📄 No tenía documentos</option>' +
+      '<option value="no_contesto">📵 No contestó nunca</option>' +
+      '<option value="otro">❓ Otro motivo</option>' +
+      '</select>';
+    prox.style.display = 'none';
+  } else if (est === 'venta') {
+    sub.style.display = 'none';
+    prox.style.display = 'none';
+  } else if (est === 'enviada') {
+    sub.style.display = 'none';
+    prox.style.display = '';
+  }
+}
+
+function tipValidateNota() {
+  var nta = document.getElementById('tipNota');
+  var hint = document.getElementById('tipNotaHint');
+  if (!nta || !hint) return;
+  var txt = nta.value.toLowerCase();
+  var weak = ['le marqué','le marque','le envié mensaje','le envie mensaje','no contestó','no contesto','le mandé wa','le mande wa','le marco','no me contesta'];
+  var hasWeak = weak.some(function(w){return txt.indexOf(w)>=0});
+  
+  if (txt.length < 20) {
+    hint.style.color = '#DC3545';
+    hint.textContent = '⚠️ Muy corto. Describe qué pasó: objeción, interés, próximos pasos.';
+  } else if (hasWeak && txt.length < 50) {
+    hint.style.color = '#E6A200';
+    hint.textContent = '🟡 Agrega: ¿qué te respondió? ¿qué objeción tuvo? ¿qué quedaste de hacer?';
+  } else if (txt.length >= 30) {
+    hint.style.color = '#10B981';
+    hint.textContent = '✅ Buena nota objetiva';
+  } else {
+    hint.style.color = 'var(--text-3)';
+    hint.textContent = '';
+  }
+}
+
+function tipSkip() {
+  if (!confirm('¿Posponer tipificación?\n\nTu cotización quedará como "Enviada" y aparecerá pendiente en Mi Agenda mañana.')) return;
+  var el = document.getElementById('tipOverlay');
+  if (el) el.remove();
+}
+
+async function tipGuardar(folio) {
+  var est = window._tipEstatus;
+  var subEst = window._tipSubEst;
+  var nota = document.getElementById('tipNota').value.trim();
+  var prox = document.getElementById('tipProx') ? document.getElementById('tipProx').value : '';
+  
+  if (!est) { alert('Selecciona un estatus'); return; }
+  if (nota.length < 15) { alert('La nota debe tener mínimo 15 caracteres y ser objetiva'); return; }
+  if (est === 'seguimiento' && !subEst) { alert('Selecciona el tipo de seguimiento'); return; }
+  if (est === 'perdida' && !subEst) { alert('Selecciona el motivo de pérdida'); return; }
+  if ((est === 'seguimiento' || est === 'enviada') && !prox) { alert('Indica cuándo le vuelves a contactar'); return; }
+  
+  var btn = document.getElementById('tipGuardarBtn');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+  
+  try {
+    var updates = {estatus: est};
+    if (subEst) updates.sub_estatus = subEst;
+    if (prox) updates.proximo_contacto = prox;
+    
+    // Get cot id
+    var localCot = state.cotizaciones.find(function(c){return c.folio===folio});
+    if (!localCot) { alert('Cotización no encontrada'); return; }
+    
+    var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', folio).single();
+    if (!cotRow) { alert('Error: no se encontró en BD'); return; }
+    
+    await supabase.from('cotizaciones').update(updates).eq('id', cotRow.id);
+    await supabase.from('cotizacion_notas').insert({
+      cotizacion_id: cotRow.id,
+      tipo: 'nota',
+      autor: currentUser ? currentUser.nombre : '',
+      texto: nota
+    });
+    
+    // Update local
+    Object.keys(updates).forEach(function(k){localCot[k]=updates[k]});
+    if (!localCot.notas) localCot.notas = [];
+    localCot.notas.unshift({tipo:'nota', autor:currentUser?currentUser.nombre:'', texto:nota, created_at:new Date().toISOString()});
+    
+    logActivity('tipificacion', folio + ' → ' + est + (subEst?' / '+subEst:''));
+    
+    var el = document.getElementById('tipOverlay');
+    if (el) el.remove();
+    
+    // Quick success
+    var msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#10B981;color:white;padding:10px 20px;border-radius:8px;z-index:10002;font-size:13px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,0.2)';
+    msg.textContent = '✅ Cotización tipificada';
+    document.body.appendChild(msg);
+    setTimeout(function(){msg.remove()}, 2000);
+  } catch(e) {
+    alert('Error: '+e.message);
+    btn.disabled = false;
+    btn.textContent = '✅ Guardar tipificación';
+  }
+}
+
+// ── CHECK PENDIENTES AL INICIAR DÍA ──
+async function checkPendingTipificaciones() {
+  if (!currentUser || currentUser.rol !== 'agente') return;
+  if (currentUser.modo_experto === true) return; // Expert agents skip
+  
+  // Wait for cotizaciones to load
+  if (state.cotizaciones.length === 0) return;
+  
+  var hoy = new Date();
+  hoy.setHours(0,0,0,0);
+  var ayer = new Date(hoy.getTime() - 86400000);
+  
+  // Find "enviada" cotizaciones older than 12 hours from this agent
+  var pendientes = state.cotizaciones.filter(function(c) {
+    if (c.agente_id !== currentUser.id) return false;
+    if (c.estatus !== 'enviada') return false;
+    if (!c.pdf_generado) return false; // skip silent records
+    if (!c.createdAt) return false;
+    var created = new Date(c.createdAt);
+    var hoursOld = (hoy.getTime() - created.getTime()) / 3600000;
+    return hoursOld >= 12;
+  });
+  
+  if (pendientes.length === 0) {
+    // Check pattern of losses for Sales Academy recommendation
+    setTimeout(function(){checkLossPattern()}, 5000);
+    return;
+  }
+  
+  showPendientesModal(pendientes);
+}
+
+function showPendientesModal(pendientes) {
+  var overlay = document.createElement('div');
+  overlay.id = 'pendientesOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:12px';
+  
+  var h = '<div style="background:white;border-radius:16px;padding:20px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">';
+  h += '<div style="font-size:36px;text-align:center;margin-bottom:8px">⚠️</div>';
+  h += '<div style="font-size:18px;font-weight:900;text-align:center;color:#DC3545;margin-bottom:6px">'+pendientes.length+' cotización'+(pendientes.length>1?'es':'')+' sin tipificar</div>';
+  h += '<div style="font-size:11px;text-align:center;color:var(--text-3);margin-bottom:14px">Estas cotizaciones llevan más de 12h en "Enviada". Tipifícalas antes de continuar para mantener tu pipeline al día.</div>';
+  
+  pendientes.slice(0,10).forEach(function(c) {
+    var hours = Math.round((new Date() - new Date(c.createdAt))/3600000);
+    h += '<div style="background:#FEF2F2;border-left:3px solid #DC3545;border-radius:8px;padding:8px 10px;margin-bottom:5px">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center">';
+    h += '<div><div style="font-size:11px;font-weight:700">'+c.cliente.nombre+'</div>';
+    h += '<div style="font-size:9px;color:var(--text-3)">'+c.folio+' · hace '+hours+'h</div></div>';
+    h += '<button onclick="document.getElementById(\'pendientesOverlay\').remove();openTipificacionRapida(\''+c.folio+'\')" style="background:#0057B8;color:white;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:10px;font-weight:700">📝 Tipificar</button>';
+    h += '</div></div>';
+  });
+  
+  if (pendientes.length > 10) {
+    h += '<div style="text-align:center;font-size:10px;color:var(--text-3);margin-top:6px">y '+(pendientes.length-10)+' más en Historial</div>';
+  }
+  
+  h += '<button onclick="document.getElementById(\'pendientesOverlay\').remove()" style="width:100%;margin-top:12px;background:var(--surface-2);border:none;color:var(--text-3);padding:10px;border-radius:8px;cursor:pointer;font-size:11px">Después (no recomendado)</button>';
+  h += '</div>';
+  overlay.innerHTML = h;
+  document.body.appendChild(overlay);
+}
+
+// ── PATRÓN DE PÉRDIDAS — RECOMIENDA SALES ACADEMY ──
+async function checkLossPattern() {
+  if (!currentUser || currentUser.rol !== 'agente') return;
+  if (currentUser.modo_experto === true) return;
+  
+  // Last 30 days perdidas
+  var hace30 = new Date(Date.now() - 30*86400000);
+  var perdidas = state.cotizaciones.filter(function(c) {
+    if (c.agente_id !== currentUser.id) return false;
+    if (c.estatus !== 'perdida') return false;
+    if (!c.createdAt) return false;
+    return new Date(c.createdAt) > hace30;
+  });
+  
+  if (perdidas.length < 3) return;
+  
+  // Count by sub_estatus
+  var byMotivo = {};
+  perdidas.forEach(function(c) {
+    var m = c.sub_estatus || 'otro';
+    byMotivo[m] = (byMotivo[m]||0) + 1;
+  });
+  
+  // Find dominant pattern
+  var topMotivo = '';
+  var topCount = 0;
+  Object.keys(byMotivo).forEach(function(m){
+    if (byMotivo[m] > topCount) { topCount = byMotivo[m]; topMotivo = m; }
+  });
+  
+  // Need at least 3 of same type and >40% of all losses
+  if (topCount < 3 || topCount/perdidas.length < 0.4) return;
+  
+  var motivoLabels = {
+    precio: {label:'precio caro', tema:'manejo de objeción de precio', icon:'💵'},
+    competencia: {label:'competencia', tema:'diferenciación AT&T vs competidores', icon:'📱'},
+    no_interesado: {label:'cliente no interesado', tema:'detección de necesidades y apertura', icon:'🚫'},
+    no_contesto: {label:'cliente no contesta', tema:'estrategia de seguimiento por WhatsApp', icon:'📵'},
+    documentos: {label:'falta de documentos', tema:'cierre con clientes sin documentos', icon:'📄'}
+  };
+  var info = motivoLabels[topMotivo];
+  if (!info) return;
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'lossPatternOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:12px';
+  
+  var h = '<div style="background:white;border-radius:16px;padding:24px;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3)">';
+  h += '<div style="font-size:48px;margin-bottom:8px">'+info.icon+'</div>';
+  h += '<div style="font-size:16px;font-weight:900;color:#0057B8;margin-bottom:6px">Detectamos un patrón</div>';
+  h += '<div style="font-size:12px;color:var(--text-2);margin-bottom:12px">En tus últimas 30 días perdiste <b>'+topCount+' cotizaciones</b> por <b>'+info.label+'</b></div>';
+  h += '<div style="background:#EFF6FF;border-radius:10px;padding:12px;margin-bottom:14px">';
+  h += '<div style="font-size:11px;color:#0057B8;margin-bottom:4px">📚 Recomendación:</div>';
+  h += '<div style="font-size:13px;font-weight:700;color:#1E3A8A">Entrena '+info.tema+' en Sales Academy</div>';
+  h += '</div>';
+  h += '<button onclick="document.getElementById(\'lossPatternOverlay\').remove();showView(\'training\',\'Sales Academy\')" style="width:100%;background:linear-gradient(135deg,#8B5CF6,#6D28D9);color:white;border:none;padding:12px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px">📚 Ir a Sales Academy</button>';
+  h += '<button onclick="document.getElementById(\'lossPatternOverlay\').remove()" style="width:100%;background:none;border:none;color:var(--text-3);padding:6px;font-size:11px;cursor:pointer">Más tarde</button>';
+  h += '</div>';
+  overlay.innerHTML = h;
+  document.body.appendChild(overlay);
 }
 
 // ============================================================
