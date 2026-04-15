@@ -2330,8 +2330,8 @@ async function doLogin() {
     logActivity('login', 'Inicio de sesión');
     loadDeviceImgIndex();
     updateHome();
-    // Check pending tipifications (only for agentes)
-    setTimeout(function(){checkPendingTipificaciones()}, 1500);
+    // TEMP: Disabled pending tipifications check while debugging
+    // setTimeout(function(){checkPendingTipificaciones()}, 1500);
     // Set greeting in header
     var firstName = (state.agente.nombre||'').split(' ')[0];
     var rolLabel = {admin:'Administrador',coordinador:'Coordinador',capacitador:'Capacitador',supervisor:'Supervisor',agente:'Ejecutivo'}[state.agente.rol]||'';
@@ -7754,17 +7754,7 @@ async function guardarEstatus(folio, silent) {
   if (est === 'seguimiento') {
     subEstatus = document.getElementById('subSeg_' + folio).value;
     if (!subEstatus) { alert('Selecciona el motivo de seguimiento.'); return; }
-    // Check if at least one nota exists
-    var cot = state.cotizaciones.find(function(c){return c.folio === folio});
-    if (cot && (!cot.notas || cot.notas.length === 0)) {
-      var notaTexto = document.getElementById('notaTexto_' + folio);
-      if (!notaTexto || !notaTexto.value.trim()) {
-        alert('⚠️ Agrega al menos una nota de seguimiento antes de guardar.\n\nEscribe qué acción realizaste (llamada, mensaje, etc.) en la sección de Notas de Seguimiento.');
-        var notasSection = document.getElementById('notaTexto_' + folio);
-        if (notasSection) { notasSection.focus(); notasSection.style.border = '2px solid #DC3545'; setTimeout(function(){notasSection.style.border='';}, 3000); }
-        return;
-      }
-    }
+    // Note validation removed - already done in guardarTodo or by direct flow
     if (subEstatus === 'aceleracion') {
       fechaFinPlazo = document.getElementById('fechaFinPlazo_' + folio).value;
       tieneIne = document.getElementById('tieneIne_' + folio).value;
@@ -7922,11 +7912,20 @@ async function agregarNota(folio) {
       rol_autor: rolAutor
     });
     
+    // ALSO update local state so subsequent validations pass
+    var localCot = state.cotizaciones.find(function(c){return c.folio===folio});
+    if (localCot) {
+      if (!localCot.notas) localCot.notas = [];
+      localCot.notas.unshift({
+        tipo: tipo, texto: texto, autor: autor, rol_autor: rolAutor,
+        created_at: new Date().toISOString()
+      });
+    }
+    
     // Save próximo contacto if set
     if (proxContacto) {
       await supabase.from('cotizaciones').update({proximo_contacto: proxContacto}).eq('folio', folio);
-      var cot = state.cotizaciones.find(function(c){return c.folio===folio});
-      if (cot) cot.proximo_contacto = proxContacto;
+      if (localCot) localCot.proximo_contacto = proxContacto;
     }
     
     document.getElementById('notaTexto_' + folio).value = '';
