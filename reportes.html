@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ExpertCell · Reportes</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg: #F8FAFC;
+  --surface: #FFFFFF;
+  --border: #E2E8F0;
+  --text-1: #0F172A;
+  --text-2: #475569;
+  --text-3: #94A3B8;
+  --att-blue: #0057B8;
+  --att-dark: #00264D;
+  --green: #10B981;
+  --yellow: #F59E0B;
+  --red: #EF4444;
+  --purple: #8B5CF6;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text-1); min-height: 100vh; }
+
+.login-bg {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: linear-gradient(135deg, var(--att-dark) 0%, var(--att-blue) 100%);
+}
+.login-card {
+  background: white; border-radius: 20px; padding: 40px; max-width: 380px; width: 100%;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.2); text-align: center;
+}
+.login-card img { width: 120px; margin-bottom: 16px; }
+.login-card h1 { font-size: 20px; font-weight: 900; color: var(--att-dark); margin-bottom: 4px; }
+.login-card p { font-size: 12px; color: var(--text-3); margin-bottom: 24px; }
+.login-card input {
+  width: 100%; padding: 12px 16px; border: 2px solid var(--border); border-radius: 10px;
+  font-size: 14px; font-family: inherit; margin-bottom: 12px; outline: none; transition: border 0.2s;
+}
+.login-card input:focus { border-color: var(--att-blue); }
+.login-card button {
+  width: 100%; padding: 12px; background: linear-gradient(135deg, var(--att-blue), #0070D4);
+  color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: transform 0.1s;
+}
+.login-card button:active { transform: scale(0.98); }
+.login-error { color: var(--red); font-size: 11px; margin-top: 8px; display: none; }
+
+.app { display: none; }
+.header {
+  background: linear-gradient(135deg, var(--att-dark), var(--att-blue));
+  color: white; padding: 16px 20px;
+}
+.header h1 { font-size: 18px; font-weight: 900; }
+.header p { font-size: 11px; opacity: 0.7; }
+
+.container { max-width: 1100px; margin: 0 auto; padding: 16px; }
+
+.filters {
+  background: var(--surface); border-radius: 12px; padding: 14px; margin-bottom: 14px;
+  border: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;
+}
+.filter-group { display: flex; flex-direction: column; gap: 3px; }
+.filter-group label { font-size: 9px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
+.filter-group input, .filter-group select {
+  padding: 7px 10px; border: 1.5px solid var(--border); border-radius: 8px;
+  font-size: 11px; font-family: inherit; background: white; outline: none;
+}
+.filter-group input:focus, .filter-group select:focus { border-color: var(--att-blue); }
+
+.btn {
+  padding: 8px 14px; border: none; border-radius: 8px; font-size: 11px; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: all 0.15s;
+}
+.btn-primary { background: var(--att-blue); color: white; }
+.btn-primary:hover { background: var(--att-dark); }
+.btn-green { background: var(--green); color: white; }
+.btn-green:hover { background: #059669; }
+
+.kpis { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.kpi {
+  flex: 1; min-width: 100px; background: var(--surface); border-radius: 10px; padding: 12px 14px;
+  border: 1px solid var(--border); text-align: center;
+}
+.kpi-value { font-size: 22px; font-weight: 900; }
+.kpi-label { font-size: 9px; color: var(--text-3); margin-top: 2px; }
+
+.table-wrap {
+  background: var(--surface); border-radius: 12px; border: 1px solid var(--border); overflow: hidden;
+}
+.table-info { padding: 10px 14px; font-size: 10px; color: var(--text-3); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+table { width: 100%; border-collapse: collapse; font-size: 11px; }
+th {
+  background: #F1F5F9; padding: 8px 10px; text-align: left; font-size: 9px; font-weight: 700;
+  color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid var(--border);
+  position: sticky; top: 0; cursor: pointer; user-select: none; white-space: nowrap;
+}
+th:hover { color: var(--att-blue); }
+th .sort-icon { font-size: 8px; margin-left: 3px; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tr:hover td { background: #F8FAFC; }
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 700;
+}
+.badge-enviada { background: #EFF6FF; color: var(--att-blue); }
+.badge-seguimiento { background: #FFFBEB; color: #D97706; }
+.badge-venta { background: #ECFDF5; color: #059669; }
+.badge-perdida { background: #FEF2F2; color: #DC2626; }
+
+.pagination { display: flex; justify-content: center; gap: 4px; padding: 12px; }
+.pagination button {
+  padding: 5px 10px; border: 1px solid var(--border); background: white; border-radius: 6px;
+  font-size: 10px; cursor: pointer; font-family: inherit;
+}
+.pagination button.active { background: var(--att-blue); color: white; border-color: var(--att-blue); }
+
+.scroll-table { max-height: 60vh; overflow-y: auto; }
+
+@media (max-width: 600px) {
+  .filters { gap: 6px; }
+  .filter-group { flex: 1; min-width: 45%; }
+  .kpis { gap: 4px; }
+  .kpi { min-width: 70px; padding: 8px; }
+  .kpi-value { font-size: 16px; }
+  td, th { padding: 5px 6px; font-size: 10px; }
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-bg" id="loginView">
+  <div class="login-card">
+    <div style="font-size:40px;margin-bottom:10px">📊</div>
+    <h1>ExpertCell Reportes</h1>
+    <p>Consulta de cotizaciones en tiempo real</p>
+    <input type="password" id="loginPass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">Acceder</button>
+    <div class="login-error" id="loginError">Contraseña incorrecta</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app" id="appView">
+  <div class="header">
+    <div style="display:flex;justify-content:space-between;align-items:center;max-width:1100px;margin:0 auto">
+      <div>
+        <h1>📊 ExpertCell Reportes</h1>
+        <p>Consulta de cotizaciones</p>
+      </div>
+      <button onclick="location.reload()" style="background:rgba(255,255,255,0.15);color:white;border:none;padding:6px 12px;border-radius:8px;font-size:10px;cursor:pointer">Cerrar sesión</button>
+    </div>
+  </div>
+  
+  <div class="container">
+    <div class="filters">
+      <div class="filter-group">
+        <label>Desde</label>
+        <input type="date" id="fDesde">
+      </div>
+      <div class="filter-group">
+        <label>Hasta</label>
+        <input type="date" id="fHasta">
+      </div>
+      <div class="filter-group">
+        <label>Estatus</label>
+        <select id="fEstatus">
+          <option value="all">Todos</option>
+          <option value="enviada">Enviada</option>
+          <option value="seguimiento">Seguimiento</option>
+          <option value="venta">Venta</option>
+          <option value="perdida">Perdida</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Supervisor</label>
+        <select id="fSup"><option value="all">Todos</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Ejecutivo</label>
+        <select id="fAgente"><option value="all">Todos</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Buscar</label>
+        <input type="text" id="fSearch" placeholder="Nombre o teléfono...">
+      </div>
+      <div class="filter-group" style="justify-content:flex-end">
+        <button class="btn btn-primary" onclick="applyFilters()">🔍 Filtrar</button>
+      </div>
+      <div class="filter-group" style="justify-content:flex-end">
+        <button class="btn btn-green" onclick="exportExcel()">📥 Excel</button>
+      </div>
+    </div>
+    
+    <div class="kpis" id="kpis"></div>
+    
+    <div class="table-wrap">
+      <div class="table-info">
+        <span id="tableCount">Cargando...</span>
+        <span id="tableUpdated"></span>
+      </div>
+      <div class="scroll-table">
+        <table>
+          <thead id="thead">
+            <tr>
+              <th onclick="sortBy('folio')">Folio <span class="sort-icon">↕</span></th>
+              <th onclick="sortBy('ejecutivo')">Ejecutivo <span class="sort-icon">↕</span></th>
+              <th onclick="sortBy('cliente')">Cliente <span class="sort-icon">↕</span></th>
+              <th onclick="sortBy('telefono')">Teléfono <span class="sort-icon">↕</span></th>
+              <th onclick="sortBy('estatus')">Estatus <span class="sort-icon">↕</span></th>
+              <th onclick="sortBy('sub_estatus')">Sub-estatus <span class="sort-icon">↕</span></th>
+              <th onclick="sortBy('created_at')">Creada <span class="sort-icon">↕</span></th>
+              <th onclick="sortBy('updated_at')">Últ. cambio <span class="sort-icon">↕</span></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var PASSWORD = 'reportes2026';
+var SUPABASE_URL = 'https://smytyjzmzmbmclllivxkc.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNteXR5anptem1ibWNsbGxpdnhrYyIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzQyNjA3NjE1LCJleHAiOjIwNTgxODM2MTV9.59CjGMURKMfPMNvJZSTzMkCz2BCz-jd6UkNrmSYq5lg';
+
+var supabase = null;
+var allData = [];
+var filtered = [];
+var usuarios = [];
+var sortCol = 'created_at';
+var sortAsc = false;
+var pageSize = 50;
+var currentPage = 0;
+
+function doLogin() {
+  var pass = document.getElementById('loginPass').value;
+  if (pass === PASSWORD) {
+    document.getElementById('loginView').style.display = 'none';
+    document.getElementById('appView').style.display = '';
+    initApp();
+  } else {
+    document.getElementById('loginError').style.display = '';
+    document.getElementById('loginPass').style.borderColor = '#EF4444';
+  }
+}
+
+async function initApp() {
+  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  
+  // Default dates: last 30 days
+  var hoy = new Date().toISOString().substring(0,10);
+  var hace30 = new Date(Date.now() - 30*86400000).toISOString().substring(0,10);
+  document.getElementById('fDesde').value = hace30;
+  document.getElementById('fHasta').value = hoy;
+  
+  // Load users for filters
+  var {data: users} = await supabase.from('usuarios').select('id, nombre, rol, supervisor_id, activo');
+  usuarios = users || [];
+  
+  // Populate supervisor dropdown
+  var sups = usuarios.filter(function(u){return u.rol==='supervisor'||u.rol==='coordinador'});
+  var supSel = document.getElementById('fSup');
+  sups.sort(function(a,b){return a.nombre.localeCompare(b.nombre)}).forEach(function(s){
+    supSel.innerHTML += '<option value="'+s.id+'">'+s.nombre+'</option>';
+  });
+  
+  // Populate agente dropdown
+  populateAgentes();
+  document.getElementById('fSup').addEventListener('change', populateAgentes);
+  
+  // Load data
+  await loadData();
+}
+
+function populateAgentes() {
+  var supVal = document.getElementById('fSup').value;
+  var agentes = usuarios.filter(function(u){return u.rol==='agente'});
+  if (supVal !== 'all') agentes = agentes.filter(function(u){return u.supervisor_id===supVal});
+  agentes.sort(function(a,b){return a.nombre.localeCompare(b.nombre)});
+  
+  var sel = document.getElementById('fAgente');
+  sel.innerHTML = '<option value="all">Todos</option>';
+  agentes.forEach(function(a){
+    sel.innerHTML += '<option value="'+a.id+'">'+a.nombre+'</option>';
+  });
+}
+
+async function loadData() {
+  document.getElementById('tableCount').textContent = 'Cargando...';
+  
+  var desde = document.getElementById('fDesde').value;
+  var hasta = document.getElementById('fHasta').value;
+  
+  allData = [];
+  var page = 0;
+  var hasMore = true;
+  while (hasMore) {
+    var q = supabase.from('cotizaciones').select('folio, agente_id, cliente, estatus, sub_estatus, proximo_contacto, created_at, updated_at, pdf_generado')
+      .gte('created_at', desde+'T00:00:00')
+      .lte('created_at', hasta+'T23:59:59')
+      .order('created_at', {ascending: false})
+      .range(page*500, (page+1)*500-1);
+    
+    var {data, error} = await q;
+    if (error) { console.error(error); break; }
+    if (!data || data.length === 0) { hasMore = false; break; }
+    allData = allData.concat(data);
+    if (data.length < 500) hasMore = false;
+    page++;
+  }
+  
+  // Map ejecutivo names
+  var userMap = {};
+  usuarios.forEach(function(u){userMap[u.id] = u});
+  
+  allData.forEach(function(c) {
+    var u = userMap[c.agente_id];
+    c._ejecutivo = u ? u.nombre : 'Desconocido';
+    c._supId = u ? u.supervisor_id : null;
+    c._cliente = c.cliente ? (c.cliente.nombre||'') : '';
+    c._telefono = c.cliente ? (c.cliente.telefono||'') : '';
+  });
+  
+  document.getElementById('tableUpdated').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-MX');
+  applyFilters();
+}
+
+function applyFilters() {
+  var estatus = document.getElementById('fEstatus').value;
+  var sup = document.getElementById('fSup').value;
+  var agente = document.getElementById('fAgente').value;
+  var search = document.getElementById('fSearch').value.toLowerCase().trim();
+  
+  filtered = allData.filter(function(c) {
+    if (estatus !== 'all' && c.estatus !== estatus) return false;
+    if (sup !== 'all' && c._supId !== sup) return false;
+    if (agente !== 'all' && c.agente_id !== agente) return false;
+    if (search) {
+      var nm = c._cliente.toLowerCase();
+      var tel = c._telefono.toLowerCase();
+      var ej = c._ejecutivo.toLowerCase();
+      if (nm.indexOf(search)<0 && tel.indexOf(search)<0 && ej.indexOf(search)<0) return false;
+    }
+    return true;
+  });
+  
+  // Sort
+  doSort();
+  currentPage = 0;
+  renderKPIs();
+  renderTable();
+}
+
+function doSort() {
+  filtered.sort(function(a,b) {
+    var va, vb;
+    if (sortCol === 'ejecutivo') { va = a._ejecutivo; vb = b._ejecutivo; }
+    else if (sortCol === 'cliente') { va = a._cliente; vb = b._cliente; }
+    else if (sortCol === 'telefono') { va = a._telefono; vb = b._telefono; }
+    else { va = a[sortCol]||''; vb = b[sortCol]||''; }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+}
+
+function sortBy(col) {
+  if (sortCol === col) { sortAsc = !sortAsc; }
+  else { sortCol = col; sortAsc = true; }
+  doSort();
+  renderTable();
+}
+
+function renderKPIs() {
+  var env = 0, seg = 0, vta = 0, per = 0;
+  filtered.forEach(function(c) {
+    if (c.estatus==='enviada') env++;
+    else if (c.estatus==='seguimiento') seg++;
+    else if (c.estatus==='venta') vta++;
+    else if (c.estatus==='perdida') per++;
+  });
+  var total = filtered.length;
+  var tasa = (vta+seg+env+per)>0 ? Math.round(vta/(vta+seg+env+per)*100) : 0;
+  
+  document.getElementById('kpis').innerHTML = 
+    '<div class="kpi"><div class="kpi-value">'+total+'</div><div class="kpi-label">Total</div></div>' +
+    '<div class="kpi"><div class="kpi-value" style="color:var(--att-blue)">'+env+'</div><div class="kpi-label">Enviadas</div></div>' +
+    '<div class="kpi"><div class="kpi-value" style="color:#D97706">'+seg+'</div><div class="kpi-label">Seguimiento</div></div>' +
+    '<div class="kpi"><div class="kpi-value" style="color:var(--green)">'+vta+'</div><div class="kpi-label">Ventas</div></div>' +
+    '<div class="kpi"><div class="kpi-value" style="color:var(--red)">'+per+'</div><div class="kpi-label">Perdidas</div></div>' +
+    '<div class="kpi"><div class="kpi-value" style="color:var(--purple)">'+tasa+'%</div><div class="kpi-label">Conversión</div></div>';
+}
+
+function renderTable() {
+  var start = currentPage * pageSize;
+  var end = start + pageSize;
+  var pageData = filtered.slice(start, end);
+  var totalPages = Math.ceil(filtered.length / pageSize);
+  
+  document.getElementById('tableCount').textContent = filtered.length + ' cotizaciones' + (filtered.length !== allData.length ? ' (filtrado de '+allData.length+')' : '');
+  
+  var h = '';
+  pageData.forEach(function(c) {
+    var badgeClass = 'badge-'+(c.estatus||'enviada');
+    var estLabel = {enviada:'Enviada', seguimiento:'Seguimiento', venta:'Venta', perdida:'Perdida'}[c.estatus] || c.estatus;
+    var subLabel = c.sub_estatus ? c.sub_estatus.replace(/_/g,' ') : '-';
+    var created = c.created_at ? new Date(c.created_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '-';
+    var updated = c.updated_at ? new Date(c.updated_at).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '-';
+    
+    h += '<tr>';
+    h += '<td style="font-weight:600;font-size:10px;color:var(--att-blue)">'+c.folio+'</td>';
+    h += '<td>'+c._ejecutivo+'</td>';
+    h += '<td style="font-weight:600">'+c._cliente+'</td>';
+    h += '<td style="font-family:monospace;font-size:10px">'+c._telefono+'</td>';
+    h += '<td><span class="badge '+badgeClass+'">'+estLabel+'</span></td>';
+    h += '<td style="font-size:10px;color:var(--text-2)">'+subLabel+'</td>';
+    h += '<td style="font-size:10px;color:var(--text-2)">'+created+'</td>';
+    h += '<td style="font-size:10px;color:var(--text-2)">'+updated+'</td>';
+    h += '</tr>';
+  });
+  document.getElementById('tbody').innerHTML = h || '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-3)">Sin resultados</td></tr>';
+  
+  // Pagination
+  var ph = '';
+  if (totalPages > 1) {
+    if (currentPage > 0) ph += '<button onclick="goPage(0)">« Primera</button><button onclick="goPage('+(currentPage-1)+')">‹ Ant</button>';
+    var startP = Math.max(0, currentPage-3);
+    var endP = Math.min(totalPages-1, currentPage+3);
+    for (var i=startP; i<=endP; i++) {
+      ph += '<button class="'+(i===currentPage?'active':'')+'" onclick="goPage('+i+')">'+(i+1)+'</button>';
+    }
+    if (currentPage < totalPages-1) ph += '<button onclick="goPage('+(currentPage+1)+')">Sig ›</button><button onclick="goPage('+(totalPages-1)+')">Última »</button>';
+  }
+  document.getElementById('pagination').innerHTML = ph;
+}
+
+function goPage(p) {
+  currentPage = p;
+  renderTable();
+  document.querySelector('.scroll-table').scrollTop = 0;
+}
+
+function exportExcel() {
+  if (filtered.length === 0) { alert('No hay datos para exportar'); return; }
+  
+  var csv = '\uFEFF'; // BOM for Excel UTF-8
+  csv += 'Folio,Ejecutivo,Cliente,Teléfono,Estatus,Sub-estatus,Fecha Creación,Último Cambio\n';
+  
+  filtered.forEach(function(c) {
+    var created = c.created_at ? new Date(c.created_at).toLocaleString('es-MX') : '';
+    var updated = c.updated_at ? new Date(c.updated_at).toLocaleString('es-MX') : '';
+    var subLabel = c.sub_estatus ? c.sub_estatus.replace(/_/g,' ') : '';
+    csv += '"'+c.folio+'","'+c._ejecutivo+'","'+c._cliente+'","'+c._telefono+'","'+c.estatus+'","'+subLabel+'","'+created+'","'+updated+'"\n';
+  });
+  
+  var blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  var hoy = new Date().toISOString().substring(0,10);
+  a.download = 'ExpertCell_Cotizaciones_'+hoy+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
