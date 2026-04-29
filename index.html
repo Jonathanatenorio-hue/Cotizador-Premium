@@ -966,9 +966,10 @@ body{padding-bottom:60px}
           <option value="all">Todos los meses</option>
         </select>
         <label style="font-size:11px;font-weight:600;color:var(--text-3)">📅</label>
-        <input type="date" class="field" id="hFilterDesde" onchange="renderHistorial()" style="width:auto;font-size:11px;padding:5px 8px">
+        <input type="date" class="field" id="hFilterDesde" onchange="onDateFilterChange()" style="width:auto;font-size:11px;padding:5px 8px">
         <span style="font-size:11px;color:var(--text-3)">a</span>
-        <input type="date" class="field" id="hFilterHasta" onchange="renderHistorial()" style="width:auto;font-size:11px;padding:5px 8px">
+        <input type="date" class="field" id="hFilterHasta" onchange="onDateFilterChange()" style="width:auto;font-size:11px;padding:5px 8px">
+        <button class="btn btn-primary" id="hBtnCargar" onclick="cargarRangoHistorial()" style="font-size:10px;padding:4px 10px;display:none">🔍 Buscar rango</button>
         <button class="btn btn-secondary" onclick="limpiarFiltrosHistorial()" style="font-size:10px;padding:4px 8px">✕ Limpiar</button>
         <select class="field" id="hFilterSubEstatus" onchange="handleSubEstatusChange();renderHistorial()" multiple style="width:auto;min-width:160px;font-size:10px;padding:4px 6px;height:55px">
           <option value="all">Todas las sub-tipificaciones</option>
@@ -2770,16 +2771,17 @@ async function loadCotizacionesFromSupabase() {
     }
     // admin: roleIds stays null = no filter
     
-    // Paginated fetch - 500 per page (reduced to avoid timeout)
+    // Paginated fetch - 500 per page, ONLY last 90 days
     var allData = [];
     var pageSize = 500;
     var page = 0;
     var hasMore = true;
+    var cutoffDate = new Date(Date.now() - 90*86400000).toISOString();
     
     while (hasMore) {
       var query = supabase.from('cotizaciones').select('*');
       if (roleIds) query = query.in('agente_id', roleIds);
-      query = query.order('created_at', { ascending: false }).range(page * pageSize, (page + 1) * pageSize - 1);
+      query = query.gte('created_at', cutoffDate).order('created_at', { ascending: false }).range(page * pageSize, (page + 1) * pageSize - 1);
       
       var { data, error } = await query;
       if (error) { console.error('Load cotizaciones error:', error); break; }
@@ -2790,34 +2792,40 @@ async function loadCotizacionesFromSupabase() {
       page++;
     }
     
+    // Also load older cotizaciones that are still in seguimiento/enviada (active leads)
+    try {
+      var activeQuery = supabase.from('cotizaciones').select('*').lt('created_at', cutoffDate).in('estatus', ['enviada','seguimiento']);
+      if (roleIds) activeQuery = activeQuery.in('agente_id', roleIds);
+      var {data: activeData} = await activeQuery;
+      if (activeData && activeData.length > 0) {
+        allData = allData.concat(activeData);
+        console.log('loadCots: +' + activeData.length + ' active older leads');
+      }
+    } catch(e) {}
+    
     var data = allData;
     if (!data.length) { console.log('loadCots: no data returned'); state.cotizaciones = []; return; }
-    console.log('loadCots: got ' + data.length + ' from Supabase (' + page + ' pages)');
+    console.log('loadCots: got ' + data.length + ' from Supabase (' + page + ' pages, 90-day window)');
     
-    // Load items and notas in batches separately
+    // Skip items/notas on initial load (lazy load when opening detail)
+    // Only load notas count for badge display
     var cotIds = data.map(function(c){return c.id});
-    var itemsByCotId = {};
-    var notasByCotId = {};
-    var batchSize = 200;
+    var notasCountById = {};
+    var batchSize = 300;
     for (var bi = 0; bi < cotIds.length; bi += batchSize) {
       var batchIds = cotIds.slice(bi, bi + batchSize);
       try {
-        var ir = await supabase.from('cotizacion_items').select('*').in('cotizacion_id', batchIds);
-        (ir.data||[]).forEach(function(it){
-          if(!itemsByCotId[it.cotizacion_id])itemsByCotId[it.cotizacion_id]=[];
-          itemsByCotId[it.cotizacion_id].push(it);
-        });
-        var nr = await supabase.from('cotizacion_notas').select('*').in('cotizacion_id', batchIds);
+        var nr = await supabase.from('cotizacion_notas').select('cotizacion_id, id').in('cotizacion_id', batchIds);
         (nr.data||[]).forEach(function(n){
-          if(!notasByCotId[n.cotizacion_id])notasByCotId[n.cotizacion_id]=[];
-          notasByCotId[n.cotizacion_id].push(n);
+          notasCountById[n.cotizacion_id] = (notasCountById[n.cotizacion_id]||0) + 1;
         });
-      } catch(e) { console.log('Batch items/notas error:', e.message); }
+      } catch(e) {}
     }
-    // Attach to cotizaciones
     data.forEach(function(c) {
-      c.cotizacion_items = itemsByCotId[c.id] || [];
-      c.cotizacion_notas = notasByCotId[c.id] || [];
+      c.cotizacion_items = [];
+      c.cotizacion_notas = [];
+      c._notasCount = notasCountById[c.id] || 0;
+      c._itemsLoaded = false;
     });
 
     // Load agent names separately
@@ -2858,22 +2866,7 @@ async function loadCotizacionesFromSupabase() {
           }
           return '';
         })(),
-        items: (c.cotizacion_items || []).map(function(it) {
-          return {
-            equipo: it.equipo,
-            marca: it.marca,
-            precioLista: parseFloat(it.precio_lista),
-            precioPromo: parseFloat(it.precio_promo),
-            plazo: it.plazo,
-            enganchePct: parseFloat(it.enganche_pct),
-            enganche: parseFloat(it.enganche),
-            planId: it.plan_id,
-            planNombre: it.plan_nombre,
-            planPrecio: parseFloat(it.plan_precio),
-            imageData: null,
-            adicionales: {control: it.adicional_control || false, seguro: it.adicional_seguro || false, bateria: it.adicional_bateria || false, pantalla: it.adicional_pantalla || false},
-          };
-        }),
+        items: [],
         estatus: c.estatus,
         sub_estatus: c.sub_estatus,
         folio_att: c.folio_att,
@@ -2889,19 +2882,15 @@ async function loadCotizacionesFromSupabase() {
         adeudo_monto: c.adeudo_monto,
         adeudo_fecha_compromiso: c.adeudo_fecha_compromiso,
         planActual: c.plan_actual_id ? {id: c.plan_actual_id} : null,
-        notas: (c.cotizacion_notas || []).sort(function(a,b){return new Date(b.created_at) - new Date(a.created_at)}),
+        notas: [],
+        _notasCount: c._notasCount || 0,
+        _itemsLoaded: false,
         ultimaNota: null,
         createdAt: c.created_at,
         editedAt: c.edited_at,
         agente_id: c.agente_id,
         pdf_generado: c.pdf_generado || false,
       };
-      // Set ultima nota
-      if (mapped.notas.length > 0) {
-        var n = mapped.notas[0];
-        var tipoIcons = {llamada:'📞', mensaje:'💬', nota:'📝'};
-        mapped.ultimaNota = (tipoIcons[n.tipo]||'📝') + ' ' + n.autor + ': ' + n.texto.substring(0,60) + (n.texto.length>60?'...':'');
-      }
       return mapped;
     });
 
@@ -4747,9 +4736,11 @@ async function generarCotizacion() {
       if (idx >= 0) {
         state.cotizaciones[idx] = cotizacion;
       } else {
+        cotizacion._itemsLoaded = true;
         state.cotizaciones.unshift(cotizacion);
       }
     } else {
+      cotizacion._itemsLoaded = true;
       state.cotizaciones.unshift(cotizacion);
     }
     saveState();
@@ -6615,6 +6606,115 @@ function handleSubEstatusChange() {
   }
 }
 
+function onDateFilterChange() {
+  var desde = document.getElementById('hFilterDesde').value;
+  var hasta = document.getElementById('hFilterHasta').value;
+  var cutoff = new Date(Date.now() - 90*86400000).toISOString().substring(0,10);
+  var btn = document.getElementById('hBtnCargar');
+  
+  // If date range goes beyond loaded 90 days, show "Buscar rango" button
+  if (desde && desde < cutoff) {
+    btn.style.display = '';
+  } else {
+    btn.style.display = 'none';
+    renderHistorial();
+  }
+}
+
+async function cargarRangoHistorial() {
+  var desde = document.getElementById('hFilterDesde').value;
+  var hasta = document.getElementById('hFilterHasta').value || new Date().toISOString().substring(0,10);
+  if (!desde) { alert('Selecciona una fecha de inicio'); return; }
+  
+  var btn = document.getElementById('hBtnCargar');
+  btn.disabled = true;
+  btn.textContent = '⏳ Cargando...';
+  
+  try {
+    // Fetch cotizaciones in date range from Supabase
+    var roleIds = null;
+    if (currentUser.rol === 'agente') {
+      roleIds = [currentUser.id];
+    } else if (currentUser.rol === 'supervisor') {
+      var {data: agentes} = await supabase.from('usuarios').select('id').eq('supervisor_id', currentUser.id);
+      roleIds = (agentes||[]).map(function(a){return a.id});
+      roleIds.push(currentUser.id);
+    } else if (currentUser.rol === 'coordinador' || currentUser.rol === 'capacitador') {
+      var {data: users} = await supabase.from('usuarios').select('id').eq('coordinador_id', currentUser.id);
+      roleIds = (users||[]).map(function(u){return u.id});
+      roleIds.push(currentUser.id);
+    }
+    
+    var allData = [];
+    var pageSize = 500;
+    var page = 0;
+    var hasMore = true;
+    while (hasMore) {
+      var q = supabase.from('cotizaciones').select('*')
+        .gte('created_at', desde+'T00:00:00')
+        .lte('created_at', hasta+'T23:59:59')
+        .order('created_at', {ascending: false})
+        .range(page*pageSize, (page+1)*pageSize-1);
+      if (roleIds) q = q.in('agente_id', roleIds);
+      var {data, error} = await q;
+      if (error) { console.error(error); break; }
+      if (!data || data.length === 0) break;
+      allData = allData.concat(data);
+      if (data.length < pageSize) break;
+      page++;
+    }
+    
+    // Get agent info
+    var agentIds = [...new Set(allData.map(function(c){return c.agente_id}))];
+    var agentMap = {};
+    if (agentIds.length > 0) {
+      var {data: agents} = await supabase.from('usuarios').select('id,nombre,attuid,whatsapp,supervisor_id').in('id', agentIds);
+      (agents||[]).forEach(function(a){agentMap[a.id]=a});
+    }
+    var supMap = {};
+    try {
+      var {data: sups} = await supabase.from('usuarios').select('id,nombre,rol').in('rol',['supervisor','coordinador']);
+      (sups||[]).forEach(function(s){supMap[s.id]=s.nombre});
+    } catch(e) {}
+    
+    // Map and merge (avoid duplicates)
+    var existingFolios = {};
+    state.cotizaciones.forEach(function(c){existingFolios[c.folio]=true});
+    
+    var newCots = allData.filter(function(c){return !existingFolios[c.folio]}).map(function(c) {
+      var ag = agentMap[c.agente_id];
+      return {
+        folio: c.folio, fecha: c.fecha, validoHasta: c.valido_hasta, diasValidez: c.dias_validez,
+        cliente: {nombre: c.cliente_nombre, telefono: c.cliente_telefono, email: c.cliente_email, direccion: c.cliente_direccion},
+        ejecutivo: ag ? {nombre:ag.nombre, attuid:ag.attuid, whatsapp:ag.whatsapp||''} : {nombre:'',attuid:''},
+        supervisorNombre: (ag && ag.supervisor_id && supMap[ag.supervisor_id]) ? supMap[ag.supervisor_id] : '',
+        items: [], estatus: c.estatus, sub_estatus: c.sub_estatus, folio_att: c.folio_att,
+        fecha_fin_plazo: c.fecha_fin_plazo, fecha_efectiva: c.fecha_efectiva,
+        proximo_contacto: c.proximo_contacto, tiene_ine: c.tiene_ine,
+        interes_cliente: c.interes_cliente, barrera_cierre: c.barrera_cierre,
+        interes_otro: c.interes_otro, barrera_otro: c.barrera_otro,
+        negociacion_motivo: c.negociacion_motivo, adeudo_monto: c.adeudo_monto,
+        adeudo_fecha_compromiso: c.adeudo_fecha_compromiso,
+        planActual: c.plan_actual_id ? {id:c.plan_actual_id} : null,
+        notas: [], _notasCount: 0, _itemsLoaded: false, ultimaNota: null,
+        createdAt: c.created_at, editedAt: c.edited_at, agente_id: c.agente_id,
+        pdf_generado: c.pdf_generado || false,
+      };
+    });
+    
+    state.cotizaciones = state.cotizaciones.concat(newCots);
+    console.log('Cargadas '+newCots.length+' cotizaciones adicionales del rango '+desde+' a '+hasta);
+    
+    btn.style.display = 'none';
+    renderHistorial();
+  } catch(e) {
+    console.error(e);
+    alert('Error al cargar: '+e.message);
+  }
+  btn.disabled = false;
+  btn.textContent = '🔍 Buscar rango';
+}
+
 function renderHistorial() {
   const filterRow = document.getElementById('filterRow');
   const list = document.getElementById('historialList');
@@ -7425,7 +7525,56 @@ function showDetalle(folio) {
   const cot = state.cotizaciones.find(c => c.folio === folio);
   if (!cot) return;
   state.selectedCotizacion = cot;
+  
+  // Lazy load items and notas if not loaded yet
+  if (!cot._itemsLoaded && supabase) {
+    lazyLoadCotDetails(cot).then(function(){
+      renderDetalleContent(cot);
+    });
+    // Show loading state
+    var container = document.getElementById('detalleContent');
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-3)"><div style="font-size:32px;margin-bottom:8px">⏳</div>Cargando detalle...</div>';
+    showView('detalle', 'Detalle');
+    return;
+  }
+  renderDetalleContent(cot);
+}
 
+async function lazyLoadCotDetails(cot) {
+  try {
+    // Get cotizacion DB id from folio
+    var {data: cotRow} = await supabase.from('cotizaciones').select('id').eq('folio', cot.folio).single();
+    if (!cotRow) return;
+    var cotId = cotRow.id;
+    
+    // Load items
+    var {data: items} = await supabase.from('cotizacion_items').select('*').eq('cotizacion_id', cotId);
+    cot.items = (items || []).map(function(it) {
+      return {
+        equipo: it.equipo, marca: it.marca,
+        precioLista: parseFloat(it.precio_lista), precioPromo: parseFloat(it.precio_promo),
+        plazo: it.plazo, enganchePct: parseFloat(it.enganche_pct), enganche: parseFloat(it.enganche),
+        planId: it.plan_id, planNombre: it.plan_nombre, planPrecio: parseFloat(it.plan_precio),
+        imageData: null,
+        adicionales: {control: it.adicional_control||false, seguro: it.adicional_seguro||false, bateria: it.adicional_bateria||false, pantalla: it.adicional_pantalla||false},
+      };
+    });
+    
+    // Load notas
+    var {data: notas} = await supabase.from('cotizacion_notas').select('*').eq('cotizacion_id', cotId).order('created_at', {ascending: false});
+    cot.notas = notas || [];
+    
+    // Update ultimaNota
+    if (cot.notas.length > 0) {
+      var n = cot.notas[0];
+      var tipoIcons = {llamada:'📞', mensaje:'💬', nota:'📝'};
+      cot.ultimaNota = (tipoIcons[n.tipo]||'📝') + ' ' + n.autor + ': ' + n.texto.substring(0,60) + (n.texto.length>60?'...':'');
+    }
+    cot._itemsLoaded = true;
+  } catch(e) { console.error('Lazy load error:', e); }
+}
+
+function renderDetalleContent(cot) {
   const container = document.getElementById('detalleContent');
   container.innerHTML = `
     <div class="detalle-top">
