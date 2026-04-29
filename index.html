@@ -3,6 +3,210 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- ╔══════════════════════════════════════════════════════════════╗
+     ║  PROTECCIÓN DE PROPIEDAD INTELECTUAL — ExpertCell © 2026    ║
+     ║  Este software es propiedad de ExpertCell S.A. de C.V.      ║
+     ║  Distribuidor Autorizado AT&T México.                        ║
+     ║  Cualquier reproducción, ingeniería inversa, redistribución ║
+     ║  o uso no autorizado será perseguido legalmente conforme a  ║
+     ║  la Ley Federal del Derecho de Autor y leyes aplicables.    ║
+     ║  Todos los accesos quedan registrados con marca de agua.    ║
+     ╚══════════════════════════════════════════════════════════════╝ -->
+<meta name="author" content="ExpertCell - Distribuidor Autorizado AT&T">
+<meta name="copyright" content="© 2026 ExpertCell. Todos los derechos reservados.">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<style id="_ec_wm_style">
+  /* Watermark invisible pero presente en screenshots */
+  body::before {
+    content: attr(data-ec-wm);
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) rotate(-30deg);
+    font-size: 80px;
+    color: rgba(0,159,219,0.04);
+    pointer-events: none;
+    z-index: 999998;
+    white-space: nowrap;
+    user-select: none;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 800;
+  }
+  /* Selección de texto deshabilitada en áreas sensibles */
+  .ec-noselect, .ec-noselect * {
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    user-select: none !important;
+  }
+  /* Bloqueo visual al detectar devtools */
+  body.ec-locked > *:not(#_ec_lockscreen) { display: none !important; }
+  #_ec_lockscreen {
+    position: fixed; inset: 0; background: #001A2F;
+    color: white; z-index: 2147483647;
+    display: none; align-items: center; justify-content: center;
+    flex-direction: column; padding: 40px; text-align: center;
+    font-family: 'DM Sans', sans-serif;
+  }
+  body.ec-locked #_ec_lockscreen { display: flex; }
+  #_ec_lockscreen h1 { color: #009FDB; font-size: 32px; margin: 0 0 16px; }
+  #_ec_lockscreen p { font-size: 16px; line-height: 1.6; max-width: 500px; }
+  #_ec_lockscreen .code { font-family: monospace; background: rgba(255,255,255,.1); padding: 8px 12px; border-radius: 6px; margin-top: 20px; }
+</style>
+<script>
+(function(){
+  'use strict';
+
+  // ── Mensaje en consola (disuasión) ─────────────────────────
+  var _w = window;
+  try {
+    setTimeout(function(){
+      console.log('%c⛔ ALTO', 'color:#DC3545;font-size:60px;font-weight:bold;text-shadow:2px 2px 0 #000;');
+      console.log('%cEsta aplicación es propiedad exclusiva de ExpertCell.', 'color:#009FDB;font-size:18px;font-weight:bold;');
+      console.log('%cSi alguien te pidió pegar código aquí, es un INTENTO DE ROBO de tu cuenta o de nuestro sistema.', 'color:#E6A200;font-size:16px;');
+      console.log('%cTodos los accesos a esta consola quedan registrados con tu sesión activa.', 'color:#DC3545;font-size:14px;');
+      console.log('%c© 2026 ExpertCell — Distribuidor Autorizado AT&T México', 'color:#666;font-size:12px;');
+    }, 100);
+  } catch(e){}
+
+  // ── Bloqueo de teclas de inspección ────────────────────────
+  function _blockKeys(e){
+    var k = e.keyCode || e.which;
+    var c = (e.key||'').toUpperCase();
+    // F12
+    if (k === 123) { e.preventDefault(); e.stopPropagation(); return false; }
+    // Ctrl+Shift+I / J / C / K
+    if (e.ctrlKey && e.shiftKey && (c==='I'||c==='J'||c==='C'||c==='K')) {
+      e.preventDefault(); e.stopPropagation(); return false;
+    }
+    // Ctrl+U (ver código fuente)
+    if (e.ctrlKey && c==='U') { e.preventDefault(); e.stopPropagation(); return false; }
+    // Ctrl+S (guardar página)
+    if (e.ctrlKey && c==='S') { e.preventDefault(); e.stopPropagation(); return false; }
+    // Cmd+Option+I / J / C (Mac)
+    if (e.metaKey && e.altKey && (c==='I'||c==='J'||c==='C')) {
+      e.preventDefault(); e.stopPropagation(); return false;
+    }
+  }
+  document.addEventListener('keydown', _blockKeys, true);
+  document.addEventListener('keyup', _blockKeys, true);
+
+  // ── Bloqueo de clic derecho ────────────────────────────────
+  document.addEventListener('contextmenu', function(e){
+    // Permitimos clic derecho en inputs/textareas para que la gente pegue/copie texto normal
+    var t = e.target;
+    if (t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault(); e.stopPropagation(); return false;
+  }, true);
+
+  // ── Bloqueo de selección/copia en áreas marcadas ──────────
+  document.addEventListener('copy', function(e){
+    var sel = (window.getSelection && window.getSelection().toString()) || '';
+    // Si copian más de 200 caracteres de golpe, sospechoso → marcar con watermark
+    if (sel.length > 200 && e.clipboardData) {
+      try {
+        var u = (window.currentUser && window.currentUser.attuid) || 'anon';
+        e.clipboardData.setData('text/plain', sel + '
+
+--- Copiado desde ExpertCell por usuario: ' + u + ' (' + new Date().toISOString() + ') ---');
+        e.preventDefault();
+      } catch(err){}
+    }
+  });
+
+  // ── Detección de DevTools (técnica de tamaño de ventana) ──
+  var _devtoolsOpen = false;
+  var _threshold = 160;
+  function _checkDevTools(){
+    var widthDiff = window.outerWidth - window.innerWidth;
+    var heightDiff = window.outerHeight - window.innerHeight;
+    var isOpen = widthDiff > _threshold || heightDiff > _threshold;
+    if (isOpen && !_devtoolsOpen) {
+      _devtoolsOpen = true;
+      _onDevToolsDetected();
+    } else if (!isOpen && _devtoolsOpen) {
+      _devtoolsOpen = false;
+    }
+  }
+
+  // ── Detección por timing de debugger ──────────────────────
+  function _checkDebugger(){
+    var start = performance.now();
+    debugger;
+    var elapsed = performance.now() - start;
+    if (elapsed > 100) {
+      _onDevToolsDetected();
+    }
+  }
+
+  function _onDevToolsDetected(){
+    try {
+      // Cerrar sesión inmediatamente
+      try { localStorage.removeItem('cotizador_session'); } catch(e){}
+      try { sessionStorage.clear(); } catch(e){}
+      // Bloquear UI
+      document.body.classList.add('ec-locked');
+      // Log al servidor si está disponible
+      try {
+        if (window.supabase && window.currentUser) {
+          window.supabase.from('seguridad_log').insert({
+            attuid: window.currentUser.attuid,
+            evento: 'devtools_abierto',
+            user_agent: navigator.userAgent,
+            url: location.href,
+            timestamp: new Date().toISOString()
+          }).then(function(){}, function(){});
+        }
+      } catch(e){}
+    } catch(e){}
+  }
+
+  // Iniciar checks pasados los primeros 3 segundos (para no afectar carga)
+  setTimeout(function(){
+    setInterval(_checkDevTools, 1500);
+    setInterval(_checkDebugger, 4000);
+  }, 3000);
+
+  // ── Pantalla de bloqueo ────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', function(){
+    if (document.getElementById('_ec_lockscreen')) return;
+    var d = document.createElement('div');
+    d.id = '_ec_lockscreen';
+    d.innerHTML = '<h1>🔒 Sesión Cerrada por Seguridad</h1>' +
+      '<p>Se detectó una herramienta de inspección o intento de acceso no autorizado.</p>' +
+      '<p>Esta aplicación es propiedad exclusiva de <strong>ExpertCell — Distribuidor Autorizado AT&amp;T</strong>. Su acceso ha sido registrado.</p>' +
+      '<p>Para volver a usar la herramienta, cierra las herramientas de desarrollador y recarga la página.</p>' +
+      '<div class="code">Código de incidente: EC-' + Date.now().toString(36).toUpperCase() + '</div>';
+    document.body.appendChild(d);
+  });
+
+  // ── Watermark dinámico (se actualiza al login) ────────────
+  window._ecSetWatermark = function(attuid){
+    try {
+      var ts = new Date().toLocaleDateString('es-MX');
+      document.body.setAttribute('data-ec-wm', 'EXPERTCELL · ' + (attuid||'') + ' · ' + ts);
+    } catch(e){}
+  };
+  document.addEventListener('DOMContentLoaded', function(){
+    document.body.setAttribute('data-ec-wm', 'EXPERTCELL · ATT MEXICO');
+  });
+
+  // ── Anti-iframe (impedir embebido en otros sitios) ─────────
+  try {
+    if (window.top !== window.self) {
+      var allowedHosts = ['expertcell', 'github.io', 'pages.dev', 'cloudflare', 'localhost', '127.0.0.1'];
+      var topHost = '';
+      try { topHost = window.top.location.hostname; } catch(e){ topHost = 'unknown'; }
+      var ok = allowedHosts.some(function(h){ return topHost.indexOf(h) !== -1; });
+      if (!ok) {
+        document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;"><h1>🚫 Acceso Denegado</h1><p>Esta aplicación no puede ejecutarse embebida en sitios externos.</p></div>';
+        throw new Error('Embedding not allowed');
+      }
+    }
+  } catch(e){}
+
+})();
+</script>
+
 <title>Cotizador AT&T · ExpertCell</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
@@ -1897,8 +2101,23 @@ body{padding-bottom:60px}
 // ============================================================
 // SUPABASE CONNECTION
 // ============================================================
-var SUPABASE_URL = 'https://smytiyjzmzbmcllivxkc.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNteXRpeWp6bXpibWNsbGl2eGtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MTIwNzQsImV4cCI6MjA4NzM4ODA3NH0.KScWdne5ItM-iXtdKWuy75lXUUORJqmwRzp7z0W7OMo';
+// Configuración del backend (ofuscada)
+var _ec_p1 = ['LTdGQE','EMbntV','OTQRER','AJFSgC','EggRGC','8MGhQ4','BkkGBx','kFAwU8','FUsRDg','=='];
+var _ec_p2 = ['IDp4WFBxIj1p','PQcsLRMqXgsR','ORY7GhFQDy8a','Uy4eAjEyIi52','XgALKxMKXCMM','PCwJSFRqdCkN','SxI3PysgECYr','Mhw/Gz11LAIi','JwA/JwIMMxFS','LSgVGwM0JxwM','Ih93JnVEWH8o','I083IFwLMzAm','czEdIwcWcVEF','IBAvFywqOA0u','DgpDKwgkVyQ7','JxI9PxJBeV9g','dTdlHXsoEihX','IT81RCo2NXAr','JFx9LjQWJQ0K','BFEGBChfCDsd','CyUyBjx0B1xq','YxQbdB48CA87','GR9yAkAyRTsO','Cg=='];
+var _ec_p3 = 'EC2026AT&TMexicoExpertCellSeguridadOperaciones';
+function _ec_dec(parts, key) {
+  try {
+    var b64 = parts.join('');
+    var bin = atob(b64);
+    var out = '';
+    for (var i = 0; i < bin.length; i++) {
+      out += String.fromCharCode(bin.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return out;
+  } catch(e) { return ''; }
+}
+var SUPABASE_URL = _ec_dec(_ec_p1, _ec_p3);
+var SUPABASE_KEY = _ec_dec(_ec_p2, _ec_p3);
 var supabase = null;
 var currentUser = null;
 function isForzarPDF() { return currentUser && currentUser.forzar_pdf === true; }
@@ -2303,6 +2522,11 @@ async function doLogin() {
     }
 
     currentUser = data;
+      window.currentUser = data;
+      if (window._ecSetWatermark) window._ecSetWatermark(data.attuid);
+    window.currentUser = data;
+    if (window._ecSetWatermark) window._ecSetWatermark(data.attuid);
+    try { if (window.supabase) { window.supabase.from('seguridad_log').insert({ attuid: data.attuid, evento: 'login', user_agent: navigator.userAgent, url: location.href, timestamp: new Date().toISOString() }).then(function(){}, function(){}); } } catch(e){}
     localStorage.setItem('cotizador_session', JSON.stringify({ attuid: data.attuid, pin: data.pin }));
 
     // Set agent info in the cotizador state
