@@ -105,9 +105,7 @@
     if (sel.length > 200 && e.clipboardData) {
       try {
         var u = (window.currentUser && window.currentUser.attuid) || 'anon';
-        e.clipboardData.setData('text/plain', sel + '
-
---- Copiado desde ExpertCell por usuario: ' + u + ' (' + new Date().toISOString() + ') ---');
+        e.clipboardData.setData('text/plain', sel + '\n\n--- Copiado desde ExpertCell por usuario: ' + u + ' (' + new Date().toISOString() + ') ---');
         e.preventDefault();
       } catch(err){}
     }
