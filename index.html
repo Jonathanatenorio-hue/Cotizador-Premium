@@ -159,10 +159,14 @@
   }
 
   // Iniciar checks pasados los primeros 3 segundos (para no afectar carga)
-  setTimeout(function(){
+  // ⚠️ DETECTORES AUTOMÁTICOS DESACTIVADOS POR FALSOS POSITIVOS
+  // Razón: el detector se activaba con zoom del navegador, ventanas pequeñas, barra de favoritos, etc.
+  // Lo reactivaremos con thresholds más inteligentes en una próxima versión.
+  // Las demás capas siguen activas: F12 bloqueado, watermark, ofuscación, mensaje consola, anti-iframe, validación dominio.
+  /* setTimeout(function(){
     setInterval(_checkDevTools, 1500);
     setInterval(_checkDebugger, 4000);
-  }, 3000);
+  }, 3000); */
 
   // ── Pantalla de bloqueo ────────────────────────────────────
   document.addEventListener('DOMContentLoaded', function(){
