@@ -2345,8 +2345,12 @@ async function processPriceListData(arrayBuf, fileName) {
         var br = bRows[bri]; if (!br) continue;
         for (var bci = 0; bci < br.length; bci++) {
           var bc = String(br[bci] || '').toLowerCase().trim();
-          if (bc.includes('modelo') && bCols.equipo < 0) bCols.equipo = bci;
-          if (bc.includes('equipo') && bCols.equipo < 0) bCols.equipo = bci;
+          // Prioridad: "nombre completo" > "equipo" > "modelo"
+          // Razón: "Nombre Completo" tiene el nombre comercial buscable (ej: XIAOMI REDMINOTE15PRO5G BLACK BDLBUDS)
+          // mientras que "Modelo" tiene el descriptor técnico genérico (ej: Redmi Note 15 Pro 5G + Buds 8...)
+          if (bc.includes('nombre') && bc.includes('completo')) bCols.equipo = bci;
+          else if (bc.includes('equipo') && bCols.equipo < 0) bCols.equipo = bci;
+          else if (bc.includes('modelo') && bCols.equipo < 0) bCols.equipo = bci;
           if (bc.includes('marca') && bCols.marca < 0) bCols.marca = bci;
           if (bc.includes('precio') && bc.includes('contado')) bCols.precio = bci;
           if (bc.includes('estatus') && bCols.estatus < 0) bCols.estatus = bci;
@@ -3825,7 +3829,7 @@ function toggleAsesorIA() {
   if (!asesorOpen) { panel.style.display = 'none'; return; }
   
   if (asesorMsgs.length === 0) {
-    asesorMsgs.push({role:'assistant', content:'¡Hola! 👋 Soy tu asesor de ofertas AT&T. Dime qué busca el cliente y te recomiendo el mejor equipo + plan.\n\nPuedes preguntarme cosas como:\n• "Cliente quiere un iPhone con plan económico"\n• "Samsung gama media con bastantes datos"\n• "Equipo para regalo, presupuesto de $500/mes"\n• "¿Cuál es el mejor plan para alguien que usa mucho TikTok?"'});
+    asesorMsgs.push({role:'assistant', content:'¡Hola! 👋 Soy tu asesor de ofertas AT&T. Puedo ayudarte de dos formas:\n\n**🎯 Cotizar un equipo específico:**\n• "Cliente quiere un iPhone con plan económico"\n• "Samsung gama media con bastantes datos"\n• "Equipo para regalo, presupuesto de $500/mes"\n\n**🔍 Descubrir opciones con filtros:**\n• "Qué equipos con stock en el hub tengo menor a $1000 en Azul 2"\n• "Muéstrame Xiaomi disponibles con plan Plata"\n• "Todos los equipos con Total mensual menor de $800 a 36 meses"\n• "Equipos con stock hasta $900 en Azul 3"'});
   }
   
   renderAsesorPanel();
@@ -3971,6 +3975,197 @@ function buildAsesorContext(userMsg) {
   return catalog;
 }
 
+// ============================================================
+// DETECCIÓN DE MODO: cotización específica vs descubrimiento
+// ============================================================
+// Si el usuario hace una pregunta exploratoria con filtros (precio máximo,
+// plan específico, con stock, etc.) → modo descubrimiento.
+// Si el usuario quiere cotizar un equipo específico → modo cotización.
+function detectQueryMode(msg) {
+  var m = (msg || '').toLowerCase();
+  // Señales de descubrimiento: palabras que implican exploración/filtrado
+  var discoverySignals = [
+    'menor a', 'menor de', 'menos de', 'menos que', 'inferior a', 'inferior de',
+    'máximo', 'maximo', 'máx', 'max ',
+    'hasta $', 'hasta ',
+    'con stock', 'que tenga stock', 'que tengan stock', 'en stock', 'disponibles',
+    'que pueda ofrecer', 'que puedo ofrecer', 'qué equipos', 'que equipos',
+    'cuáles', 'cuales', 'muéstrame', 'muestrame',
+    'lista de', 'todos los', 'todas las',
+    'baratos', 'económicos', 'economicos', 'accesibles',
+    'entre $', 'de $', 'rango'
+  ];
+  var isDiscovery = discoverySignals.some(function(s) { return m.indexOf(s) >= 0; });
+  return isDiscovery ? 'discovery' : 'quote';
+}
+
+// ============================================================
+// CONTEXTO PARA MODO DESCUBRIMIENTO
+// ============================================================
+// Construye una tabla con TODAS las combinaciones equipo×plan×plazo del catálogo
+// vigente, e incluye el stock del hub cuando está disponible.
+// Extrae filtros del mensaje (precio máximo, plan específico, marca) para
+// pre-filtrar y no saturar el contexto de la IA.
+function buildDiscoveryContext(userMsg) {
+  var vigentes = state.devices.filter(isVigente).filter(function(d){
+    return d.oferta.includes('Premium') && d.estatus && 
+           d.estatus.toUpperCase().indexOf('RESURTIBLE') >= 0 && 
+           d.estatus.toUpperCase().indexOf('NO RESURTIBLE') < 0;
+  });
+  if (!vigentes.length) return 'NO_DATA';
+  
+  var msg = (userMsg || '').toLowerCase();
+  
+  // ── Extraer filtros del mensaje ──
+  
+  // Filtro precio máximo: "menor a 1000", "hasta $500", "máximo 800", etc.
+  var maxPrice = null;
+  var priceMatch = msg.match(/(?:menor\s+(?:a|de|que)|menos\s+de|inferior\s+(?:a|de)|hasta\s+\$?|máximo|maximo|máx|max)\s*\$?\s*(\d+(?:,\d{3})*)/);
+  if (priceMatch) maxPrice = parseInt(priceMatch[1].replace(/,/g, ''));
+  
+  // Filtro precio mínimo (para rangos)
+  var minPrice = null;
+  var minMatch = msg.match(/(?:mayor\s+(?:a|de|que)|más\s+de|superior\s+(?:a|de)|desde\s+\$?|mínimo|minimo)\s*\$?\s*(\d+(?:,\d{3})*)/);
+  if (minMatch) minPrice = parseInt(minMatch[1].replace(/,/g, ''));
+  
+  // Filtro plan específico
+  var planFilter = null;
+  var planKeywords = {
+    'azul 1': 'azul1', 'azul1': 'azul1',
+    'azul 2': 'azul2', 'azul2': 'azul2',
+    'azul 3': 'azul3', 'azul3': 'azul3',
+    'plata': 'plata',
+    'oro': 'oro',
+    'black': 'black',
+    'platino': 'platino',
+    'diamante': 'diamante',
+    'titanio': 'titanio'
+  };
+  Object.keys(planKeywords).forEach(function(kw) {
+    if (msg.indexOf(kw) >= 0 && !planFilter) planFilter = planKeywords[kw];
+  });
+  
+  // Filtro marca
+  var brandFilter = '';
+  var brandKeywords = {'iphone':'APPLE','apple':'APPLE','samsung':'SAMSUNG','motorola':'MOTOROLA','moto':'MOTOROLA','xiaomi':'XIAOMI','huawei':'HUAWEI','honor':'HONOR','nokia':'NOKIA','zte':'ZTE','tcl':'TCL','oppo':'OPPO','nothing':'NOTHING','google':'GOOGLE','pixel':'GOOGLE'};
+  Object.keys(brandKeywords).forEach(function(kw) {
+    if (msg.indexOf(kw) >= 0 && !brandFilter) brandFilter = brandKeywords[kw];
+  });
+  
+  // Filtro solo con stock
+  var requireStock = msg.indexOf('stock') >= 0 || msg.indexOf('disponibl') >= 0 || 
+                     msg.indexOf('inventario') >= 0 || msg.indexOf('hub') >= 0 || 
+                     msg.indexOf('almacén') >= 0 || msg.indexOf('almacen') >= 0;
+  
+  // Filtro por plazo específico
+  var plazoFilter = null;
+  if (msg.match(/24\s*mes|24m\b|a 24/)) plazoFilter = 24;
+  else if (msg.match(/30\s*mes|30m\b|a 30/)) plazoFilter = 30;
+  else if (msg.match(/36\s*mes|36m\b|a 36/)) plazoFilter = 36;
+  
+  // Aplicar filtro de marca al catálogo
+  var filtered = vigentes;
+  if (brandFilter) {
+    filtered = filtered.filter(function(d){return (d.marca || '').toUpperCase().indexOf(brandFilter) >= 0});
+  }
+  
+  // Deduplicar por equipo+precio contado
+  var seen = {};
+  filtered = filtered.filter(function(d) {
+    var key = d.equipo + '|' + d.precioContado;
+    if (seen[key]) return false;
+    seen[key] = true;
+    return true;
+  });
+  
+  // Construir todas las combinaciones y aplicar filtros
+  var rows = [];
+  var hasInventario = typeof inventarioLoaded !== 'undefined' && inventarioLoaded && 
+                      typeof inventarioData !== 'undefined' && inventarioData.length > 0;
+  
+  filtered.forEach(function(d) {
+    // Buscar stock si el inventario está cargado
+    var stockInfo = null;
+    if (hasInventario && typeof findStockForDevice === 'function') {
+      try { stockInfo = findStockForDevice(d.equipo); } catch(e) { stockInfo = null; }
+    }
+    var stockTotal = stockInfo ? stockInfo.total : 0;
+    var stockHubs = stockInfo ? Object.keys(stockInfo.byHub).map(function(h){return h+':'+stockInfo.byHub[h].total}).join(',') : '';
+    
+    // Si el usuario pide stock y no hay, saltar
+    if (requireStock && stockTotal <= 0) return;
+    
+    d.plans.forEach(function(plan) {
+      // Si hay filtro de plan, aplicar
+      if (planFilter && plan.id !== planFilter) return;
+      if (!d.pricing[plan.id]) return;
+      
+      d.plazos.forEach(function(plazo) {
+        // Si hay filtro de plazo, aplicar
+        if (plazoFilter && plazo !== plazoFilter) return;
+        
+        var fin = d.pricing[plan.id][plazo];
+        if (fin === null || fin === undefined) return;
+        var mensEq = Math.round(fin / plazo * 100) / 100;
+        var totalMes = Math.round((mensEq + plan.price) * 100) / 100;
+        
+        // Aplicar filtros de precio sobre el TOTAL MENSUAL
+        if (maxPrice !== null && totalMes > maxPrice) return;
+        if (minPrice !== null && totalMes < minPrice) return;
+        
+        rows.push({
+          equipo: d.equipo,
+          marca: d.marca,
+          contado: d.precioContado,
+          plan: plan.name,
+          gb: plan.gb,
+          rentaPlan: plan.price,
+          plazo: plazo,
+          mensEquipo: mensEq,
+          totalMensual: totalMes,
+          stockTotal: stockTotal,
+          stockHubs: stockHubs
+        });
+      });
+    });
+  });
+  
+  // Ordenar: primero por total mensual ascendente
+  rows.sort(function(a,b){return a.totalMensual - b.totalMensual});
+  
+  // Limitar a 60 filas para no saturar el contexto
+  var truncated = false;
+  if (rows.length > 60) { rows = rows.slice(0, 60); truncated = true; }
+  
+  // ── Construir contexto textual ──
+  var ctx = 'MODO DESCUBRIMIENTO — Búsqueda exploratoria con filtros\n\n';
+  
+  ctx += 'FILTROS DETECTADOS:\n';
+  ctx += '- Marca: ' + (brandFilter || 'CUALQUIERA') + '\n';
+  ctx += '- Plan: ' + (planFilter || 'CUALQUIERA') + '\n';
+  ctx += '- Plazo: ' + (plazoFilter ? plazoFilter + ' meses' : 'CUALQUIERA (24/30/36)') + '\n';
+  ctx += '- Precio máximo mensual: ' + (maxPrice !== null ? '$' + maxPrice : 'SIN LÍMITE') + '\n';
+  ctx += '- Precio mínimo mensual: ' + (minPrice !== null ? '$' + minPrice : 'SIN LÍMITE') + '\n';
+  ctx += '- Requiere stock en hub: ' + (requireStock ? 'SÍ' : 'NO') + '\n';
+  ctx += '- Inventario cargado: ' + (hasInventario ? 'SÍ' : 'NO — no puedes filtrar por stock') + '\n\n';
+  
+  if (rows.length === 0) {
+    ctx += 'RESULTADO: 0 opciones cumplen todos los filtros.\n\n';
+    ctx += 'RESPUESTA REQUERIDA: Explica al usuario que no hay opciones con esos filtros exactos, y sugiere aflojar el filtro más restrictivo (precio, plan, o stock).\n';
+    return ctx;
+  }
+  
+  ctx += 'RESULTADO: ' + rows.length + ' opciones' + (truncated ? ' (mostrando las 60 más baratas de más)' : '') + '\n\n';
+  ctx += 'TABLA DE OPCIONES (ordenada por precio mensual ascendente):\n';
+  ctx += 'Equipo | Marca | Plan(GB) | Plazo | MensEq | RentaPlan | TOTAL/mes | Contado | Stock\n';
+  rows.forEach(function(r) {
+    var stockStr = hasInventario ? (r.stockTotal > 0 ? r.stockTotal + ' (' + r.stockHubs + ')' : 'AGOTADO') : 'N/D';
+    ctx += r.equipo + ' | ' + r.marca + ' | ' + r.plan + '(' + r.gb + ') | ' + r.plazo + 'm | $' + r.mensEquipo.toFixed(2) + ' | $' + r.rentaPlan + ' | $' + r.totalMensual.toFixed(2) + ' | $' + r.contado + ' | ' + stockStr + '\n';
+  });
+  
+  return ctx;
+}
+
 async function sendAsesorMsg() {
   var input = document.getElementById('asesorInput');
   var msg = (input.value || '').trim();
@@ -3985,7 +4180,9 @@ async function sendAsesorMsg() {
   renderAsesorPanel();
   asesorMsgs.pop();
   
-  var catalog = buildAsesorContext(msg);
+  // Detectar modo: cotización específica o descubrimiento exploratorio
+  var mode = detectQueryMode(msg);
+  var catalog = mode === 'discovery' ? buildDiscoveryContext(msg) : buildAsesorContext(msg);
   
   if (catalog === 'NO_DATA') {
     asesorMsgs.push({role:'assistant', content:'❌ No hay lista de precios cargada. Sube la lista primero.'});
@@ -3993,20 +4190,46 @@ async function sendAsesorMsg() {
     return;
   }
   
-  var systemPrompt = 'Eres un asesor de ofertas AT&T para ExpertCell. Solo manejas RENOVACIONES.\n\n';
-  systemPrompt += 'REGLAS ABSOLUTAS - ROMPER CUALQUIERA ES UN ERROR GRAVE:\n';
-  systemPrompt += '1. PROHIBIDO hacer cálculos. Todos los precios están pre-calculados en la tabla. Copia los números EXACTOS de la columna TOTAL_MES, Mens_Equipo y Renta_Plan.\n';
-  systemPrompt += '2. Si el cliente pide un equipo específico (ej: "iPhone 17") → SOLO muestra opciones de ESE equipo. NUNCA sugieras otro modelo diferente.\n';
-  systemPrompt += '3. Si el cliente quiere muchos GB con presupuesto → busca en la tabla las filas de ese equipo donde TOTAL_MES <= presupuesto, y elige las que tengan MÁS GB.\n';
-  systemPrompt += '4. Máximo 3 opciones, ordenadas de MÁS GB a MENOS GB.\n';
-  systemPrompt += '5. Para cada opción muestra exactamente:\n';
-  systemPrompt += '   **Equipo** + **Plan (GB)** a **Plazo** meses\n';
-  systemPrompt += '   Mensualidad equipo: $X (copiar de Mens_Equipo)\n';
-  systemPrompt += '   Renta del plan: $X (copiar de Renta_Plan)\n';
-  systemPrompt += '   **Total mensual: $X** (copiar de TOTAL_MES)\n';
-  systemPrompt += '6. Si no encuentras el equipo que piden, dilo y sugiere alternativas de la misma marca.\n';
-  systemPrompt += '7. Sé conciso y directo. No repitas reglas ni expliques tu proceso.\n\n';
-  systemPrompt += catalog;
+  var systemPrompt = '';
+  
+  if (mode === 'discovery') {
+    // ── PROMPT MODO DESCUBRIMIENTO ──
+    systemPrompt = 'Eres un asesor de ofertas AT&T para ExpertCell. Solo manejas RENOVACIONES.\n\n';
+    systemPrompt += 'ESTÁS EN MODO DESCUBRIMIENTO: el usuario hace una búsqueda exploratoria con filtros (precio máx, plan, con stock, etc.).\n\n';
+    systemPrompt += 'REGLAS ABSOLUTAS:\n';
+    systemPrompt += '1. PROHIBIDO hacer cálculos. Los datos vienen pre-calculados en la tabla. Copia los números EXACTOS.\n';
+    systemPrompt += '2. Los filtros YA se aplicaron a la tabla. TODAS las filas cumplen los criterios del usuario.\n';
+    systemPrompt += '3. Si la tabla tiene datos → RESPONDE con las mejores opciones. NUNCA digas "no puedo responder" cuando hay datos.\n';
+    systemPrompt += '4. Muestra máximo 5-8 opciones, priorizando:\n';
+    systemPrompt += '   a) Con stock disponible (si el inventario está cargado)\n';
+    systemPrompt += '   b) Mejor relación GB/precio\n';
+    systemPrompt += '   c) Variedad de marcas cuando sea posible\n';
+    systemPrompt += '5. Formato de cada opción:\n';
+    systemPrompt += '   **Equipo (Marca)** — Plan Nombre (GB) — Plazo Xm\n';
+    systemPrompt += '   💰 Total mensual: $X (equipo $X + plan $X)\n';
+    systemPrompt += '   📦 Stock: X piezas [detalle de hubs si aplica]\n';
+    systemPrompt += '6. Si el inventario NO está cargado y el usuario pregunta por stock: Avísale que no tienes datos de inventario y responde solo con precios.\n';
+    systemPrompt += '7. Si NO hay opciones que cumplan (RESULTADO: 0): explica qué filtro parece muy restrictivo y sugiere aflojarlo.\n';
+    systemPrompt += '8. Al final agrega una sugerencia útil: "¿Quieres que profundice en alguna opción?" o similar.\n';
+    systemPrompt += '9. Sé conciso. No repitas reglas ni expliques tu proceso.\n\n';
+    systemPrompt += catalog;
+  } else {
+    // ── PROMPT MODO COTIZACIÓN (original) ──
+    systemPrompt = 'Eres un asesor de ofertas AT&T para ExpertCell. Solo manejas RENOVACIONES.\n\n';
+    systemPrompt += 'REGLAS ABSOLUTAS - ROMPER CUALQUIERA ES UN ERROR GRAVE:\n';
+    systemPrompt += '1. PROHIBIDO hacer cálculos. Todos los precios están pre-calculados en la tabla. Copia los números EXACTOS de la columna TOTAL_MES, Mens_Equipo y Renta_Plan.\n';
+    systemPrompt += '2. Si el cliente pide un equipo específico (ej: "iPhone 17") → SOLO muestra opciones de ESE equipo. NUNCA sugieras otro modelo diferente.\n';
+    systemPrompt += '3. Si el cliente quiere muchos GB con presupuesto → busca en la tabla las filas de ese equipo donde TOTAL_MES <= presupuesto, y elige las que tengan MÁS GB.\n';
+    systemPrompt += '4. Máximo 3 opciones, ordenadas de MÁS GB a MENOS GB.\n';
+    systemPrompt += '5. Para cada opción muestra exactamente:\n';
+    systemPrompt += '   **Equipo** + **Plan (GB)** a **Plazo** meses\n';
+    systemPrompt += '   Mensualidad equipo: $X (copiar de Mens_Equipo)\n';
+    systemPrompt += '   Renta del plan: $X (copiar de Renta_Plan)\n';
+    systemPrompt += '   **Total mensual: $X** (copiar de TOTAL_MES)\n';
+    systemPrompt += '6. Si no encuentras el equipo que piden, dilo y sugiere alternativas de la misma marca.\n';
+    systemPrompt += '7. Sé conciso y directo. No repitas reglas ni expliques tu proceso.\n\n';
+    systemPrompt += catalog;
+  }
   
   try {
     var ak = TR_API_KEY || localStorage.getItem('ec_api_key') || '';
