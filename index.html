@@ -4239,7 +4239,7 @@ async function sendAsesorMsg() {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'x-api-key': ak, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true'},
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: mode === 'discovery' ? 2500 : 1000,
         system: systemPrompt,
         messages: asesorMsgs.map(function(m){return {role:m.role, content:m.content}})
@@ -13389,7 +13389,7 @@ async function generatePlanIA() {
     var response = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,system:planIASystemPrompt,messages:planIAMsgs})
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1500,system:planIASystemPrompt,messages:planIAMsgs})
     });
     if (!response.ok) { resultEl.innerHTML = '<div class="section" style="padding:16px;text-align:center;color:#DC3545">❌ Error API ('+response.status+')</div>'; document.getElementById('planIAStartBtn').style.display = ''; return; }
     var data = await response.json();
@@ -13417,7 +13417,7 @@ async function sendPlanIAChat() {
   try {
     var response = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST',headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,system:planIASystemPrompt,messages:planIAMsgs})
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1500,system:planIASystemPrompt,messages:planIAMsgs})
     });
     var data = await response.json();
     var reply = data.content && data.content[0] ? data.content[0].text : 'Error';
@@ -17445,7 +17445,7 @@ async function trCallAI(sys, msg) {
   if (!trCanUse()) return '⚠️ Límite de '+TR_DAILY_LIMIT+' msgs/día alcanzado. Se reinicia mañana.';
   await trIncUsage('chat');
   var kb='\nBASE DE CONOCIMIENTO:\nOBJECIONES:\n'+TR_KB.objeciones.map(function(o){return'P:'+o.q+'\nR:'+o.a}).join('\n')+'\nCIERRES:\n'+TR_KB.cierres.map(function(c){return'P:'+c.q+'\nR:'+c.a}).join('\n');
-  try{var r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,system:sys+'\n'+kb,messages:[{role:'user',content:msg}]})});
+  try{var r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:800,system:sys+'\n'+kb,messages:[{role:'user',content:msg}]})});
   if(!r.ok){var e=await r.json().catch(function(){return{}});return '⚠️ Error: '+(e.error?e.error.message:r.statusText)}
   var d=await r.json();return d.content?d.content.map(function(b){return b.text||''}).join(''):'Sin respuesta.'}catch(e){return '⚠️ Error de conexión.'}
 }
@@ -17454,7 +17454,7 @@ async function trCallAIMulti(sys, msgs) {
   if (!ak) return '⚠️ No hay API key.';
   if (!trCanUse()) return '⚠️ Límite alcanzado.';
   await trIncUsage('roleplay');
-  try{var r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:500,system:sys,messages:msgs})});
+  try{var r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,system:sys,messages:msgs})});
   var d=await r.json();return d.content?d.content.map(function(b){return b.text||''}).join(''):'...'}catch(e){return 'Error.'}
 }
 
